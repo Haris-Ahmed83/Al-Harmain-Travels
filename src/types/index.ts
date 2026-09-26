@@ -1,0 +1,333 @@
+export type UserRole = 'admin' | 'dispatcher' | 'driver' | 'customer';
+export type UserStatus = 'active' | 'suspended' | 'deactivated';
+
+export type VehicleType = 'sedan' | 'suv' | 'van' | 'vip_gmc' | 'bus';
+export type VehicleStatus = 'available' | 'assigned' | 'maintenance' | 'inactive';
+
+export type DriverStatus = 'available' | 'assigned' | 'on_trip' | 'busy' | 'offline' | 'on_break' | 'unavailable';
+
+export type BookingType = 'immediate' | 'scheduled';
+export type BookingStatus =
+  | 'pending_verification'
+  | 'payment_rejected'
+  | 'payment_verified'
+  | 'pending'
+  | 'confirmed'
+  | 'searching'
+  | 'driver_assigned'
+  | 'accepted'
+  | 'driver_accepted'
+  | 'on_the_way'
+  | 'driver_arriving'
+  | 'arrived'
+  | 'driver_arrived'
+  | 'started'
+  | 'trip_started'
+  | 'ride_started'
+  | 'completed'
+  | 'trip_completed'
+  | 'ride_completed'
+  | 'cancelled'
+  | 'rejected'
+  | 'no_show'
+  | 'payment_pending'
+  | 'payment_completed';
+
+export type PaymentMethod = 'cash' | 'online' | 'card';
+export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded';
+
+export type AdditionalChargeType = 'waiting' | 'parking' | 'toll' | 'extra_luggage' | 'special_service';
+
+export interface Profile {
+  id: string;
+  role: UserRole;
+  full_name: string;
+  email?: string | null;
+  phone?: string | null;
+  email_verified?: boolean;
+  phone_verified?: boolean;
+  avatar_url?: string | null;
+  date_of_birth?: string | null;
+  gender?: 'male' | 'female' | 'other' | null;
+  status: UserStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EmergencyContact {
+  id: string;
+  customer_id: string;
+  name: string;
+  relationship: string;
+  phone: string;
+  email?: string | null;
+  is_primary: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ServiceItem {
+  id: string;
+  title: string;
+  slug: string;
+  description: string;
+  image_url?: string | null;
+  base_price: number;
+  vehicle_type: VehicleType;
+  features: string[];
+  is_active: boolean;
+  display_order?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface Customer {
+  id: string;
+  emergency_contact?: string | null;
+  preferred_language: string;
+  notes?: string | null;
+  created_at: string;
+  profile?: Profile;
+  emergency_contacts?: EmergencyContact[];
+}
+
+export interface Vehicle {
+  id: string;
+  plate_number: string;
+  license_plate?: string | null;
+  make: string;
+  model: string;
+  year?: number | null;
+  vehicle_type: VehicleType;
+  color?: string | null;
+  seating_capacity: number;
+  status: VehicleStatus;
+  insurance_expiry?: string | null;
+  inspection_expiry?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Driver {
+  id: string;
+  license_number?: string | null;
+  national_id?: string | null;
+  assigned_vehicle_id?: string | null;
+  status: DriverStatus;
+  rating: number;
+  total_rides: number;
+  total_earnings: number;
+  cash_collected: number;
+  created_at: string;
+  updated_at: string;
+  profile?: Profile;
+  full_name?: string | null;
+  phone?: string | null;
+  assigned_vehicle?: Vehicle | null;
+  vehicle?: Vehicle | null;
+  location?: DriverLocation | null;
+}
+
+export interface DriverLocation {
+  driver_id: string;
+  latitude: number;
+  longitude: number;
+  heading?: number;
+  speed?: number;
+  updated_at: string;
+}
+
+export interface FareRule {
+  id: string;
+  vehicle_type: VehicleType;
+  base_fare: number;
+  per_km_rate: number;
+  per_minute_rate: number;
+  waiting_charge_per_min: number;
+  minimum_fare: number;
+  cancellation_fee: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface FixedRoute {
+  id: string;
+  route_name: string;
+  origin_name: string;
+  destination_name: string;
+  vehicle_type: VehicleType;
+  fixed_fare: number;
+  estimated_distance_km: number;
+  is_active: boolean;
+}
+
+export interface AdditionalCharge {
+  id: string;
+  booking_id: string;
+  charge_type: AdditionalChargeType;
+  amount: number;
+  description?: string | null;
+  added_by?: string | null;
+  created_at: string;
+}
+
+export interface Booking {
+  id: string;
+  booking_reference: string;
+  customer_id?: string | null;
+  passenger_name: string;
+  passenger_phone: string;
+  booking_type: BookingType;
+  status: BookingStatus;
+  pickup_address: string;
+  pickup_latitude: number;
+  pickup_longitude: number;
+  destination_address: string;
+  destination_latitude: number;
+  destination_longitude: number;
+  scheduled_at?: string | null;
+  vehicle_type: VehicleType;
+  assigned_driver_id?: string | null;
+  passenger_count: number;
+  notes?: string | null;
+  special_instructions?: string | null;
+  estimated_distance_km: number;
+  estimated_duration_min: number;
+  estimated_fare: number;
+  final_fare?: number | null;
+  cancellation_reason?: string | null;
+  cancelled_by?: string | null;
+  cancelled_at?: string | null;
+  payment_screenshot_url?: string | null;
+  payment_status?: PaymentStatus;
+  payment_rejected_reason?: string | null;
+  created_by?: string | null;
+  created_at: string;
+  updated_at: string;
+  driver?: Driver | null;
+  customer?: Profile | null;
+  additional_charges?: AdditionalCharge[];
+  payment?: Payment | null;
+}
+
+export interface Payment {
+  id: string;
+  booking_id: string;
+  customer_id?: string | null;
+  amount: number;
+  method: PaymentMethod;
+  status: PaymentStatus;
+  transaction_reference?: string | null;
+  collected_by?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Invoice {
+  id: string;
+  invoice_number: string;
+  booking_id: string;
+  fare_breakdown: {
+    base_fare?: number;
+    distance_charge?: number;
+    time_charge?: number;
+    vehicle_multiplier?: number;
+    extra_charges?: { type: string; amount: number; description?: string }[];
+  };
+  subtotal: number;
+  taxes: number;
+  additional_charges: number;
+  discount: number;
+  total_amount: number;
+  status: 'unpaid' | 'paid' | 'void';
+  created_at: string;
+  booking?: Booking;
+}
+
+export interface RatingFeedback {
+  id: string;
+  booking_id: string;
+  customer_id?: string | null;
+  driver_id?: string | null;
+  rating: number;
+  feedback?: string | null;
+  category: 'rating' | 'complaint' | 'suggestion';
+  created_at: string;
+}
+
+export interface VehicleMaintenance {
+  id: string;
+  vehicle_id: string;
+  maintenance_type: string;
+  description?: string | null;
+  cost: number;
+  service_date: string;
+  next_service_date?: string | null;
+  status: 'completed' | 'scheduled' | 'in_progress';
+  created_at: string;
+  vehicle?: Vehicle;
+}
+
+export interface AuditLog {
+  id: string;
+  user_id?: string | null;
+  action: string;
+  entity: string;
+  details: Record<string, unknown>;
+  ip_address?: string | null;
+  created_at: string;
+  user?: Profile;
+}
+
+export interface SystemSettings {
+  id: string;
+  company_name: string;
+  company_tagline: string;
+  support_phone: string;
+  support_whatsapp: string;
+  support_email: string;
+  address: string;
+  currency: string;
+  tax_percentage: number;
+  updated_at: string;
+}
+
+export type SavedPlaceType = 'home' | 'work' | 'custom';
+
+export interface SavedPlace {
+  id: string;
+  customer_id: string;
+  name: string;
+  type: SavedPlaceType;
+  address: string;
+  latitude: number;
+  longitude: number;
+  place_id?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface RecentLocation {
+  id: string;
+  customer_id: string;
+  place_id?: string | null;
+  address: string;
+  latitude: number;
+  longitude: number;
+  last_used_at: string;
+}
+
+export interface LocationPoint {
+  address: string;
+  latitude: number;
+  longitude: number;
+  placeId?: string | null;
+}
+
+export interface RouteEstimate {
+  distanceKm: number;
+  durationMinutes: number;
+  polylineCoords?: [number, number][];
+  source: 'google' | 'osrm' | 'haversine';
+}
+

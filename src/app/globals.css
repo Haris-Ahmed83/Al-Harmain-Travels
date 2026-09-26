@@ -1,0 +1,526 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─────────────────────────────────────────────────
+   DESIGN TOKENS  —  Dark mode (default)
+───────────────────────────────────────────────── */
+:root,
+html.dark {
+  --background: #090d16;
+  --foreground: #f1f5f9;
+
+  --bg-page: #090d16;
+  --bg-card: #0f172a;
+  --bg-elevated: #1e293b;
+  --bg-surface: #020817;
+  --bg-input: #020817;
+
+  --text-primary: #f1f5f9;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+
+  --border-base: #1e293b;
+  --border-strong: #334155;
+  --border-subtle: #0f172a;
+
+  --ring-brand: rgba(16, 185, 129, 0.45);
+  --shadow-soft: 0 18px 50px -24px rgba(0, 0, 0, 0.65);
+
+  /* Typography tokens */
+  --leading-body: 1.65;
+  --tracking-body: 0.01em;
+  --tracking-heading: -0.025em;
+  --tracking-display: -0.03em;
+  --tracking-label: 0.06em;
+}
+
+/* ─────────────────────────────────────────────────
+   DESIGN TOKENS  —  Light mode
+───────────────────────────────────────────────── */
+html.light {
+  --background: #f4f7f5;
+  --foreground: #0f172a;
+
+  --bg-page: #f4f7f5;
+  --bg-card: #ffffff;
+  --bg-elevated: #eef2f0;
+  --bg-surface: #e8eeeb;
+  --bg-input: #ffffff;
+
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+
+  --border-base: #d8e0db;
+  --border-strong: #b8c5be;
+  --border-subtle: #eef2f0;
+
+  --ring-brand: rgba(5, 150, 105, 0.35);
+  --shadow-soft: 0 18px 40px -28px rgba(15, 23, 42, 0.25);
+}
+
+/* ─────────────────────────────────────────────────
+   BASE TYPOGRAPHY
+───────────────────────────────────────────────── */
+html {
+  scroll-behavior: smooth;
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: var(--font-body), 'Segoe UI', sans-serif;
+  font-size: 0.9375rem;
+  line-height: var(--leading-body);
+  letter-spacing: var(--tracking-body);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'kern' 1, 'liga' 1;
+}
+
+@layer base {
+  /* Display serif — marketing & page-level headings */
+  h1,
+  h2 {
+    font-family: var(--font-display), Georgia, serif;
+    font-weight: 600;
+    letter-spacing: var(--tracking-heading);
+    line-height: 1.15;
+    color: var(--text-primary);
+    text-wrap: balance;
+  }
+
+  h1 {
+    font-size: clamp(1.75rem, 1.25rem + 2vw, 2.75rem);
+    letter-spacing: var(--tracking-display);
+    line-height: 1.1;
+  }
+
+  h2 {
+    font-size: clamp(1.375rem, 1.15rem + 1.2vw, 2.125rem);
+  }
+
+  /* UI sans — card / panel / modal titles stay operational & clear */
+  h3,
+  h4 {
+    font-family: var(--font-body), 'Segoe UI', sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    line-height: 1.3;
+    color: var(--text-primary);
+    text-wrap: balance;
+  }
+
+  h3 {
+    font-size: clamp(1.0625rem, 1rem + 0.35vw, 1.25rem);
+  }
+
+  h4 {
+    font-size: 1rem;
+    font-weight: 600;
+  }
+
+  h5,
+  h6 {
+    font-family: var(--font-body), 'Segoe UI', sans-serif;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    line-height: 1.4;
+    color: var(--text-primary);
+  }
+
+  p {
+    line-height: var(--leading-body);
+  }
+
+  strong,
+  b {
+    font-weight: 700;
+  }
+
+  small {
+    font-size: 0.8125rem;
+    line-height: 1.45;
+  }
+
+  label {
+    font-family: var(--font-body), 'Segoe UI', sans-serif;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--text-secondary);
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font-family: inherit;
+    letter-spacing: inherit;
+  }
+
+  table {
+    font-variant-numeric: tabular-nums;
+  }
+
+  th {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  td {
+    font-size: 0.8125rem;
+    line-height: 1.45;
+  }
+}
+
+/* Explicit display helper — use on brand wordmarks & marketing titles */
+.font-display {
+  font-family: var(--font-display), Georgia, serif;
+  letter-spacing: var(--tracking-heading);
+}
+
+::selection {
+  background: #10b981;
+  color: #022c22;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring-brand);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Soften ultra-heavy weights on display headings (Cormorant tops at 700) */
+h1.font-black,
+h2.font-black,
+h1.font-extrabold,
+h2.font-extrabold,
+.font-display.font-black,
+.font-display.font-extrabold {
+  font-weight: 700;
+}
+
+/* ─────────────────────────────────────────────────
+   TYPE SYSTEM UTILITIES
+───────────────────────────────────────────────── */
+@layer components {
+  /* Brand / hero display */
+  .type-hero {
+    @apply font-display font-semibold text-balance;
+    font-size: clamp(2.5rem, 1.5rem + 4vw, 4rem);
+    line-height: 1.02;
+    letter-spacing: -0.035em;
+  }
+
+  .type-display {
+    @apply font-display font-semibold text-primary text-balance;
+    font-size: clamp(2.25rem, 1.4rem + 3.5vw, 3.75rem);
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+  }
+
+  /* Marketing page H1 */
+  .type-page-hero {
+    @apply font-display font-semibold text-primary tracking-tight text-balance;
+    font-size: clamp(2rem, 1.4rem + 2.5vw, 3.25rem);
+    line-height: 1.08;
+    letter-spacing: -0.03em;
+  }
+
+  /* Dashboard / portal page titles */
+  .type-page-title {
+    @apply font-display font-semibold text-primary text-balance;
+    font-size: clamp(1.5rem, 1.2rem + 1.2vw, 2rem);
+    line-height: 1.15;
+    letter-spacing: -0.025em;
+  }
+
+  /* Section titles (marketing + long-form) */
+  .type-section-title {
+    @apply font-display font-semibold text-primary text-balance;
+    font-size: clamp(1.625rem, 1.25rem + 1.5vw, 2.375rem);
+    line-height: 1.15;
+    letter-spacing: -0.028em;
+  }
+
+  /* Supporting lead under a page/section title */
+  .type-lead {
+    @apply font-sans text-secondary;
+    font-size: clamp(0.9375rem, 0.9rem + 0.35vw, 1.125rem);
+    line-height: 1.65;
+    letter-spacing: 0.005em;
+  }
+
+  /* Card / list / panel titles */
+  .type-card-title {
+    @apply font-sans font-bold text-primary tracking-tight;
+    font-size: 1.0625rem;
+    line-height: 1.35;
+    letter-spacing: -0.015em;
+  }
+
+  /* Modal / drawer titles */
+  .type-panel-title {
+    @apply font-sans font-bold text-primary tracking-tight;
+    font-size: 1rem;
+    line-height: 1.35;
+  }
+
+  /* Section eyebrows / kicker labels */
+  .type-eyebrow {
+    @apply font-sans text-xs font-bold uppercase text-emerald-600 dark:text-emerald-400;
+    letter-spacing: 0.08em;
+    line-height: 1.3;
+  }
+
+  /* Form field labels */
+  .type-label {
+    @apply font-sans text-xs font-semibold text-secondary block mb-1;
+    letter-spacing: 0.02em;
+    line-height: 1.4;
+  }
+
+  /* Body copy */
+  .type-body {
+    @apply font-sans text-secondary;
+    font-size: 0.9375rem;
+    line-height: 1.65;
+    letter-spacing: 0.01em;
+  }
+
+  .type-body-sm {
+    @apply font-sans text-secondary;
+    font-size: 0.8125rem;
+    line-height: 1.55;
+    letter-spacing: 0.01em;
+  }
+
+  .type-muted {
+    @apply font-sans text-muted;
+    font-size: 0.875rem;
+    line-height: 1.6;
+  }
+
+  /* Meta, captions, helper text */
+  .type-caption {
+    @apply font-sans text-muted;
+    font-size: 0.6875rem;
+    line-height: 1.45;
+    letter-spacing: 0.02em;
+  }
+
+  /* Navigation links */
+  .type-nav {
+    @apply font-sans font-semibold;
+    font-size: 0.8125rem;
+    line-height: 1.25;
+    letter-spacing: 0.02em;
+  }
+
+  /* CTA / button copy prominence */
+  .type-cta {
+    @apply font-sans font-bold;
+    font-size: 0.875rem;
+    line-height: 1.25;
+    letter-spacing: 0.025em;
+  }
+
+  /* Booking fare / money emphasis */
+  .type-fare {
+    @apply font-sans font-bold tabular-nums tracking-tight text-emerald-600 dark:text-emerald-400;
+    font-size: clamp(1.5rem, 1.3rem + 0.8vw, 1.875rem);
+    line-height: 1.1;
+  }
+
+  /* Dashboard stats */
+  .type-stat {
+    @apply font-sans font-bold tabular-nums tracking-tight text-primary;
+    font-size: clamp(1.375rem, 1.15rem + 0.9vw, 1.875rem);
+    line-height: 1.1;
+  }
+
+  /* Booking refs, plates, codes */
+  .type-mono {
+    @apply font-mono font-semibold tabular-nums;
+    font-size: 0.875rem;
+    letter-spacing: 0.02em;
+  }
+
+  /* Table header cells */
+  .type-table-head {
+    @apply font-sans font-bold uppercase text-muted;
+    font-size: 0.625rem;
+    letter-spacing: 0.08em;
+    line-height: 1.3;
+  }
+
+  /* ─────────────────────────────────────────────────
+     UX UTILITIES
+  ───────────────────────────────────────────────── */
+  .page-shell {
+    @apply w-full max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 py-6 sm:py-8;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-bold tracking-wide
+      bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950
+      shadow-lg shadow-amber-950/25 hover:from-amber-400 hover:to-amber-300
+      active:scale-[0.98] transition-transform disabled:opacity-60 disabled:pointer-events-none;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold tracking-wide
+      bg-card text-primary border border-base hover:bg-elevated hover:border-strong
+      active:scale-[0.98] transition-transform;
+  }
+
+  .btn-brand {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-bold tracking-wide
+      bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-950/30
+      active:scale-[0.98] transition-transform disabled:opacity-60 disabled:pointer-events-none;
+  }
+
+  .field-input {
+    @apply w-full rounded-xl bg-input border border-base text-primary text-sm leading-normal
+      placeholder:text-muted placeholder:font-normal px-4 py-3
+      focus:outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/20
+      transition-[border-color,box-shadow];
+  }
+
+  .surface-card {
+    @apply bg-card border border-base rounded-3xl shadow-[var(--shadow-soft)];
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-caption font-semibold tracking-wide
+      border border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300;
+  }
+
+  .skip-link {
+    @apply sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[100]
+      focus:px-4 focus:py-2 focus:rounded-xl focus:bg-amber-400 focus:text-slate-950
+      focus:font-bold focus:tracking-wide focus:shadow-xl;
+  }
+
+  .step-dot {
+    @apply w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold tracking-wide border;
+  }
+
+  .step-dot-active {
+    @apply bg-emerald-600 border-emerald-500 text-white shadow-md shadow-emerald-900/40;
+  }
+
+  .step-dot-done {
+    @apply bg-emerald-100 dark:bg-emerald-950 border-emerald-400 text-emerald-700 dark:text-emerald-300;
+  }
+
+  .step-dot-idle {
+    @apply bg-elevated border-base text-muted;
+  }
+}
+
+/* ─────────────────────────────────────────────────
+   MOTION
+───────────────────────────────────────────────── */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes soft-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.55s ease-out both;
+}
+
+.animate-fade-up-delay {
+  animation: fade-up 0.65s ease-out 0.12s both;
+}
+
+.animate-soft-pulse {
+  animation: soft-pulse 2.4s ease-in-out infinite;
+}
+
+/* ─────────────────────────────────────────────────
+   SCROLLBARS
+───────────────────────────────────────────────── */
+html.dark ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+html.dark ::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+html.dark ::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 9999px;
+}
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #059669;
+}
+
+html.light ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+html.light ::-webkit-scrollbar-track {
+  background: #e2e8f0;
+}
+html.light ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+html.light ::-webkit-scrollbar-thumb:hover {
+  background: #059669;
+}
+
+/* ─────────────────────────────────────────────────
+   LEAFLET MAP
+───────────────────────────────────────────────── */
+.leaflet-container {
+  font-family: inherit;
+  width: 100%;
+  height: 100%;
+  z-index: 10;
+  border-radius: inherit;
+}
+
+.custom-leaflet-icon {
+  background: transparent;
+  border: none;
+}
