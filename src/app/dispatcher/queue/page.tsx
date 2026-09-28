@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
+import { formatFareSAR } from '@/lib/fixed-fare';
 import { SAUDI_LANDMARKS } from '@/lib/geo';
 import { VehicleType, Booking, BookingStatus } from '@/types';
 import {
@@ -26,6 +27,8 @@ import {
   RefreshCw,
   AlertCircle,
   FileCheck,
+  DollarSign,
+  MessageSquare,
 } from 'lucide-react';
 import { TableSkeletonRows } from '@/components/ui/DataStateSkeletons';
 import { toast } from 'sonner';
@@ -39,6 +42,8 @@ export default function DispatcherQueuePage() {
     confirmBooking,
     verifyPayment,
     rejectPayment,
+    rejectBooking,
+    setCustomBookingFare,
     assignDriver,
     reassignDriver,
     autoAssignDriver,
@@ -57,6 +62,20 @@ export default function DispatcherQueuePage() {
   const [customRejectReason, setCustomRejectReason] = useState('');
   const [showRejectForm, setShowRejectForm] = useState(false);
 
+  // Custom Route Quote Modal State
+  const [quoteModalBooking, setQuoteModalBooking] = useState<Booking | null>(null);
+  const [quoteFareAmount, setQuoteFareAmount] = useState<string>('');
+  const [quoteNotes, setQuoteNotes] = useState<string>('');
+  const [isQuoting, setIsQuoting] = useState<boolean>(false);
+
+  // Reject Booking Request Modal State
+  const [rejectModalBooking, setRejectModalBooking] = useState<Booking | null>(null);
+  const [bookingRejectReason, setBookingRejectReason] = useState<string>('Vehicle unavailable for requested schedule');
+  const [isRejecting, setIsRejecting] = useState<boolean>(false);
+
+  // Stops Detail Modal State
+  const [detailModalBooking, setDetailModalBooking] = useState<Booking | null>(null);
+
   // Quick receipt view modal
   const [viewScreenshotUrl, setViewScreenshotUrl] = useState<string | null>(null);
 
@@ -73,6 +92,45 @@ export default function DispatcherQueuePage() {
   const [notes, setNotes] = useState('');
 
   const pendingVerificationCount = bookings.filter((b) => b.status === 'pending_verification').length;
+  const pendingReviewCount = bookings.filter((b) => b.status === 'pending_review').length;
+
+  const handleQuoteSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quoteModalBooking) return;
+    const num = parseFloat(quoteFareAmount);
+    if (isNaN(num) || num <= 0) {
+      toast.error('Please enter a valid fare amount in SAR.');
+      return;
+    }
+    setIsQuoting(true);
+    try {
+      await setCustomBookingFare(quoteModalBooking.id, num, quoteNotes.trim());
+      await confirmBooking(quoteModalBooking.id);
+      setQuoteModalBooking(null);
+      setQuoteFareAmount('');
+      setQuoteNotes('');
+      toast.success(`Fare of SAR ${num} confirmed for ${quoteModalBooking.booking_reference}`);
+    } catch {
+      toast.error('Failed to confirm fare.');
+    } finally {
+      setIsQuoting(false);
+    }
+  };
+
+  const handleRejectBookingSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rejectModalBooking) return;
+    setIsRejecting(true);
+    try {
+      await rejectBooking(rejectModalBooking.id, bookingRejectReason.trim());
+      setRejectModalBooking(null);
+      toast.info(`Booking ${rejectModalBooking.booking_reference} rejected.`);
+    } catch {
+      toast.error('Failed to reject booking.');
+    } finally {
+      setIsRejecting(false);
+    }
+  };
 
   const handlePhoneBooking = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -153,6 +211,7 @@ export default function DispatcherQueuePage() {
     if (!matchesSearch) return false;
 
     if (statusFilter === 'all') return true;
+    if (statusFilter === 'pending_review') return b.status === 'pending_review';
     if (statusFilter === 'pending_verification') return b.status === 'pending_verification';
     if (statusFilter === 'confirmed') return b.status === 'confirmed';
     if (statusFilter === 'assigned') return b.status === 'driver_assigned';
@@ -185,6 +244,12 @@ export default function DispatcherQueuePage() {
 
   const getStatusBadge = (status: BookingStatus) => {
     switch (status) {
+      case 'pending_review':
+        return (
+          <span className="px-2.5 py-1 rounded-full text-[10px] uppercase font-bold bg-purple-500/15 text-purple-400 border border-purple-500/30 flex items-center gap-1">
+            <Clock className="w-3 h-3" /> Awaiting Quote Review
+          </span>
+        );
       case 'pending_verification':
         return (
           <span className="px-2.5 py-1 rounded-full text-[10px] uppercase font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1">
@@ -284,6 +349,31 @@ export default function DispatcherQueuePage() {
         </button>
       </div>
 
+      {/* Pending Custom Route Review Alert */}
+      {pendingReviewCount > 0 && (
+        <div className="p-4 bg-purple-500/10 border border-purple-500/30 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center shrink-0">
+              <Clock className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-purple-300">
+                {pendingReviewCount} Custom Route Booking{pendingReviewCount > 1 ? 's' : ''} Awaiting Fare Review &amp; Confirmation
+              </h4>
+              <p className="text-xs text-purple-300/80">
+                Customers requested custom itineraries without upfront fares. Contact passenger, agree on price, and quote the fare.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setStatusFilter('pending_review')}
+            className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-xl transition-colors shadow self-end sm:self-auto shrink-0"
+          >
+            Review Custom Routes &rarr;
+          </button>
+        </div>
+      )}
+
       {/* Pending Payment Verification Banner Alert */}
       {pendingVerificationCount > 0 && (
         <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
@@ -315,6 +405,11 @@ export default function DispatcherQueuePage() {
         <div className="flex flex-wrap items-center gap-1.5 bg-card p-1 rounded-2xl border border-base text-xs">
           {[
             { id: 'all', label: 'All' },
+            {
+              id: 'pending_review',
+              label: `Custom Route Review ${pendingReviewCount > 0 ? `(${pendingReviewCount})` : ''}`,
+              highlight: pendingReviewCount > 0,
+            },
             {
               id: 'pending_verification',
               label: `Pending Payment ${pendingVerificationCount > 0 ? `(${pendingVerificationCount})` : ''}`,
@@ -388,23 +483,77 @@ export default function DispatcherQueuePage() {
                 return (
                   <tr key={b.id} className="hover:bg-surface/50 transition-colors">
                     <td className="p-3 font-mono font-bold text-amber-500 whitespace-nowrap">
-                      <div>{b.booking_reference}</div>
-                      <span className="text-[10px] text-muted block">{formatDateTime(b.created_at)}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span>{b.booking_reference}</span>
+                        {b.booking_method === 'custom' ? (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                            Custom
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            Fixed
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-[10px] text-muted block">{formatDateTime(b.created_at)}</span>
+                        {b.trip_type === 'round_trip' && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-sky-500/15 text-sky-400 border border-sky-500/30">
+                            Round-Trip
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="p-3">
                       <p className="font-bold text-primary">{b.passenger_name}</p>
-                      <a
-                        href={`tel:${b.passenger_phone}`}
-                        className="text-emerald-600 dark:text-emerald-400 hover:underline text-[11px]"
-                      >
-                        {b.passenger_phone}
-                      </a>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <a
+                          href={`tel:${b.passenger_phone}`}
+                          className="text-emerald-600 dark:text-emerald-400 hover:underline text-[11px] flex items-center gap-1"
+                          title="Call Customer"
+                        >
+                          <PhoneCall className="w-3 h-3" />
+                          <span>{b.passenger_phone}</span>
+                        </a>
+                        <a
+                          href={`https://wa.me/${b.passenger_phone.replace(/[^0-9]/g, '')}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-emerald-500 hover:text-emerald-400 hover:underline text-[11px] flex items-center gap-1 font-medium bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20"
+                          title="Chat on WhatsApp"
+                        >
+                          <MessageSquare className="w-2.5 h-2.5" />
+                          <span>WhatsApp</span>
+                        </a>
+                      </div>
                     </td>
                     <td className="p-3 max-w-xs">
                       <p className="line-clamp-1 font-medium text-primary">{b.pickup_address}</p>
+                      {b.intermediate_stops && b.intermediate_stops.length > 0 && (
+                        <div className="my-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setDetailModalBooking(b)}
+                            className="inline-flex items-center gap-1 text-[10px] font-semibold text-purple-400 hover:text-purple-300 bg-purple-500/10 hover:bg-purple-500/20 px-1.5 py-0.5 rounded border border-purple-500/30 transition-colors"
+                          >
+                            <MapPin className="w-2.5 h-2.5" />
+                            <span>+{b.intermediate_stops.length} stop{b.intermediate_stops.length > 1 ? 's' : ''} (view)</span>
+                          </button>
+                        </div>
+                      )}
                       <p className="line-clamp-1 text-muted text-[11px]">&rarr; {b.destination_address}</p>
+                      {b.return_scheduled_at && (
+                        <p className="text-[10px] text-sky-400 font-medium mt-0.5">
+                          Return: {formatDateTime(b.return_scheduled_at)}
+                        </p>
+                      )}
                       {b.notes && (
                         <p className="text-[10px] text-muted italic line-clamp-1 mt-0.5">Note: {b.notes}</p>
+                      )}
+                      {b.dispatcher_notes && (
+                        <p className="text-[10px] text-amber-400/90 italic line-clamp-1 mt-0.5">
+                          Dispatcher: {b.dispatcher_notes}
+                        </p>
                       )}
                     </td>
                     <td className="p-3 uppercase text-emerald-600 dark:text-emerald-400 font-semibold whitespace-nowrap">
@@ -440,11 +589,65 @@ export default function DispatcherQueuePage() {
                         <span className="text-muted italic">Unassigned</span>
                       )}
                     </td>
-                    <td className="p-3 text-right font-bold tabular-nums text-primary whitespace-nowrap">
-                      {formatCurrency(b.final_fare || b.estimated_fare, settings.currency)}
+                    <td className="p-3 text-right whitespace-nowrap">
+                      {b.booking_method === 'custom' && !b.confirmed_fare && !b.final_fare ? (
+                        <div className="space-y-0.5">
+                          <span className="text-amber-400 italic font-semibold text-xs block">Awaiting Quote</span>
+                          <span className="text-[9px] text-muted block uppercase tracking-wider">custom route</span>
+                        </div>
+                      ) : b.confirmed_fare ? (
+                        <div className="space-y-0.5">
+                          <div className="font-bold tabular-nums text-primary text-sm">
+                            {formatFareSAR(b.confirmed_fare)}
+                          </div>
+                          <div className="text-[9px] text-purple-400 font-bold uppercase tracking-wider">
+                            Quote Confirmed
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <div className="font-bold tabular-nums text-primary">
+                            {b.fixed_fare_amount
+                              ? formatFareSAR(b.fixed_fare_amount)
+                              : formatCurrency(b.final_fare || b.estimated_fare, settings.currency)}
+                          </div>
+                          {b.fixed_fare_amount && (
+                            <div className="text-[9px] text-emerald-500 font-bold uppercase tracking-widest mt-0.5 text-right">
+                              fixed · no surge
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td className="p-3 text-center whitespace-nowrap">
                       <div className="flex items-center justify-center gap-1.5">
+                        {/* Step 0: Custom Route Quote & Review Action */}
+                        {b.status === 'pending_review' && (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => {
+                                setQuoteModalBooking(b);
+                                setQuoteFareAmount(b.confirmed_fare ? String(b.confirmed_fare) : '');
+                                setQuoteNotes(b.dispatcher_notes || '');
+                              }}
+                              className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 text-white shadow transition-all flex items-center gap-1"
+                              title="Set Custom Fare & Confirm"
+                            >
+                              <DollarSign className="w-3 h-3" /> Quote Fare
+                            </button>
+                            <button
+                              onClick={() => {
+                                setRejectModalBooking(b);
+                                setBookingRejectReason('Vehicle or route unavailable for requested schedule');
+                              }}
+                              className="px-2 py-1 rounded-lg text-[11px] font-bold bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border border-rose-500/30 transition-colors flex items-center gap-1"
+                              title="Decline / Reject Custom Booking"
+                            >
+                              <XCircle className="w-3 h-3" /> Decline
+                            </button>
+                          </div>
+                        )}
+
                         {/* Step 1: Payment Verification Action */}
                         {b.status === 'pending_verification' && (
                           <button
@@ -498,8 +701,9 @@ export default function DispatcherQueuePage() {
                           </button>
                         )}
 
-                        {/* Status detail when already active */}
-                        {b.status !== 'pending_verification' &&
+                        {/* Status detail when already active or other */}
+                        {b.status !== 'pending_review' &&
+                          b.status !== 'pending_verification' &&
                           b.status !== 'confirmed' &&
                           b.status !== 'driver_assigned' && (
                             <span className="text-[11px] text-muted italic">In Progress / Logged</span>
@@ -553,14 +757,40 @@ export default function DispatcherQueuePage() {
                 </span>
               </div>
               <div className="flex justify-between items-center pt-1 border-t border-base">
-                <span className="text-muted font-semibold">Expected Fare:</span>
+                <span className="text-muted font-semibold">
+                  {verifyModalBooking.fixed_fare_amount ? 'Fixed Fare (verify exact amount):' : 'Expected Fare:'}
+                </span>
                 <span className="text-sm font-bold text-emerald-400">
-                  {formatCurrency(
-                    verifyModalBooking.final_fare || verifyModalBooking.estimated_fare,
-                    settings.currency
-                  )}
+                  {verifyModalBooking.fixed_fare_amount
+                    ? formatFareSAR(verifyModalBooking.fixed_fare_amount)
+                    : formatCurrency(
+                        verifyModalBooking.final_fare || verifyModalBooking.estimated_fare,
+                        settings.currency
+                      )}
                 </span>
               </div>
+              {verifyModalBooking.fixed_fare_amount && (
+                <div className="flex justify-between items-center">
+                  <span className="text-muted">Pricing Type:</span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold">
+                    <ShieldCheck className="w-3 h-3" />
+                    Fixed Fare · No Hidden Charges
+                  </span>
+                </div>
+              )}
+              {verifyModalBooking.service_type && (
+                <div className="flex justify-between items-center">
+                  <span className="text-muted">Service Route:</span>
+                  <span className="font-medium text-primary capitalize">
+                    {(verifyModalBooking.service_type as string).replace(/_/g, ' ')}
+                    {verifyModalBooking.terminal && (
+                      <span className="ml-1 text-amber-400">
+                        · {(verifyModalBooking.terminal as string).replace(/_/g, ' ').toUpperCase()}
+                      </span>
+                    )}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Uploaded Screenshot Preview */}
@@ -988,6 +1218,320 @@ export default function DispatcherQueuePage() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Custom Route Quote Fare Modal */}
+      {quoteModalBooking && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <form
+            onSubmit={handleQuoteSubmit}
+            className="bg-card border border-base rounded-3xl p-6 max-w-lg w-full space-y-4 shadow-2xl relative"
+          >
+            <div className="flex items-center justify-between border-b border-base pb-3">
+              <div className="flex items-center gap-2">
+                <DollarSign className="w-5 h-5 text-purple-400" />
+                <h3 className="type-card-title">Quote &amp; Confirm Custom Route Fare</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQuoteModalBooking(null)}
+                className="text-muted hover:text-primary transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Passenger & Contact summary */}
+            <div className="bg-surface p-3.5 rounded-2xl border border-base space-y-2 text-xs">
+              <div className="flex justify-between items-center">
+                <span className="text-muted">Booking Reference:</span>
+                <span className="font-mono font-bold text-amber-400">
+                  {quoteModalBooking.booking_reference}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-muted">Passenger:</span>
+                <span className="font-bold text-primary">
+                  {quoteModalBooking.passenger_name}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-muted">Direct Contact:</span>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={`tel:${quoteModalBooking.passenger_phone}`}
+                    className="text-emerald-400 hover:underline flex items-center gap-1 font-mono text-[11px]"
+                  >
+                    <PhoneCall className="w-3 h-3" />
+                    <span>{quoteModalBooking.passenger_phone}</span>
+                  </a>
+                  <a
+                    href={`https://wa.me/${quoteModalBooking.passenger_phone.replace(/[^0-9]/g, '')}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold flex items-center gap-1 hover:bg-emerald-500/25"
+                  >
+                    <MessageSquare className="w-2.5 h-2.5" />
+                    <span>WhatsApp</span>
+                  </a>
+                </div>
+              </div>
+              <div className="pt-2 border-t border-base/60 space-y-1">
+                <div className="flex items-start gap-1.5 text-primary">
+                  <span className="text-emerald-400 font-bold shrink-0">Pickup:</span>
+                  <span className="truncate">{quoteModalBooking.pickup_address}</span>
+                </div>
+                {quoteModalBooking.intermediate_stops && quoteModalBooking.intermediate_stops.length > 0 && (
+                  <div className="text-purple-300 text-[11px] pl-3 py-0.5 space-y-0.5">
+                    {quoteModalBooking.intermediate_stops.map((st, i) => (
+                      <div key={st.id || i} className="truncate">
+                        &bull; Stop {i + 1}: {st.address}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-start gap-1.5 text-primary">
+                  <span className="text-rose-400 font-bold shrink-0">Drop-off:</span>
+                  <span className="truncate">{quoteModalBooking.destination_address}</span>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center pt-1 border-t border-base/60 text-[11px]">
+                <span className="text-muted">Vehicle Class &amp; Pax:</span>
+                <span className="font-semibold text-emerald-400 uppercase">
+                  {quoteModalBooking.vehicle_type?.replace('_', ' ')} &bull; {quoteModalBooking.passenger_count || 1} Guests
+                </span>
+              </div>
+              {quoteModalBooking.trip_type === 'round_trip' && (
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-muted">Trip Type:</span>
+                  <span className="text-sky-400 font-semibold">
+                    Round-Trip {quoteModalBooking.return_scheduled_at ? `(Return: ${formatDateTime(quoteModalBooking.return_scheduled_at)})` : ''}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Input Fare Amount */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-primary">
+                Agreed Fare in SAR (Saudi Riyals) *
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-xs text-muted">
+                  SAR
+                </span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="1"
+                  required
+                  placeholder="e.g. 450.00"
+                  value={quoteFareAmount}
+                  onChange={(e) => setQuoteFareAmount(e.target.value)}
+                  className="w-full bg-input border border-base rounded-xl pl-12 pr-4 py-2.5 text-sm font-bold text-amber-400 placeholder:text-muted focus:outline-none focus:border-purple-500"
+                />
+              </div>
+              <p className="text-[11px] text-muted">
+                This exact amount will be communicated to the customer. No hidden surcharges apply.
+              </p>
+            </div>
+
+            {/* Dispatcher Notes */}
+            <div className="space-y-1 text-xs">
+              <label className="block font-semibold text-secondary">
+                Dispatcher Notes &amp; Transfer Instructions (Optional)
+              </label>
+              <textarea
+                rows={2}
+                value={quoteNotes}
+                onChange={(e) => setQuoteNotes(e.target.value)}
+                placeholder="e.g. Rate includes 2 intermediate stops in Jeddah Corniche. Transfer to Al Rajhi bank."
+                className="w-full bg-input border border-base rounded-xl p-3 text-xs text-primary placeholder:text-muted focus:outline-none focus:border-purple-500"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-base">
+              <button
+                type="button"
+                onClick={() => setQuoteModalBooking(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-surface text-secondary hover:text-primary transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isQuoting}
+                className="px-5 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 text-white shadow-lg disabled:opacity-50 flex items-center gap-1.5 transition-all"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>{isQuoting ? 'Confirming...' : 'Confirm Fare & Release Quote'}</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Reject Custom Booking Modal */}
+      {rejectModalBooking && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <form
+            onSubmit={handleRejectBookingSubmit}
+            className="bg-card border border-base rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl"
+          >
+            <div className="flex items-center justify-between border-b border-base pb-3">
+              <div className="flex items-center gap-2">
+                <XCircle className="w-5 h-5 text-rose-400" />
+                <h3 className="type-card-title">Decline Custom Booking Request</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRejectModalBooking(null)}
+                className="text-muted hover:text-primary transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="bg-surface p-3 rounded-xl border border-base text-xs space-y-1">
+              <div>
+                <span className="text-muted">Booking Reference: </span>
+                <span className="font-mono font-bold text-amber-400">{rejectModalBooking.booking_reference}</span>
+              </div>
+              <div>
+                <span className="text-muted">Passenger: </span>
+                <span className="font-bold text-primary">{rejectModalBooking.passenger_name}</span>
+              </div>
+            </div>
+
+            <div className="space-y-1.5 text-xs">
+              <label className="font-semibold text-secondary">Reason for Declining</label>
+              <select
+                value={bookingRejectReason}
+                onChange={(e) => setBookingRejectReason(e.target.value)}
+                className="w-full bg-input border border-base rounded-xl px-3 py-2 text-xs text-primary focus:outline-none focus:border-rose-500"
+              >
+                <option value="Vehicle unavailable for requested schedule">Vehicle unavailable for requested schedule</option>
+                <option value="Route cannot be serviced in current operating hours">Route cannot be serviced in current operating hours</option>
+                <option value="Customer requested cancellation via phone/WhatsApp">Customer requested cancellation via phone/WhatsApp</option>
+                <option value="Fare could not be agreed upon with customer">Fare could not be agreed upon with customer</option>
+                <option value="Duplicate or test booking request">Duplicate or test booking request</option>
+              </select>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-base">
+              <button
+                type="button"
+                onClick={() => setRejectModalBooking(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-surface text-secondary hover:text-primary"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isRejecting}
+                className="px-5 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow disabled:opacity-50"
+              >
+                {isRejecting ? 'Declining...' : 'Decline Booking'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Stops & Itinerary Detail Modal */}
+      {detailModalBooking && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-card border border-base rounded-3xl p-6 max-w-lg w-full space-y-4 shadow-2xl relative">
+            <div className="flex items-center justify-between border-b border-base pb-3">
+              <div className="flex items-center gap-2">
+                <MapPin className="w-5 h-5 text-purple-400" />
+                <h3 className="type-card-title">Route &amp; Intermediate Stops Itinerary</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDetailModalBooking(null)}
+                className="text-muted hover:text-primary transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-1 text-xs">
+              <div className="flex justify-between">
+                <span className="text-muted">Booking Reference:</span>
+                <span className="font-mono font-bold text-amber-400">{detailModalBooking.booking_reference}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted">Passenger:</span>
+                <span className="font-bold text-primary">{detailModalBooking.passenger_name} ({detailModalBooking.passenger_phone})</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted">Trip Mode:</span>
+                <span className="text-primary font-medium capitalize">
+                  {detailModalBooking.trip_type === 'round_trip' ? 'Round-Trip' : 'One-Way Journey'}
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-surface p-4 rounded-2xl border border-base space-y-3 text-xs">
+              <div className="flex items-start gap-3">
+                <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+                  1
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-emerald-400 block tracking-wider">
+                    Pickup Location
+                  </span>
+                  <p className="font-medium text-primary mt-0.5">{detailModalBooking.pickup_address}</p>
+                </div>
+              </div>
+
+              {detailModalBooking.intermediate_stops?.map((st, i) => (
+                <div key={st.id || i} className="flex items-start gap-3 pl-0.5">
+                  <div className="w-6 h-6 rounded-full bg-purple-500/20 text-purple-300 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5 border border-purple-500/30">
+                    {i + 2}
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-purple-300 block tracking-wider">
+                      Intermediate Stop {i + 1}
+                    </span>
+                    <p className="font-medium text-primary mt-0.5">{st.address}</p>
+                  </div>
+                </div>
+              ))}
+
+              <div className="flex items-start gap-3">
+                <div className="w-6 h-6 rounded-full bg-rose-500/20 text-rose-400 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+                  {(detailModalBooking.intermediate_stops?.length || 0) + 2}
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-rose-400 block tracking-wider">
+                    Final Destination
+                  </span>
+                  <p className="font-medium text-primary mt-0.5">{detailModalBooking.destination_address}</p>
+                </div>
+              </div>
+            </div>
+
+            {detailModalBooking.notes && (
+              <div className="p-3 bg-card border border-base rounded-xl text-xs space-y-1">
+                <span className="font-semibold text-secondary">Customer Instructions:</span>
+                <p className="text-primary italic">{detailModalBooking.notes}</p>
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setDetailModalBooking(null)}
+                className="px-5 py-2 rounded-xl text-xs font-bold bg-surface hover:bg-card-hover text-primary transition-colors border border-base"
+              >
+                Close Itinerary
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

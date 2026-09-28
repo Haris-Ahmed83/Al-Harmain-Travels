@@ -28,6 +28,7 @@ import {
   ChevronDown,
   Star,
   Sliders,
+  Receipt,
 } from 'lucide-react';
 
 export default function Navbar() {
@@ -53,7 +54,8 @@ export default function Navbar() {
 
   const unreadCount = notifications.filter((n) => !n.read).length;
   const isCustomer = userRole === 'customer';
-  const showBookCta = !isAuthenticated || isCustomer;
+  const isCustomerPortal = isCustomer && pathname.startsWith('/customer');
+  const showBookCta = (!isAuthenticated || isCustomer) && !pathname.startsWith('/customer');
   const isMarketingPath =
     pathname === '/' ||
     pathname.startsWith('/about') ||
@@ -90,6 +92,7 @@ export default function Navbar() {
       { label: 'Book ride', href: '/customer', icon: Compass },
       { label: 'My trips', href: '/customer/bookings', icon: Clock },
       { label: 'Track', href: '/customer/track', icon: MapPin },
+      { label: 'Profile', href: '/customer/profile', icon: User },
     ],
     driver: [
       { label: 'Cockpit', href: '/driver', icon: Car },
@@ -107,6 +110,7 @@ export default function Navbar() {
       { label: 'Overview', href: '/admin', icon: LayoutDashboard },
       { label: 'Users', href: '/admin/users', icon: Users },
       { label: 'Fleet', href: '/admin/fleet', icon: Car },
+      { label: 'Rates', href: '/admin/rates', icon: Receipt },
       { label: 'Services', href: '/admin/services', icon: Star },
       { label: 'Reports', href: '/admin/reports', icon: DollarSign },
       { label: 'Audit', href: '/admin/audit-logs', icon: FileText },
@@ -174,10 +178,9 @@ export default function Navbar() {
   };
 
   const navLinkClass = (active: boolean) =>
-    `flex items-center gap-1.5 px-3 py-2 rounded-xl type-nav transition-colors ${
-      active
-        ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700/30'
-        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
+    `flex items-center gap-1.5 px-3 py-2 rounded-xl type-nav transition-colors ${active
+      ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700/30'
+      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
     }`;
 
   return (
@@ -204,26 +207,48 @@ export default function Navbar() {
               </div>
             </Link>
 
-            <nav className="hidden lg:flex items-center gap-0.5" aria-label="Primary">
-              {(isAuthenticated && !isMarketingPath ? currentRoleNav : publicLinks).map((item) => {
-                const Icon = item.icon;
-                const isActive =
-                  pathname === item.href ||
-                  (item.href !== '/' && pathname.startsWith(item.href + '/'));
-                return (
-                  <Link key={item.href} href={item.href} className={navLinkClass(isActive)}>
-                    <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-amber-500' : 'text-slate-400'}`} />
-                    <span>{item.label}</span>
+            {/* Center Navigation */}
+            {isCustomer && pathname.startsWith('/customer') ? (
+              <div className="hidden lg:flex items-center gap-2.5">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 text-xs font-semibold">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  VIP Customer Portal
+                </span>
+                <span className="text-slate-300 dark:text-slate-700 font-mono text-xs">/</span>
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                  {pathname === '/customer'
+                    ? 'Book a Ride'
+                    : pathname.startsWith('/customer/bookings')
+                    ? 'My Trips & History'
+                    : pathname.startsWith('/customer/track')
+                    ? 'Live Vehicle Radar'
+                    : pathname.startsWith('/customer/profile')
+                    ? 'VIP Profile & Settings'
+                    : 'Overview'}
+                </span>
+              </div>
+            ) : (
+              <nav className="hidden lg:flex items-center gap-0.5" aria-label="Primary">
+                {(isAuthenticated && !isMarketingPath ? currentRoleNav : publicLinks).map((item) => {
+                  const Icon = item.icon;
+                  const isActive =
+                    pathname === item.href ||
+                    (item.href !== '/' && pathname.startsWith(item.href + '/'));
+                  return (
+                    <Link key={item.href} href={item.href} className={navLinkClass(isActive)}>
+                      <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-amber-500' : 'text-slate-400'}`} />
+                      <span>{item.label}</span>
+                    </Link>
+                  );
+                })}
+                {isAuthenticated && isMarketingPath && (
+                  <Link href={getDashboardUrl(userRole)} className={navLinkClass(false)}>
+                    <LayoutDashboard className="w-3.5 h-3.5 text-slate-400" />
+                    <span>My portal</span>
                   </Link>
-                );
-              })}
-              {isAuthenticated && isMarketingPath && (
-                <Link href={getDashboardUrl(userRole)} className={navLinkClass(false)}>
-                  <LayoutDashboard className="w-3.5 h-3.5 text-slate-400" />
-                  <span>My portal</span>
-                </Link>
-              )}
-            </nav>
+                )}
+              </nav>
+            )}
 
             <div className="flex items-center gap-1.5 sm:gap-2">
               <ThemeToggle />
@@ -293,11 +318,10 @@ export default function Navbar() {
                             key={n.id}
                             type="button"
                             onClick={() => markNotificationAsRead(n.id)}
-                            className={`w-full text-left px-4 py-3 text-xs transition-colors ${
-                              n.read
+                            className={`w-full text-left px-4 py-3 text-xs transition-colors ${n.read
                                 ? 'bg-white dark:bg-slate-900/40 text-slate-500'
                                 : 'bg-emerald-50/70 dark:bg-emerald-950/20 text-slate-800 dark:text-slate-200'
-                            } hover:bg-slate-50 dark:hover:bg-slate-800/60`}
+                              } hover:bg-slate-50 dark:hover:bg-slate-800/60`}
                           >
                             <div className="flex items-center justify-between mb-0.5 gap-2">
                               <span className="font-semibold text-emerald-700 dark:text-emerald-400">
@@ -479,31 +503,85 @@ export default function Navbar() {
               </div>
             )}
 
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2 px-1">
-                {isAuthenticated ? 'Your portal' : 'Explore'}
-              </p>
-              <div className="space-y-1">
-                {(isAuthenticated ? currentRoleNav : publicLinks).map((item) => {
-                  const isActive = pathname === item.href;
-                  return (
+            {isCustomerPortal ? (
+              <div className="space-y-3">
+                {activeCustomerBooking && (
+                  <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                        Active Ride Underway
+                      </span>
+                      <span className="font-mono text-amber-500 font-bold">
+                        #{activeCustomerBooking.booking_reference.slice(-5)}
+                      </span>
+                    </div>
                     <Link
-                      key={item.href}
-                      href={item.href}
+                      href="/customer/track"
                       onClick={() => setIsMobileMenuOpen(false)}
-                      className={`flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-semibold ${
-                        isActive
-                          ? 'bg-emerald-50 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300'
-                          : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
-                      }`}
+                      className="btn-primary w-full py-2 text-xs flex items-center justify-center gap-1.5"
                     >
-                      <item.icon className={`w-4 h-4 ${isActive ? 'text-amber-500' : 'text-slate-400'}`} />
-                      {item.label}
+                      <MapPin className="w-3.5 h-3.5" />
+                      <span>Open Live Radar</span>
                     </Link>
-                  );
-                })}
+                  </div>
+                )}
+
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2 px-1">
+                    VIP Concierge &amp; Support
+                  </p>
+                  <div className="space-y-1">
+                    <a
+                      href="https://wa.me/966500000000"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between px-3.5 py-3 rounded-xl text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      <span className="flex items-center gap-3">
+                        <PhoneCall className="w-4 h-4 text-emerald-500" />
+                        <span>24/7 VIP Concierge</span>
+                      </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-bold">WhatsApp</span>
+                    </a>
+
+                    <Link
+                      href="/"
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className="flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+                    >
+                      <Compass className="w-4 h-4 text-slate-400" />
+                      <span>Visit Public Website</span>
+                    </Link>
+                  </div>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2 px-1">
+                  {isAuthenticated ? 'Your portal' : 'Explore'}
+                </p>
+                <div className="space-y-1">
+                  {(isAuthenticated ? currentRoleNav : publicLinks).map((item) => {
+                    const isActive = pathname === item.href;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className={`flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-semibold ${isActive
+                            ? 'bg-emerald-50 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300'
+                            : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                          }`}
+                      >
+                        <item.icon className={`w-4 h-4 ${isActive ? 'text-amber-500' : 'text-slate-400'}`} />
+                        {item.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             <div className="border-t border-slate-200 dark:border-slate-800 pt-3 space-y-2">
               {isAuthenticated ? (

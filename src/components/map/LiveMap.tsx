@@ -3,8 +3,14 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import 'leaflet/dist/leaflet.css';
 import { useTheme } from '@/context/ThemeContext';
-import { loadGoogleMaps, isValidCoordinate } from '@/lib/maps/location-service';
+import {
+  loadGoogleMaps,
+  isValidCoordinate,
+  hasGoogleMapsAuthFailed,
+  onGoogleMapsAuthFailure,
+} from '@/lib/maps/location-service';
 import { Compass, Plus, Minus, Layers, Navigation, Crosshair, MapPin } from 'lucide-react';
+import MapControls, { MapViewMode } from './MapControls';
 
 export interface MarkerPoint {
   lat: number;
@@ -156,90 +162,67 @@ const lightGoogleMapStyles: any[] = [
   },
 ];
 
-// Helper to create crisp high-DPI SVG Marker Icons for Google Maps
-function getGoogleIcon(type: MarkerPoint['type'], heading: number = 0) {
-  if (typeof window === 'undefined' || !(window as any).google?.maps) return null;
-  const google = (window as any).google;
+// Creates an HTMLDivElement containing raw SVG for use as AdvancedMarkerElement content
+function createAdvancedMarkerContent(type: MarkerPoint['type'], heading: number = 0): HTMLDivElement {
+  const div = document.createElement('div');
+  div.style.cssText = 'line-height:0;';
 
   if (type === 'driver') {
-    const svg = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="46" height="46" viewBox="0 0 46 46">
-        <defs>
-          <filter id="car-glow" x="-30%" y="-30%" width="160%" height="160%">
-            <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#059669" flood-opacity="0.6"/>
-          </filter>
-        </defs>
-        <circle cx="23" cy="23" r="21" fill="#047857" fill-opacity="0.3" stroke="#10b981" stroke-width="1.5"/>
-        <circle cx="23" cy="23" r="16" fill="#0f172a" stroke="#f59e0b" stroke-width="2.5" filter="url(#car-glow)"/>
-        <g transform="translate(15, 15) rotate(${heading}, 8, 8)">
-          <path d="M4 1 L12 1 L13 6 L14 8 L14 13 L12 13 L12 15 L10 15 L10 13 L6 13 L6 15 L4 15 L4 13 L2 13 L2 8 L3 6 Z" fill="#fbbf24"/>
-          <rect x="4.5" y="3" width="7" height="3" rx="0.5" fill="#0f172a"/>
-          <circle cx="4.5" cy="11.5" r="1" fill="#ffffff"/>
-          <circle cx="11.5" cy="11.5" r="1" fill="#ffffff"/>
-        </g>
-      </svg>
-    `;
-    return {
-      url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-      scaledSize: new google.maps.Size(46, 46),
-      anchor: new google.maps.Point(23, 23),
-    };
+    div.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="46" height="46" viewBox="0 0 46 46">
+      <defs>
+        <filter id="car-glow" x="-30%" y="-30%" width="160%" height="160%">
+          <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#059669" flood-opacity="0.6"/>
+        </filter>
+      </defs>
+      <circle cx="23" cy="23" r="21" fill="#047857" fill-opacity="0.3" stroke="#10b981" stroke-width="1.5"/>
+      <circle cx="23" cy="23" r="16" fill="#0f172a" stroke="#f59e0b" stroke-width="2.5" filter="url(#car-glow)"/>
+      <g transform="translate(15, 15) rotate(${heading}, 8, 8)">
+        <path d="M4 1 L12 1 L13 6 L14 8 L14 13 L12 13 L12 15 L10 15 L10 13 L6 13 L6 15 L4 15 L4 13 L2 13 L2 8 L3 6 Z" fill="#fbbf24"/>
+        <rect x="4.5" y="3" width="7" height="3" rx="0.5" fill="#0f172a"/>
+        <circle cx="4.5" cy="11.5" r="1" fill="#ffffff"/>
+        <circle cx="11.5" cy="11.5" r="1" fill="#ffffff"/>
+      </g>
+    </svg>`;
+    return div;
   }
 
   if (type === 'pickup') {
-    const svg = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="38" height="46" viewBox="0 0 38 46">
-        <defs>
-          <filter id="p-shadow" x="-30%" y="-20%" width="160%" height="150%">
-            <feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#022c22" flood-opacity="0.5"/>
-          </filter>
-        </defs>
-        <path d="M19 1 C9.6 1 2 8.6 2 18 C2 29.5 19 45 19 45 C19 45 36 29.5 36 18 C36 8.6 28.4 1 19 1 Z" fill="#047857" filter="url(#p-shadow)"/>
-        <circle cx="19" cy="18" r="14" fill="#059669" stroke="#ffffff" stroke-width="2.5"/>
-        <text x="19" y="23.5" font-size="14" font-weight="900" font-family="system-ui, sans-serif" fill="#ffffff" text-anchor="middle">P</text>
-      </svg>
-    `;
-    return {
-      url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-      scaledSize: new google.maps.Size(38, 46),
-      anchor: new google.maps.Point(19, 45),
-    };
+    div.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="38" height="46" viewBox="0 0 38 46">
+      <defs>
+        <filter id="p-shadow" x="-30%" y="-20%" width="160%" height="150%">
+          <feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#022c22" flood-opacity="0.5"/>
+        </filter>
+      </defs>
+      <path d="M19 1 C9.6 1 2 8.6 2 18 C2 29.5 19 45 19 45 C19 45 36 29.5 36 18 C36 8.6 28.4 1 19 1 Z" fill="#047857" filter="url(#p-shadow)"/>
+      <circle cx="19" cy="18" r="14" fill="#059669" stroke="#ffffff" stroke-width="2.5"/>
+      <text x="19" y="23.5" font-size="14" font-weight="900" font-family="system-ui, sans-serif" fill="#ffffff" text-anchor="middle">P</text>
+    </svg>`;
+    return div;
   }
 
   if (type === 'destination') {
-    const svg = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="38" height="46" viewBox="0 0 38 46">
-        <defs>
-          <filter id="d-shadow" x="-30%" y="-20%" width="160%" height="150%">
-            <feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#451a03" flood-opacity="0.5"/>
-          </filter>
-        </defs>
-        <path d="M19 1 C9.6 1 2 8.6 2 18 C2 29.5 19 45 19 45 C19 45 36 29.5 36 18 C36 8.6 28.4 1 19 1 Z" fill="#b45309" filter="url(#d-shadow)"/>
-        <circle cx="19" cy="18" r="14" fill="#f59e0b" stroke="#ffffff" stroke-width="2.5"/>
-        <text x="19" y="23.5" font-size="14" font-weight="900" font-family="system-ui, sans-serif" fill="#0f172a" text-anchor="middle">D</text>
-      </svg>
-    `;
-    return {
-      url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-      scaledSize: new google.maps.Size(38, 46),
-      anchor: new google.maps.Point(19, 45),
-    };
+    div.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="38" height="46" viewBox="0 0 38 46">
+      <defs>
+        <filter id="d-shadow" x="-30%" y="-20%" width="160%" height="150%">
+          <feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#451a03" flood-opacity="0.5"/>
+        </filter>
+      </defs>
+      <path d="M19 1 C9.6 1 2 8.6 2 18 C2 29.5 19 45 19 45 C19 45 36 29.5 36 18 C36 8.6 28.4 1 19 1 Z" fill="#b45309" filter="url(#d-shadow)"/>
+      <circle cx="19" cy="18" r="14" fill="#f59e0b" stroke="#ffffff" stroke-width="2.5"/>
+      <text x="19" y="23.5" font-size="14" font-weight="900" font-family="system-ui, sans-serif" fill="#0f172a" text-anchor="middle">D</text>
+    </svg>`;
+    return div;
   }
 
-  // General marker
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 32 40">
-      <path d="M16 1 C8.8 1 3 6.8 3 14 C3 23 16 39 16 39 C16 39 29 23 29 14 C29 6.8 23.2 1 16 1 Z" fill="#0f172a"/>
-      <circle cx="16" cy="14" r="11" fill="#059669" stroke="#ffffff" stroke-width="2"/>
-      <circle cx="16" cy="14" r="4" fill="#fbbf24"/>
-    </svg>
-  `;
-  return {
-    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-    scaledSize: new google.maps.Size(32, 40),
-    anchor: new google.maps.Point(16, 39),
-  };
+  // General / station marker
+  div.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 32 40">
+    <path d="M16 1 C8.8 1 3 6.8 3 14 C3 23 16 39 16 39 C16 39 29 23 29 14 C29 6.8 23.2 1 16 1 Z" fill="#0f172a"/>
+    <circle cx="16" cy="14" r="11" fill="#059669" stroke="#ffffff" stroke-width="2"/>
+    <circle cx="16" cy="14" r="4" fill="#fbbf24"/>
+  </svg>`;
+  return div;
 }
+
 
 export default function LiveMap({
   center = [21.4225, 39.8262],
@@ -256,10 +239,11 @@ export default function LiveMap({
   const { isDark } = useTheme();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const [engine, setEngine] = useState<'google' | 'leaflet' | 'loading'>('loading');
-  const [mapType, setMapType] = useState<'roadmap' | 'satellite'>('roadmap');
+  const [mapMode, setMapMode] = useState<MapViewMode>('standard');
 
   // Google Maps references
   const gMapRef = useRef<any>(null);
+  const gAdvancedMarkerRef = useRef<any>(null); // holds google.maps.marker.AdvancedMarkerElement class
   const gMarkersMapRef = useRef<Map<string, any>>(new Map());
   const gPolylineRef = useRef<any>(null);
   const gGlowPolylineRef = useRef<any>(null);
@@ -275,47 +259,19 @@ export default function LiveMap({
   useEffect(() => {
     let isMounted = true;
 
-    async function init() {
-      if (typeof window === 'undefined' || !isMounted || !mapContainerRef.current) return;
-
-      const hasGoogle = await loadGoogleMaps().catch(() => false);
-
+    const mountLeaflet = async () => {
       if (!isMounted || !mapContainerRef.current) return;
 
-      if (hasGoogle && (window as any).google?.maps) {
+      if (gMapRef.current) {
         try {
           const google = (window as any).google;
-
-          mapContainerRef.current.innerHTML = '';
-
-          const map = new google.maps.Map(mapContainerRef.current, {
-            center: { lat: center[0], lng: center[1] },
-            zoom,
-            disableDefaultUI: true, // disable raw controls; we provide custom luxury HUD
-            styles: isDark ? darkGoogleMapStyles : lightGoogleMapStyles,
-            gestureHandling: 'greedy',
-            clickableIcons: false,
-          });
-
-          gMapRef.current = map;
-          gInfoWindowRef.current = new google.maps.InfoWindow();
-
-          if (interactive && onLocationSelect) {
-            map.addListener('click', (e: any) => {
-              if (e.latLng) {
-                onLocationSelect(e.latLng.lat(), e.latLng.lng());
-              }
-            });
+          if (google?.maps?.event) {
+            google.maps.event.clearInstanceListeners(gMapRef.current);
           }
-
-          setEngine('google');
-          return;
-        } catch (err) {
-          console.warn('[Al Harmain LiveMap] Google Maps init error, falling back to Leaflet:', err);
-        }
+        } catch { }
+        gMapRef.current = null;
       }
 
-      // Fallback: Leaflet
       try {
         const L = (await import('leaflet')).default;
         if (!isMounted || !mapContainerRef.current) return;
@@ -323,7 +279,7 @@ export default function LiveMap({
         mapContainerRef.current.innerHTML = '';
 
         const map = L.map(mapContainerRef.current, {
-          zoomControl: false, // disabled in favor of our custom luxury HUD
+          zoomControl: false,
           attributionControl: false,
         }).setView(center, zoom);
 
@@ -341,7 +297,6 @@ export default function LiveMap({
         lLayerGroupRef.current = layerGroup;
         lMapRef.current = map;
 
-        // Invalidate size to ensure crisp rendering inside tabs / grids
         setTimeout(() => {
           if (isMounted) map.invalidateSize();
         }, 200);
@@ -356,45 +311,180 @@ export default function LiveMap({
       } catch (lErr) {
         console.error('[Al Harmain LiveMap] Leaflet fallback failed:', lErr);
       }
+    };
+
+    const unsubscribeAuth = onGoogleMapsAuthFailure(() => {
+      console.warn('[Al Harmain LiveMap] Google Maps auth failure detected. Mounting Leaflet immediately.');
+      mountLeaflet();
+    });
+
+    async function init() {
+      if (typeof window === 'undefined' || !isMounted || !mapContainerRef.current) return;
+
+      if (hasGoogleMapsAuthFailed()) {
+        mountLeaflet();
+        return;
+      }
+
+      const hasGoogle = await loadGoogleMaps().catch(() => false);
+
+      if (!isMounted || !mapContainerRef.current) return;
+
+      // If auth failed during hydration, fall back immediately
+      if (!hasGoogle || hasGoogleMapsAuthFailed()) {
+        mountLeaflet();
+        return;
+      }
+
+      if ((window as any).google?.maps?.Map) {
+        try {
+          const google = (window as any).google;
+
+          mapContainerRef.current.innerHTML = '';
+
+          const mapId = process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID || 'DEMO_MAP_ID';
+          const map = new google.maps.Map(mapContainerRef.current, {
+            center: { lat: center[0], lng: center[1] },
+            zoom,
+            disableDefaultUI: true,
+            mapId,
+            mapTypeId: mapMode === 'satellite' ? 'hybrid' : 'roadmap',
+            // Note: custom `styles` are incompatible with mapId — use Cloud Map Styling instead
+            gestureHandling: 'greedy',
+            clickableIcons: false,
+          });
+
+          // Wait a short tick for gm_authFailure to fire if the key is restricted/invalid
+          await new Promise<void>((r) => setTimeout(r, 300));
+          if (!isMounted) return;
+          if (hasGoogleMapsAuthFailed()) {
+            mountLeaflet();
+            return;
+          }
+
+          gMapRef.current = map;
+          gInfoWindowRef.current = new google.maps.InfoWindow();
+
+          // AdvancedMarkerElement is already hydrated by loadGoogleMaps() — grab directly
+          const AdvancedMarkerElement = google.maps.marker?.AdvancedMarkerElement;
+          if (AdvancedMarkerElement) {
+            gAdvancedMarkerRef.current = AdvancedMarkerElement;
+          } else {
+            try {
+              const markerLib = await google.maps.importLibrary('marker');
+              if (isMounted) {
+                gAdvancedMarkerRef.current = markerLib?.AdvancedMarkerElement;
+              }
+            } catch (markerErr) {
+              console.warn('[Al Harmain LiveMap] Failed to load marker library:', markerErr);
+            }
+          }
+
+          if (!isMounted) return;
+
+          if (interactive && onLocationSelect) {
+            map.addListener('click', (e: any) => {
+              if (e.latLng) {
+                onLocationSelect(e.latLng.lat(), e.latLng.lng());
+              }
+            });
+          }
+
+          setEngine('google');
+          return;
+        } catch (err) {
+          console.warn('[Al Harmain LiveMap] Google Maps init error, falling back to Leaflet:', err);
+          mountLeaflet();
+          return;
+        }
+      }
+
+      mountLeaflet();
     }
 
     init();
 
     return () => {
       isMounted = false;
+      unsubscribeAuth();
+
+      // AdvancedMarkerElement cleanup: set .map = null to detach and allow GC
+      for (const marker of gMarkersMapRef.current.values()) {
+        try { marker.map = null; } catch { }
+      }
+      gMarkersMapRef.current.clear();
+
+      if (gPolylineRef.current) { gPolylineRef.current.setMap(null); gPolylineRef.current = null; }
+      if (gGlowPolylineRef.current) { gGlowPolylineRef.current.setMap(null); gGlowPolylineRef.current = null; }
+      if (gInfoWindowRef.current) { try { gInfoWindowRef.current.close(); } catch { } }
+
+      gAdvancedMarkerRef.current = null;
+
+      if (lMapRef.current) {
+        try { lMapRef.current.remove(); } catch { }
+        lMapRef.current = null;
+        lLayerGroupRef.current = null;
+        lTileLayerRef.current = null;
+      }
     };
   }, []);
 
-  // Update theme styles on Google Map
-  useEffect(() => {
-    if (engine === 'google' && gMapRef.current && (window as any).google?.maps) {
-      if (mapType === 'roadmap') {
-        gMapRef.current.setOptions({
-          styles: isDark ? darkGoogleMapStyles : lightGoogleMapStyles,
-        });
+  // Map Mode Layer Application (Google & Leaflet)
+  const applyGoogleMapMode = useCallback(
+    (mode: MapViewMode) => {
+      if (!gMapRef.current || !(window as any).google?.maps) return;
+      const map = gMapRef.current;
+      // Custom styles are not supported when mapId is set; Cloud Map Styling handles theming.
+      if (mode === 'satellite') {
+        map.setMapTypeId('hybrid');
+      } else {
+        map.setMapTypeId('roadmap');
       }
-    } else if (engine === 'leaflet' && lMapRef.current && lTileLayerRef.current) {
-      import('leaflet').then((LModule) => {
-        const L = LModule.default;
-        if (lTileLayerRef.current) {
-          lTileLayerRef.current.remove();
-        }
-        let tileUrl = '';
-        if (mapType === 'satellite') {
-          tileUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-        } else {
-          tileUrl = isDark
-            ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-            : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-        }
-        const newLayer = L.tileLayer(tileUrl, {
-          maxZoom: 19,
-          subdomains: mapType === 'satellite' ? undefined : 'abcd',
-        }).addTo(lMapRef.current);
-        lTileLayerRef.current = newLayer;
-      });
+    },
+    []
+  );
+
+
+  const applyLeafletMapMode = useCallback(
+    (mode: MapViewMode) => {
+      if (!lMapRef.current || !lTileLayerRef.current) return;
+      let tileUrl = '';
+      if (mode === 'satellite') {
+        tileUrl = 'https://server.arcgisonline.com/ArcMap/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+      } else {
+        tileUrl = isDark
+          ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+          : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+      }
+      try {
+        lTileLayerRef.current.setUrl(tileUrl);
+      } catch { }
+    },
+    [isDark]
+  );
+
+  const handleMapModeChange = useCallback(
+    (newMode: MapViewMode) => {
+      setMapMode(newMode);
+      if (engine === 'google') {
+        applyGoogleMapMode(newMode);
+      } else if (engine === 'leaflet') {
+        applyLeafletMapMode(newMode);
+      }
+    },
+    [engine, applyGoogleMapMode, applyLeafletMapMode]
+  );
+
+  // Sync theme changes when in standard mode
+  useEffect(() => {
+    if (mapMode === 'standard') {
+      if (engine === 'google') {
+        applyGoogleMapMode('standard');
+      } else if (engine === 'leaflet') {
+        applyLeafletMapMode('standard');
+      }
     }
-  }, [isDark, engine, mapType]);
+  }, [isDark, engine, mapMode, applyGoogleMapMode, applyLeafletMapMode]);
 
   // Window resize observer to invalidate Leaflet map size
   useEffect(() => {
@@ -411,8 +501,9 @@ export default function LiveMap({
 
   // Handle Markers & Route updates for Google Maps
   useEffect(() => {
-    if (engine !== 'google' || !gMapRef.current || !(window as any).google?.maps) return;
+    if (engine !== 'google' || !gMapRef.current || !gAdvancedMarkerRef.current || !(window as any).google?.maps) return;
     const google = (window as any).google;
+    const AdvancedMarkerElement = gAdvancedMarkerRef.current;
     const map = gMapRef.current;
     const currentMarkersMap = gMarkersMapRef.current;
     const incomingKeys = new Set<string>();
@@ -427,20 +518,19 @@ export default function LiveMap({
       const pos = new google.maps.LatLng(m.lat, m.lng);
       validPoints.push(pos);
 
-      const icon = getGoogleIcon(m.type, m.heading || 0);
-
       let marker = currentMarkersMap.get(key);
       if (!marker) {
-        marker = new google.maps.Marker({
+        const content = createAdvancedMarkerContent(m.type, m.heading || 0);
+        marker = new AdvancedMarkerElement({
           position: pos,
           map,
           title: m.label,
-          icon,
-          optimized: false,
+          content,
+          gmpClickable: true,
           zIndex: m.type === 'driver' ? 100 : m.type === 'pickup' ? 80 : 70,
         });
 
-        marker.addListener('click', () => {
+        marker.addEventListener('gmp-click', () => {
           if (gInfoWindowRef.current) {
             gInfoWindowRef.current.setContent(`
               <div style="font-family: system-ui, sans-serif; padding: 6px 10px; max-width: 240px; color: #0f172a;">
@@ -448,20 +538,21 @@ export default function LiveMap({
                 ${m.subText ? `<div style="font-size: 11px; color: #64748b; margin-top: 3px;">${m.subText}</div>` : ''}
               </div>
             `);
-            gInfoWindowRef.current.open(map, marker);
+            gInfoWindowRef.current.open({ anchor: marker, map });
           }
         });
 
         currentMarkersMap.set(key, marker);
       } else {
-        marker.setPosition(pos);
-        if (icon) marker.setIcon(icon);
+        marker.position = pos;
+        marker.title = m.label;
+        marker.content = createAdvancedMarkerContent(m.type, m.heading || 0);
       }
     });
 
     for (const [key, marker] of currentMarkersMap.entries()) {
       if (!incomingKeys.has(key)) {
-        marker.setMap(null);
+        marker.map = null;
         currentMarkersMap.delete(key);
       }
     }
@@ -586,7 +677,7 @@ export default function LiveMap({
         try {
           map.fitBounds(latlngs, { padding: [40, 40] });
           hasFitInitialBoundsRef.current = true;
-        } catch {}
+        } catch { }
       } else if (latlngs.length === 1 && !hasFitInitialBoundsRef.current) {
         map.panTo(latlngs[0]);
         hasFitInitialBoundsRef.current = true;
@@ -602,10 +693,13 @@ export default function LiveMap({
         .filter((m) => isValidCoordinate(m.lat, m.lng))
         .map((m) => new google.maps.LatLng(m.lat, m.lng));
 
-      if (validPoints.length > 0) {
+      if (validPoints.length > 1) {
         const bounds = new google.maps.LatLngBounds();
         validPoints.forEach((p) => bounds.extend(p));
         gMapRef.current.fitBounds(bounds, { top: 50, right: 50, bottom: 50, left: 50 });
+      } else if (validPoints.length === 1) {
+        gMapRef.current.panTo(validPoints[0]);
+        gMapRef.current.setZoom(15);
       } else {
         gMapRef.current.panTo({ lat: center[0], lng: center[1] });
         gMapRef.current.setZoom(zoom);
@@ -614,8 +708,10 @@ export default function LiveMap({
       const latlngs = markers
         .filter((m) => isValidCoordinate(m.lat, m.lng))
         .map((m) => [m.lat, m.lng] as [number, number]);
-      if (latlngs.length > 0) {
+      if (latlngs.length > 1) {
         lMapRef.current.fitBounds(latlngs, { padding: [40, 40] });
+      } else if (latlngs.length === 1) {
+        lMapRef.current.setView(latlngs[0], 15);
       } else {
         lMapRef.current.setView(center, zoom);
       }
@@ -639,19 +735,7 @@ export default function LiveMap({
     }
   }, [engine, zoom]);
 
-  // Satellite layer toggle
-  const toggleMapType = useCallback(() => {
-    const nextType = mapType === 'roadmap' ? 'satellite' : 'roadmap';
-    setMapType(nextType);
-    if (engine === 'google' && gMapRef.current && (window as any).google?.maps) {
-      gMapRef.current.setMapTypeId(nextType === 'satellite' ? 'hybrid' : 'roadmap');
-      if (nextType === 'roadmap') {
-        gMapRef.current.setOptions({
-          styles: isDark ? darkGoogleMapStyles : lightGoogleMapStyles,
-        });
-      }
-    }
-  }, [mapType, engine, isDark]);
+
 
   const driverMarker = markers.find((m) => m.type === 'driver');
   const currentCoords = driverMarker
@@ -665,41 +749,14 @@ export default function LiveMap({
 
       {/* Floating Luxury HUD Controls (Top-Right) */}
       {showControls && (
-        <div className="absolute top-3 right-3 z-[400] flex flex-col gap-1.5">
-          <div className="bg-card/90 dark:bg-slate-900/90 backdrop-blur-md p-1 rounded-2xl border border-base shadow-xl flex flex-col gap-1">
-            <button
-              onClick={handleZoomIn}
-              title="Zoom In"
-              className="w-8 h-8 rounded-xl hover:bg-surface text-primary flex items-center justify-center transition-all hover:scale-105 active:scale-95"
-            >
-              <Plus className="w-4 h-4" />
-            </button>
-            <button
-              onClick={handleZoomOut}
-              title="Zoom Out"
-              className="w-8 h-8 rounded-xl hover:bg-surface text-primary flex items-center justify-center transition-all hover:scale-105 active:scale-95"
-            >
-              <Minus className="w-4 h-4" />
-            </button>
-            <div className="h-px bg-base mx-1" />
-            <button
-              onClick={handleRecenter}
-              title="Recenter Cockpit Radar"
-              className="w-8 h-8 rounded-xl hover:bg-surface text-emerald-600 dark:text-emerald-400 flex items-center justify-center transition-all hover:scale-105 active:scale-95"
-            >
-              <Crosshair className="w-4 h-4" />
-            </button>
-            <button
-              onClick={toggleMapType}
-              title={mapType === 'roadmap' ? 'Switch to Satellite View' : 'Switch to Luxury Vector View'}
-              className={`w-8 h-8 rounded-xl text-primary flex items-center justify-center transition-all hover:scale-105 active:scale-95 ${
-                mapType === 'satellite' ? 'bg-amber-500/20 text-amber-500 font-bold' : 'hover:bg-surface'
-              }`}
-            >
-              <Layers className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
+        <MapControls
+          onZoomIn={handleZoomIn}
+          onZoomOut={handleZoomOut}
+          onCurrentLocation={handleRecenter}
+          mapMode={mapMode}
+          onMapModeChange={handleMapModeChange}
+          currentLocationTitle="Recenter Radar on Active Vehicle"
+        />
       )}
 
       {/* Bottom Telemetry & Status Pill */}
@@ -711,7 +768,7 @@ export default function LiveMap({
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
             <span className="text-[11px] font-semibold text-primary">
-              GPS Telemetry Active
+              Live Radar Telemetry
             </span>
           </div>
 

@@ -48,7 +48,7 @@ export default function AdminDashboardPage() {
 
   const totalRevenue = bookings
     .filter((b) => b.status === 'trip_completed' || b.status === 'ride_completed' || b.status === 'payment_completed')
-    .reduce((sum, b) => sum + (b.final_fare || b.estimated_fare), 0);
+    .reduce((sum, b) => sum + (b.final_fare || b.estimated_fare || 0), 0);
 
   const availableDrivers = drivers.filter((d) => d.status === 'available').length;
 

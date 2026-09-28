@@ -22,7 +22,7 @@ import {
   isValidCoordinate,
 } from '@/lib/maps/location-service';
 
-export type GpsStatus = 'idle' | 'locating' | 'success' | 'denied' | 'unavailable' | 'timeout' | 'error';
+export type GpsStatus = 'idle' | 'locating' | 'success' | 'denied' | 'unavailable' | 'timeout' | 'poor_accuracy' | 'error';
 
 export interface PickupCoords {
   latitude: number;
@@ -143,6 +143,8 @@ export function usePickupLocation(options: UsePickupLocationOptions = {}): UsePi
         if (!isValidCoordinate(newCoords.latitude, newCoords.longitude)) return;
 
         setCoords(newCoords);
+        setStatus('success');
+        setErrorMessage('');
         if (newCoords.accuracy != null) {
           setAccuracyMeters(Math.round(newCoords.accuracy));
         }
@@ -166,9 +168,8 @@ export function usePickupLocation(options: UsePickupLocationOptions = {}): UsePi
           }
         }
       },
-      (err) => {
-        // Non-fatal background watch error (e.g. temporary satellite loss)
-        console.warn('[usePickupLocation] Watcher notice:', err.message);
+      (_err) => {
+        // Non-fatal background watch notice (e.g. temporary satellite loss)
       }
     );
   }, [stopWatcher, resolveAddressForCoords]);
@@ -188,7 +189,7 @@ export function usePickupLocation(options: UsePickupLocationOptions = {}): UsePi
     try {
       const raw = await getCurrentLocation({
         enableHighAccuracy: true,
-        timeout: 10_000,
+        timeout: 6_000,
         maximumAge: 0, // CRITICAL: Always fresh GPS, no cache!
       });
 
@@ -228,7 +229,7 @@ export function usePickupLocation(options: UsePickupLocationOptions = {}): UsePi
         setStatus('timeout');
         setErrorMessage('Location request timed out. Please tap "Use Current Location" to try again.');
       } else {
-        setStatus('error');
+        setStatus('unavailable');
         setErrorMessage(message || 'Unable to detect your location. Please check device settings.');
       }
 
@@ -246,12 +247,15 @@ export function usePickupLocation(options: UsePickupLocationOptions = {}): UsePi
 
   // Snap back to live GPS
   const resetToCurrentLocation = useCallback(async () => {
+    isManualOverrideRef.current = false;
+    setIsManualOverride(false);
     return detect(true);
   }, [detect]);
 
   // Auto-detect on mount
   useEffect(() => {
     if (!skipOnMount) {
+      startWatcher();
       detect(false);
     }
     return () => {

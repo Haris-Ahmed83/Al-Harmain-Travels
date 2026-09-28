@@ -4,7 +4,21 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
-import { VehicleType, SavedPlace, RecentLocation, LocationPoint, SavedPlaceType, Booking } from '@/types';
+import {
+  VehicleType,
+  SavedPlace,
+  RecentLocation,
+  LocationPoint,
+  SavedPlaceType,
+  Booking,
+  VehicleCategory,
+  ServiceType,
+  TerminalCode,
+  IntermediateStop,
+  BookingMethod,
+  TripType,
+} from '@/types';
+import CustomRouteBookingPanel from '@/components/customer/CustomRouteBookingPanel';
 import { usePickupLocation } from '@/hooks/usePickupLocation';
 import {
   getCurrentLocation,
@@ -14,9 +28,20 @@ import {
   formatDistance,
   formatDuration,
   isSameLocation,
+  isValidCoordinate,
   PlaceSuggestion,
 } from '@/lib/maps/location-service';
-import { calculateEstimatedFare } from '@/lib/fare-calculator';
+import {
+  resolveFixedFare,
+  formatFareSAR,
+  getAvailableVehicles,
+  SERVICE_LABELS,
+  VEHICLE_LABELS,
+  VEHICLE_CAPACITY,
+  TERMINAL_LABELS,
+  TERMINAL_REQUIRED_SERVICES,
+  ZIYARAT_SERVICES,
+} from '@/lib/fixed-fare';
 import { formatCurrency } from '@/lib/utils';
 import {
   MapPin,
@@ -50,6 +75,9 @@ import {
   Receipt,
   Building2,
   CreditCard,
+  Plane,
+  Route,
+  Star,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -64,10 +92,73 @@ const BookingMap = dynamic(() => import('@/components/map/BookingMap'), {
   ),
 });
 
+// ─── Service option definitions ────────────────────────────────────────────
+const SERVICE_OPTIONS: { type: ServiceType; label: string; icon: React.ReactNode; desc: string }[] = [
+  {
+    type: 'intercity_jeddah_makkah',
+    label: 'Jeddah → Makkah',
+    icon: <Plane className="w-4 h-4" />,
+    desc: 'Airport / city transfer to Makkah',
+  },
+  {
+    type: 'intercity_makkah_jeddah',
+    label: 'Makkah → Jeddah',
+    icon: <Navigation className="w-4 h-4" />,
+    desc: 'Transfer back to Jeddah / airport',
+  },
+  {
+    type: 'intercity_makkah_madinah',
+    label: 'Makkah → Madinah',
+    icon: <Route className="w-4 h-4" />,
+    desc: 'Round-trip Makkah ↔ Madinah',
+  },
+  {
+    type: 'intercity_makkah_madinah_sameday',
+    label: 'Makkah → Madinah (Same Day)',
+    icon: <Clock className="w-4 h-4" />,
+    desc: 'Same-day Makkah ↔ Madinah round trip',
+  },
+  {
+    type: 'ziyarat_makkah',
+    label: 'Makkah Ziyarat',
+    icon: <Star className="w-4 h-4" />,
+    desc: 'Sacred sites tour within Makkah',
+  },
+  {
+    type: 'ziyarat_taif',
+    label: 'Taif Ziyarat',
+    icon: <Star className="w-4 h-4" />,
+    desc: 'Holy sites tour in Taif',
+  },
+  {
+    type: 'ziyarat_taif_bani_saad',
+    label: 'Taif + Bani Saad',
+    icon: <Star className="w-4 h-4" />,
+    desc: 'Taif Ziyarat including Bani Saad',
+  },
+];
+
+const TERMINAL_OPTIONS: { code: NonNullable<TerminalCode>; label: string }[] = [
+  { code: 'terminal_1', label: 'Terminal 1' },
+  { code: 'terminal_h', label: 'Terminal H' },
+  { code: 'terminal_n', label: 'Terminal N' },
+];
+
+const VEHICLE_CATEGORIES: VehicleCategory[] = ['sedan', 'staria', 'gmc', 'hiroof'];
+
+// Map VehicleCategory → existing VehicleType for booking insert compatibility
+const CATEGORY_TO_VEHICLE_TYPE: Record<VehicleCategory, VehicleType> = {
+  sedan:  'sedan',
+  staria: 'van',
+  gmc:    'vip_gmc',
+  hiroof: 'van',
+};
+
 export default function CustomerHomePage() {
   const {
     currentUser,
     activeCustomerBooking,
+    drivers,
     savedPlaces,
     recentLocations,
     addSavedPlace,
@@ -84,6 +175,27 @@ export default function CustomerHomePage() {
   const [pickup, setPickup] = useState<LocationPoint | null>(null);
   const [destination, setDestination] = useState<LocationPoint | null>(null);
 
+  // Active assigned driver for live in-journey tracking
+  const activeDriver = useMemo(() => {
+    if (!activeCustomerBooking?.assigned_driver_id) return activeCustomerBooking?.driver || null;
+    return (
+      drivers.find((d) => d.id === activeCustomerBooking.assigned_driver_id) ||
+      activeCustomerBooking.driver ||
+      null
+    );
+  }, [activeCustomerBooking, drivers]);
+
+  const liveDriverLocation = useMemo(() => {
+    if (!activeDriver?.location?.latitude || !activeDriver?.location?.longitude) return null;
+    return {
+      latitude: activeDriver.location.latitude,
+      longitude: activeDriver.location.longitude,
+      heading: activeDriver.location.heading || 0,
+      label: activeDriver.profile?.full_name || activeDriver.full_name || 'Assigned VIP Chauffeur',
+      subText: `${activeDriver.assigned_vehicle?.plate_number || activeDriver.vehicle?.plate_number || 'VIP Chauffeur'} • Live GPS`,
+    };
+  }, [activeDriver]);
+
   const {
     status: gpsStatus,
     coords: userLocation,
@@ -92,18 +204,36 @@ export default function CustomerHomePage() {
     errorMessage: gpsErrorMsg,
     setManualPickup,
     resetToCurrentLocation,
-  } = usePickupLocation({
-    onPickupResolved: (coords, address) => {
-      setPickup({
-        address,
-        latitude: coords.latitude,
-        longitude: coords.longitude,
-      });
-    },
-  });
+  } = usePickupLocation();
 
-  // Search input & suggestions state
-  const [activeSearchField, setActiveSearchField] = useState<'pickup' | 'destination' | null>(null);
+  // ─── Dual Booking Method State ──────────────────────────────────────────
+  const [bookingMethod, setBookingMethod] = useState<BookingMethod>('fixed');
+
+  // ─── Custom Route Booking State ─────────────────────────────────────────
+  const [customPickup, setCustomPickup] = useState<LocationPoint | null>(null);
+  const [customDestination, setCustomDestination] = useState<LocationPoint | null>(null);
+  const [customStops, setCustomStops] = useState<IntermediateStop[]>([]);
+  const [customTripType, setCustomTripType] = useState<TripType>('one_way');
+  const [customReturnDate, setCustomReturnDate] = useState<string>(new Date(Date.now() + 86400000).toISOString().split('T')[0]);
+  const [customReturnTime, setCustomReturnTime] = useState<string>('18:00');
+  const [selectedCustomVehicle, setSelectedCustomVehicle] = useState<VehicleCategory | null>(null);
+  const [customConfirmedRef, setCustomConfirmedRef] = useState<string | null>(null);
+  const [isCustomSubmitting, setIsCustomSubmitting] = useState<boolean>(false);
+
+  // Custom route visual estimate (map rendering only — strictly NO fare)
+  const [customRouteCoords, setCustomRouteCoords] = useState<[number, number][]>([]);
+  const [customDistanceKm, setCustomDistanceKm] = useState<number>(0);
+  const [customDurationMinutes, setCustomDurationMinutes] = useState<number>(0);
+  const [isCustomRouting, setIsCustomRouting] = useState<boolean>(false);
+  const [customRouteError, setCustomRouteError] = useState<string | null>(null);
+
+  // ─── Fixed-fare booking state ──────────────────────────────────────────
+  const [selectedService, setSelectedService] = useState<ServiceType | null>(null);
+  const [selectedTerminal, setSelectedTerminal] = useState<TerminalCode>(null);
+  const [selectedVehicle, setSelectedVehicle] = useState<VehicleCategory | null>(null);
+
+  // Search input & suggestions state (supports pickup, destination, and intermediate stops)
+  const [activeSearchField, setActiveSearchField] = useState<'pickup' | 'destination' | 'custom_pickup' | 'custom_destination' | `stop_${number}` | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
   const [isSearching, setIsSearching] = useState<boolean>(false);
@@ -112,20 +242,18 @@ export default function CustomerHomePage() {
   // Interactive map pinning mode
   const [interactiveMode, setInteractiveMode] = useState<'none' | 'pickup' | 'destination'>('none');
 
-  // Route & Estimation State
+  // Route & visual estimate (for map drawing only — NOT used for fare)
   const [routeCoords, setRouteCoords] = useState<[number, number][]>([]);
   const [distanceKm, setDistanceKm] = useState<number>(0);
   const [durationMinutes, setDurationMinutes] = useState<number>(0);
   const [isRouting, setIsRouting] = useState<boolean>(false);
   const [routeError, setRouteError] = useState<string | null>(null);
 
-  // Vehicle Selection State
-  const [selectedVehicle, setSelectedVehicle] = useState<VehicleType>('vip_gmc');
-
-  // Next-step / Booking Confirmation Modal State
-  const [bookingStep, setBookingStep] = useState<'route' | 'details' | 'summary_payment' | 'submitted'>('route');
+  // Booking step
+  const [bookingStep, setBookingStep] = useState<'service' | 'route' | 'vehicle' | 'details' | 'summary_payment' | 'submitted'>('service');
   const [confirmedBookingRef, setConfirmedBookingRef] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [isFareValidating, setIsFareValidating] = useState<boolean>(false);
 
   // Payment Screenshot State
   const [paymentFile, setPaymentFile] = useState<File | null>(null);
@@ -149,75 +277,55 @@ export default function CustomerHomePage() {
   const [placeLat, setPlaceLat] = useState<number>(0);
   const [placeLng, setPlaceLng] = useState<number>(0);
 
-  // Vehicle classes
-  const vehicleOptions: {
-    type: VehicleType;
-    name: string;
-    model: string;
-    capacity: number;
-    luggage: number;
-    tag?: string;
-  }[] = [
-    {
-      type: 'vip_gmc',
-      name: 'VIP GMC Yukon XL',
-      model: 'Denali Luxury Chauffeur',
-      capacity: 7,
-      luggage: 6,
-      tag: 'Most Popular',
-    },
-    {
-      type: 'suv',
-      name: 'Executive SUV',
-      model: 'Ford Explorer / Palisade',
-      capacity: 5,
-      luggage: 4,
-    },
-    {
-      type: 'sedan',
-      name: 'Executive Sedan',
-      model: 'Toyota Camry / Lexus Hybrid',
-      capacity: 4,
-      luggage: 2,
-    },
-    {
-      type: 'van',
-      name: 'Royal Pilgrimage Van',
-      model: 'Toyota HiAce VIP Lounge',
-      capacity: 11,
-      luggage: 10,
-    },
-  ];
+  // ─── Derived fare resolution (client-side preview) ─────────────────────
+  // This is purely for display. The server re-validates on booking submission.
+  const farePreview = useMemo(() => {
+    if (!selectedService || !selectedVehicle) return null;
+    return resolveFixedFare(selectedVehicle, selectedService, selectedTerminal);
+  }, [selectedService, selectedVehicle, selectedTerminal]);
 
-  // 1. Explicit manual refresh to current GPS location ("Use Current Location")
-  const handleUseCurrentLocation = useCallback(async () => {
-    toast.loading('Acquiring fresh GPS position…', { id: 'gps-pickup' });
-    try {
-      const coords = await resetToCurrentLocation();
-      if (coords) {
-        toast.success('Pickup set to your current GPS position', { id: 'gps-pickup' });
-      } else {
-        toast.error(gpsErrorMsg || 'Could not acquire GPS position.', { id: 'gps-pickup' });
-      }
-    } catch (err: any) {
-      toast.error(err.message || 'Could not acquire GPS position.', { id: 'gps-pickup' });
+  // Vehicles available for the current service + terminal selection
+  const availableVehicles = useMemo(() => {
+    if (!selectedService) return VEHICLE_CATEGORIES;
+    return getAvailableVehicles(selectedService, selectedTerminal ?? undefined);
+  }, [selectedService, selectedTerminal]);
+
+  // Whether the selected service requires a terminal
+  const needsTerminal = useMemo(
+    () => selectedService ? TERMINAL_REQUIRED_SERVICES.includes(selectedService) : false,
+    [selectedService],
+  );
+
+  // Whether the selected service is a Ziyarat (no separate destination input)
+  const isZiyarat = useMemo(
+    () => selectedService ? ZIYARAT_SERVICES.includes(selectedService) : false,
+    [selectedService],
+  );
+
+  // Reset vehicle when service changes (stale vehicle may not apply)
+  useEffect(() => {
+    setSelectedVehicle(null);
+    setSelectedTerminal(null);
+  }, [selectedService]);
+
+  // Reset vehicle when terminal changes
+  useEffect(() => {
+    if (selectedVehicle && !availableVehicles.includes(selectedVehicle)) {
+      setSelectedVehicle(null);
     }
-  }, [resetToCurrentLocation, gpsErrorMsg]);
+  }, [availableVehicles, selectedVehicle]);
 
-  // Restore destination from session if previously chosen (never restore stale pickup or userLocation)
+  // On page refresh/mount: ensure both fields start empty
   useEffect(() => {
     try {
-      const savedDest = sessionStorage.getItem('alharmain_customer_destination');
-      if (savedDest) {
-        const parsed = JSON.parse(savedDest);
-        if (parsed?.latitude && parsed?.longitude && parsed?.address) {
-          setDestination(parsed);
-        }
-      }
-    } catch {}
+      sessionStorage.removeItem('alharmain_customer_destination');
+      sessionStorage.removeItem('alharmain_customer_pickup');
+      localStorage.removeItem('alharmain_customer_destination');
+      localStorage.removeItem('alharmain_customer_pickup');
+    } catch { }
   }, []);
 
-  // 2. Debounced Place Search with user location proximity bias
+  // Debounced Place Search
   useEffect(() => {
     if (!searchQuery || searchQuery.trim().length < 2) {
       setSuggestions([]);
@@ -225,9 +333,7 @@ export default function CustomerHomePage() {
       return;
     }
 
-    if (searchDebounceRef.current) {
-      clearTimeout(searchDebounceRef.current);
-    }
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
 
     setIsSearching(true);
     searchDebounceRef.current = setTimeout(async () => {
@@ -246,9 +352,9 @@ export default function CustomerHomePage() {
     };
   }, [searchQuery, userLocation]);
 
-  // 3. Route Calculation whenever pickup or destination changes
+  // Route visual calculation (map display only — no fare impact)
   useEffect(() => {
-    if (!pickup || !destination) {
+    if (!pickup || !destination || isZiyarat) {
       setRouteCoords([]);
       setDistanceKm(0);
       setDurationMinutes(0);
@@ -256,12 +362,9 @@ export default function CustomerHomePage() {
       return;
     }
 
-    // Validate if pickup and destination are identical
     if (isSameLocation(pickup, destination)) {
-      setRouteError('Pickup and Destination cannot be the same place. Please choose a different destination.');
+      setRouteError('Pickup and destination cannot be the same location.');
       setRouteCoords([]);
-      setDistanceKm(0);
-      setDurationMinutes(0);
       return;
     }
 
@@ -272,7 +375,7 @@ export default function CustomerHomePage() {
       try {
         const route = await calculateRoute(
           { lat: pickup.latitude, lng: pickup.longitude },
-          { lat: destination.latitude, lng: destination.longitude }
+          { lat: destination.latitude, lng: destination.longitude },
         );
         if (isCurrent) {
           setDistanceKm(route.distanceKm);
@@ -280,63 +383,151 @@ export default function CustomerHomePage() {
           setRouteCoords(route.polylineCoords || []);
         }
       } catch {
-        if (isCurrent) {
-          setRouteError('Could not calculate driving route. Using straight estimate.');
-        }
+        if (isCurrent) setRouteError('Could not calculate driving route.');
       } finally {
         if (isCurrent) setIsRouting(false);
       }
     };
 
     fetchRoute();
+    return () => { isCurrent = false; };
+  }, [pickup, destination, isZiyarat]);
 
-    return () => {
-      isCurrent = false;
+  // Route visual calculation for custom route (map display only — strictly NO fare)
+  useEffect(() => {
+    if (bookingMethod !== 'custom') return;
+    if (!customPickup || !customDestination) {
+      setCustomRouteCoords([]);
+      setCustomDistanceKm(0);
+      setCustomDurationMinutes(0);
+      setCustomRouteError(null);
+      return;
+    }
+
+    if (isSameLocation(customPickup, customDestination)) {
+      setCustomRouteError('Pickup and destination cannot be the same location.');
+      setCustomRouteCoords([]);
+      return;
+    }
+
+    let isCurrent = true;
+    const fetchCustomRoute = async () => {
+      setIsCustomRouting(true);
+      setCustomRouteError(null);
+      try {
+        const waypoints = customStops
+          .filter((s) => s.latitude && s.longitude && s.address)
+          .map((s) => ({ lat: s.latitude, lng: s.longitude }));
+
+        const route = await calculateRoute(
+          { lat: customPickup.latitude, lng: customPickup.longitude },
+          { lat: customDestination.latitude, lng: customDestination.longitude },
+          waypoints
+        );
+        if (isCurrent) {
+          setCustomDistanceKm(route.distanceKm);
+          setCustomDurationMinutes(route.durationMinutes);
+          setCustomRouteCoords(route.polylineCoords || []);
+        }
+      } catch {
+        if (isCurrent) setCustomRouteError('Could not calculate custom driving route.');
+      } finally {
+        if (isCurrent) setIsCustomRouting(false);
+      }
     };
-  }, [pickup, destination]);
 
-  // 4. Calculate estimated fare for chosen vehicle
-  const fareEstimate = useMemo(() => {
-    if (distanceKm <= 0) return null;
-    return calculateEstimatedFare(selectedVehicle, distanceKm, durationMinutes);
-  }, [selectedVehicle, distanceKm, durationMinutes]);
+    fetchCustomRoute();
+    return () => { isCurrent = false; };
+  }, [bookingMethod, customPickup, customDestination, customStops]);
 
-  // 5. Handle Selection from search or places
+  // ─── Handlers ──────────────────────────────────────────────────────────
+
+  const handleUseCurrentLocation = useCallback(async () => {
+    toast.loading('Acquiring fresh high-accuracy GPS fix…', { id: 'gps-pickup' });
+    try {
+      let activeCoords = userLocation;
+      let activeAddress = detectedAddress;
+
+      if (!activeCoords || !isValidCoordinate(activeCoords.latitude, activeCoords.longitude)) {
+        activeCoords = await resetToCurrentLocation();
+      }
+
+      if (activeCoords && isValidCoordinate(activeCoords.latitude, activeCoords.longitude)) {
+        if (!activeAddress) {
+          activeAddress = await reverseGeocode(activeCoords.latitude, activeCoords.longitude);
+        }
+        const finalAddress = activeAddress || `GPS Location (${activeCoords.latitude.toFixed(4)}, ${activeCoords.longitude.toFixed(4)})`;
+        const newPickup = { address: finalAddress, latitude: activeCoords.latitude, longitude: activeCoords.longitude };
+        setPickup(newPickup);
+        setManualPickup(newPickup);
+        const accInfo = activeCoords.accuracy != null ? ` (±${Math.round(activeCoords.accuracy)}m)` : '';
+        toast.success(`Pickup set to your current GPS position${accInfo}`, { id: 'gps-pickup' });
+      } else {
+        toast.error(gpsErrorMsg || 'Could not acquire precise GPS fix.', { id: 'gps-pickup' });
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Could not acquire GPS position.', { id: 'gps-pickup' });
+    }
+  }, [userLocation, detectedAddress, resetToCurrentLocation, gpsErrorMsg, setManualPickup]);
+
+  const handleCustomUseCurrentLocation = useCallback(async () => {
+    toast.loading('Acquiring fresh high-accuracy GPS fix…', { id: 'custom-gps-pickup' });
+    try {
+      let activeCoords = userLocation;
+      let activeAddress = detectedAddress;
+
+      if (!activeCoords || !isValidCoordinate(activeCoords.latitude, activeCoords.longitude)) {
+        activeCoords = await resetToCurrentLocation();
+      }
+
+      if (activeCoords && isValidCoordinate(activeCoords.latitude, activeCoords.longitude)) {
+        if (!activeAddress) {
+          activeAddress = await reverseGeocode(activeCoords.latitude, activeCoords.longitude);
+        }
+        const finalAddress = activeAddress || `GPS Location (${activeCoords.latitude.toFixed(4)}, ${activeCoords.longitude.toFixed(4)})`;
+        const newPickup = { address: finalAddress, latitude: activeCoords.latitude, longitude: activeCoords.longitude };
+        setCustomPickup(newPickup);
+        const accInfo = activeCoords.accuracy != null ? ` (±${Math.round(activeCoords.accuracy)}m)` : '';
+        toast.success(`Custom pickup set to your current GPS position${accInfo}`, { id: 'custom-gps-pickup' });
+      } else {
+        toast.error(gpsErrorMsg || 'Could not acquire precise GPS fix.', { id: 'custom-gps-pickup' });
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Could not acquire GPS position.', { id: 'custom-gps-pickup' });
+    }
+  }, [userLocation, detectedAddress, resetToCurrentLocation, gpsErrorMsg]);
+
   const handleSelectPlace = (place: { address: string; latitude: number; longitude: number; placeId?: string | null }) => {
     if (activeSearchField === 'pickup') {
-      const newPickup = {
-        address: place.address,
-        latitude: place.latitude,
-        longitude: place.longitude,
-        placeId: place.placeId,
-      };
+      const newPickup = { address: place.address, latitude: place.latitude, longitude: place.longitude, placeId: place.placeId };
       setPickup(newPickup);
       setManualPickup(newPickup);
+    } else if (activeSearchField === 'custom_pickup') {
+      const newPickup = { address: place.address, latitude: place.latitude, longitude: place.longitude, placeId: place.placeId };
+      setCustomPickup(newPickup);
+    } else if (activeSearchField === 'custom_destination') {
+      const newDest = { address: place.address, latitude: place.latitude, longitude: place.longitude, placeId: place.placeId };
+      setCustomDestination(newDest);
+      addRecentLocation({ address: place.address, latitude: place.latitude, longitude: place.longitude, place_id: place.placeId });
+    } else if (activeSearchField && typeof activeSearchField === 'string' && activeSearchField.startsWith('stop_')) {
+      const idx = parseInt(activeSearchField.replace('stop_', ''), 10);
+      setCustomStops((prev) =>
+        prev.map((s, i) =>
+          i === idx
+            ? { ...s, address: place.address, latitude: place.latitude, longitude: place.longitude, placeId: place.placeId }
+            : s
+        )
+      );
     } else {
-      const newDest = {
-        address: place.address,
-        latitude: place.latitude,
-        longitude: place.longitude,
-        placeId: place.placeId,
-      };
+      const newDest = { address: place.address, latitude: place.latitude, longitude: place.longitude, placeId: place.placeId };
       setDestination(newDest);
-      try {
-        sessionStorage.setItem('alharmain_customer_destination', JSON.stringify(newDest));
-      } catch {}
-      // Add destination to customer's recent locations
-      addRecentLocation({
-        address: place.address,
-        latitude: place.latitude,
-        longitude: place.longitude,
-        place_id: place.placeId,
-      });
+      addRecentLocation({ address: place.address, latitude: place.latitude, longitude: place.longitude, place_id: place.placeId });
     }
     setActiveSearchField(null);
     setSearchQuery('');
     setSuggestions([]);
   };
 
-  // 6. Handle Marker Adjustments (Drag & Drop)
   const handlePickupAdjust = async (lat: number, lng: number) => {
     try {
       const address = await reverseGeocode(lat, lng);
@@ -357,24 +548,18 @@ export default function CustomerHomePage() {
       const address = await reverseGeocode(lat, lng);
       const newDest = { address, latitude: lat, longitude: lng };
       setDestination(newDest);
-      try {
-        sessionStorage.setItem('alharmain_customer_destination', JSON.stringify(newDest));
-      } catch {}
       addRecentLocation({ address, latitude: lat, longitude: lng });
       toast.success(`Destination adjusted: ${address}`, { id: 'marker-adjust' });
     } catch {
       const fallback = `Destination (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
-      const newDest = { address: fallback, latitude: lat, longitude: lng };
-      setDestination(newDest);
-      try {
-        sessionStorage.setItem('alharmain_customer_destination', JSON.stringify(newDest));
-      } catch {}
+      setDestination({ address: fallback, latitude: lat, longitude: lng });
     }
   };
 
-  // 7. Handle Map Click Pick
   const handleMapLocationPick = async (lat: number, lng: number) => {
-    const targetMode = interactiveMode !== 'none' ? interactiveMode : (!destination ? 'destination' : 'pickup');
+    const targetMode = interactiveMode !== 'none'
+      ? interactiveMode
+      : (!pickup ? 'pickup' : (!destination ? 'destination' : 'pickup'));
     toast.loading('Resolving address…', { id: 'map-pick' });
     try {
       const address = await reverseGeocode(lat, lng);
@@ -387,81 +572,110 @@ export default function CustomerHomePage() {
       } else {
         const newDest = { address, latitude: lat, longitude: lng };
         setDestination(newDest);
-        try {
-          sessionStorage.setItem('alharmain_customer_destination', JSON.stringify(newDest));
-        } catch {}
         addRecentLocation({ address, latitude: lat, longitude: lng });
         toast.success(`Destination set: ${address}`);
       }
     } catch {
       toast.dismiss('map-pick');
-      const fallback = `Pinned Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+      const fallback = `Pinned (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
       if (targetMode === 'pickup') {
-        const newPickup = { address: fallback, latitude: lat, longitude: lng };
-        setPickup(newPickup);
-        setManualPickup(newPickup);
+        const p = { address: fallback, latitude: lat, longitude: lng };
+        setPickup(p);
+        setManualPickup(p);
       } else {
-        const newDest = { address: fallback, latitude: lat, longitude: lng };
-        setDestination(newDest);
-        try {
-          sessionStorage.setItem('alharmain_customer_destination', JSON.stringify(newDest));
-        } catch {}
+        setDestination({ address: fallback, latitude: lat, longitude: lng });
       }
     } finally {
       setInteractiveMode('none');
     }
   };
 
-  // 8. Swap Pickup & Destination
   const handleSwapLocations = () => {
     if (!pickup && !destination) return;
-    const tempPickup = pickup;
-    const tempDest = destination;
-    setPickup(tempDest);
-    setDestination(tempPickup);
-    if (tempDest) {
-      setManualPickup(tempDest);
-    }
-    if (tempPickup) {
-      try {
-        sessionStorage.setItem('alharmain_customer_destination', JSON.stringify(tempPickup));
-      } catch {}
-    }
+    const tmp = pickup;
+    setPickup(destination);
+    setDestination(tmp);
+    if (destination) setManualPickup(destination);
     toast.info('Swapped pickup and destination');
   };
 
-  // 8. Payment File Handlers
   const handlePaymentFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
-    if (!validTypes.includes(file.type)) {
-      toast.error('Please upload a valid image file (PNG, JPG, or WebP).');
-      return;
-    }
-
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('Receipt screenshot size exceeds 10MB limit.');
-      return;
-    }
-
+    if (!validTypes.includes(file.type)) { toast.error('Please upload a valid image file (PNG, JPG, or WebP).'); return; }
+    if (file.size > 10 * 1024 * 1024) { toast.error('Receipt screenshot size exceeds 10MB limit.'); return; }
     setPaymentFile(file);
-    const preview = URL.createObjectURL(file);
-    setPaymentPreviewUrl(preview);
+    setPaymentPreviewUrl(URL.createObjectURL(file));
     toast.success('Payment receipt screenshot loaded!');
   };
 
   const removePaymentFile = () => {
     setPaymentFile(null);
-    if (paymentPreviewUrl) {
-      URL.revokeObjectURL(paymentPreviewUrl);
-      setPaymentPreviewUrl(null);
-    }
+    if (paymentPreviewUrl) { URL.revokeObjectURL(paymentPreviewUrl); setPaymentPreviewUrl(null); }
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // 9. Advance from Details to Summary & Payment (Step 2 -> Step 3)
+  // Service selection → advance to route step
+  const handleServiceSelect = (service: ServiceType) => {
+    setSelectedService(service);
+    setSelectedTerminal(null);
+    setSelectedVehicle(null);
+    setPickup(null);
+    setDestination(null);
+    setBookingStep('route');
+  };
+
+  // Route/terminal confirmed → advance to vehicle step
+  const handleRouteConfirmed = () => {
+    if (!selectedService) return;
+    // For non-ziyarat, require pickup (destination auto-populated for some services)
+    if (!isZiyarat && !pickup) {
+      toast.error('Please enter your pickup location.');
+      return;
+    }
+    // For intercity not-ziyarat, require destination
+    if (!isZiyarat && !destination && !pickup) {
+      toast.error('Please enter your destination.');
+      return;
+    }
+    // For terminal-required services (non-sedan), require terminal
+    if (needsTerminal && !selectedTerminal) {
+      toast.error('Please select the Jeddah Airport terminal.');
+      return;
+    }
+    setBookingStep('vehicle');
+  };
+
+  // Vehicle selected → advance to passenger details
+  const handleVehicleConfirmed = async () => {
+    if (!selectedVehicle || !selectedService) return;
+    // Server-side fare validation
+    setIsFareValidating(true);
+    try {
+      const res = await fetch('/api/fares/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vehicleCategory: selectedVehicle,
+          serviceType: selectedService,
+          terminal: selectedTerminal,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.found) {
+        toast.error(data.error || 'Fare not available for this combination. Please contact us.');
+        return;
+      }
+      // Fare is confirmed by server — proceed
+      setBookingStep('details');
+    } catch {
+      toast.error('Could not validate fare. Please check your internet connection and retry.');
+    } finally {
+      setIsFareValidating(false);
+    }
+  };
+
   const handleDetailsSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!passengerName.trim() || !passengerPhone.trim()) {
@@ -471,19 +685,13 @@ export default function CustomerHomePage() {
     setBookingStep('summary_payment');
   };
 
-  // 10. Confirm Booking & Payment Submission (Step 3 -> Step 4)
   const handleConfirmBooking = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!pickup || !destination) {
-      toast.error('Please specify both pickup and destination.');
+
+    if (!selectedService || !selectedVehicle) {
+      toast.error('Booking is incomplete. Please restart the booking process.');
       return;
     }
-
-    if (isSameLocation(pickup, destination)) {
-      toast.error('Pickup and destination cannot be the same location.');
-      return;
-    }
-
     if (!paymentFile) {
       toast.error('Payment receipt screenshot is required before booking can be submitted.');
       return;
@@ -491,25 +699,56 @@ export default function CustomerHomePage() {
 
     setIsSubmitting(true);
     try {
+      // 1. Final server-side fare validation (prevents tampering between steps)
+      const fareRes = await fetch('/api/fares/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vehicleCategory: selectedVehicle,
+          serviceType: selectedService,
+          terminal: selectedTerminal,
+        }),
+      });
+      const fareData = await fareRes.json();
+      if (!fareRes.ok || !fareData.found) {
+        toast.error(fareData.error || 'Fare is no longer available. Please restart your booking.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      // 2. Upload payment proof
       toast.loading('Uploading payment proof to secure storage…', { id: 'booking-upload' });
       const uploadedScreenshotUrl = await uploadPaymentScreenshot(paymentFile);
       toast.dismiss('booking-upload');
 
+      // 3. Determine pickup/destination
+      const serviceLabel = SERVICE_LABELS[selectedService];
+      const termLabel = selectedTerminal ? ` (${TERMINAL_LABELS[selectedTerminal]})` : '';
+      const pickupAddr = pickup?.address || `Service: ${serviceLabel}${termLabel}`;
+      const destAddr = destination?.address || serviceLabel;
+
+      // 4. Create booking with confirmed fixed fare from server
       const booking = await createBooking({
         passenger_name: passengerName.trim(),
         passenger_phone: passengerPhone.trim(),
-        booking_type: 'immediate',
-        pickup_address: pickup.address,
-        pickup_latitude: pickup.latitude,
-        pickup_longitude: pickup.longitude,
-        destination_address: destination.address,
-        destination_latitude: destination.latitude,
-        destination_longitude: destination.longitude,
-        vehicle_type: selectedVehicle,
+        booking_type: 'scheduled',
+        pickup_address: pickupAddr,
+        pickup_latitude: pickup?.latitude ?? 21.4225,
+        pickup_longitude: pickup?.longitude ?? 39.8262,
+        destination_address: destAddr,
+        destination_latitude: destination?.latitude ?? 24.4672,
+        destination_longitude: destination?.longitude ?? 39.6151,
+        vehicle_type: CATEGORY_TO_VEHICLE_TYPE[selectedVehicle],
         passenger_count: passengerCount,
-        notes: `Customer Booking: ${journeyDate} at ${journeyTime}. ${specialInstructions ? `Special requests: ${specialInstructions}` : ''}`,
+        notes: `Fixed-Fare Booking | Service: ${serviceLabel}${termLabel} | Vehicle: ${VEHICLE_LABELS[selectedVehicle]} | ${journeyDate} at ${journeyTime}${specialInstructions ? ` | Special: ${specialInstructions}` : ''}`,
         scheduled_at: `${journeyDate}T${journeyTime}:00Z`,
         payment_screenshot_url: uploadedScreenshotUrl || undefined,
+        // Fixed-fare extra fields
+        vehicle_category: selectedVehicle,
+        service_type: selectedService,
+        terminal: selectedTerminal,
+        fixed_fare_amount: fareData.fare,
+        fare_rate_id: fareData.rateId,
       });
 
       setConfirmedBookingRef(booking.booking_reference);
@@ -523,7 +762,7 @@ export default function CustomerHomePage() {
     }
   };
 
-  // 9. Saved Places Modal Handlers
+  // Saved Places Modal Handlers
   const openAddPlaceModal = (type: SavedPlaceType = 'custom') => {
     setEditingPlace(null);
     setPlaceName(type === 'home' ? 'Home' : type === 'work' ? 'Work' : '');
@@ -550,46 +789,181 @@ export default function CustomerHomePage() {
       toast.error('Please provide a name and address for this place.');
       return;
     }
-
     if (editingPlace) {
-      await updateSavedPlace(editingPlace.id, {
-        name: placeName.trim(),
-        type: placeType,
-        address: placeAddress.trim(),
-        latitude: placeLat,
-        longitude: placeLng,
-      });
+      await updateSavedPlace(editingPlace.id, { name: placeName.trim(), type: placeType, address: placeAddress.trim(), latitude: placeLat, longitude: placeLng });
     } else {
-      await addSavedPlace({
-        name: placeName.trim(),
-        type: placeType,
-        address: placeAddress.trim(),
-        latitude: placeLat,
-        longitude: placeLng,
-      });
+      await addSavedPlace({ name: placeName.trim(), type: placeType, address: placeAddress.trim(), latitude: placeLat, longitude: placeLng });
     }
     setIsSavedPlacesModalOpen(false);
   };
 
-  // Helper home & work place
   const homePlace = savedPlaces.find((p) => p.type === 'home');
   const workPlace = savedPlaces.find((p) => p.type === 'work');
   const customPlaces = savedPlaces.filter((p) => p.type === 'custom');
 
+  const resetBooking = () => {
+    setSelectedService(null);
+    setSelectedTerminal(null);
+    setSelectedVehicle(null);
+    setPickup(null);
+    setDestination(null);
+    setRouteCoords([]);
+    setDistanceKm(0);
+    setDurationMinutes(0);
+    setRouteError(null);
+    setBookingStep('service');
+    setPaymentFile(null);
+    setPaymentPreviewUrl(null);
+    setConfirmedBookingRef(null);
+  };
+
+  const handleCustomPickupAdjust = async (lat: number, lng: number) => {
+    try {
+      const address = await reverseGeocode(lat, lng);
+      setCustomPickup({ address, latitude: lat, longitude: lng });
+      toast.success(`Pickup adjusted: ${address}`, { id: 'marker-adjust' });
+    } catch {
+      const fallback = `Pickup (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+      setCustomPickup({ address: fallback, latitude: lat, longitude: lng });
+    }
+  };
+
+  const handleCustomDestinationAdjust = async (lat: number, lng: number) => {
+    try {
+      const address = await reverseGeocode(lat, lng);
+      setCustomDestination({ address, latitude: lat, longitude: lng });
+      toast.success(`Destination adjusted: ${address}`, { id: 'marker-adjust' });
+    } catch {
+      const fallback = `Destination (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+      setCustomDestination({ address: fallback, latitude: lat, longitude: lng });
+    }
+  };
+
+  const handleAddCustomStop = () => {
+    if (customStops.length >= 5) {
+      toast.warning('Maximum 5 intermediate stops permitted per custom route.');
+      return;
+    }
+    const newStop: IntermediateStop = {
+      id: `stop-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      address: '',
+      latitude: customPickup?.latitude ?? 21.4225,
+      longitude: customPickup?.longitude ?? 39.8262,
+      stop_order: customStops.length + 1,
+    };
+    setCustomStops((prev) => [...prev, newStop]);
+    setActiveSearchField(`stop_${customStops.length}` as any);
+  };
+
+  const handleRemoveCustomStop = (stopId: string) => {
+    setCustomStops((prev) =>
+      prev.filter((s) => s.id !== stopId).map((s, idx) => ({ ...s, stop_order: idx + 1 }))
+    );
+  };
+
+  const handleSwapCustomPickupDestination = () => {
+    if (!customPickup && !customDestination) return;
+    const tmp = customPickup;
+    setCustomPickup(customDestination);
+    setCustomDestination(tmp);
+    toast.info('Swapped custom pickup and destination');
+  };
+
+  const resetCustomBooking = () => {
+    setCustomPickup(null);
+    setCustomDestination(null);
+    setCustomStops([]);
+    setSelectedCustomVehicle(null);
+    setCustomConfirmedRef(null);
+    setCustomRouteCoords([]);
+    setCustomDistanceKm(0);
+    setCustomDurationMinutes(0);
+  };
+
+  const handleSubmitCustomBooking = async () => {
+    if (!customPickup) {
+      toast.error('Please enter your pickup location.');
+      return;
+    }
+    if (!customDestination) {
+      toast.error('Please enter your destination.');
+      return;
+    }
+    if (!selectedCustomVehicle) {
+      toast.error('Please select a vehicle category.');
+      return;
+    }
+
+    setIsCustomSubmitting(true);
+    try {
+      const validStops = customStops.filter((s) => s.address && s.latitude && s.longitude);
+      const vehicleLabel = VEHICLE_LABELS[selectedCustomVehicle] || selectedCustomVehicle;
+
+      const booking = await createBooking({
+        passenger_name: passengerName.trim(),
+        passenger_phone: passengerPhone.trim(),
+        booking_type: 'scheduled',
+        booking_method: 'custom',
+        trip_type: customTripType,
+        intermediate_stops: validStops,
+        return_scheduled_at:
+          customTripType === 'round_trip' && customReturnDate && customReturnTime
+            ? `${customReturnDate}T${customReturnTime}:00Z`
+            : undefined,
+        pickup_address: customPickup.address,
+        pickup_latitude: customPickup.latitude,
+        pickup_longitude: customPickup.longitude,
+        destination_address: customDestination.address,
+        destination_latitude: customDestination.latitude,
+        destination_longitude: customDestination.longitude,
+        vehicle_type: CATEGORY_TO_VEHICLE_TYPE[selectedCustomVehicle],
+        vehicle_category: selectedCustomVehicle,
+        passenger_count: passengerCount,
+        notes: `Custom Route Booking | ${customTripType === 'round_trip' ? 'Round Trip' : 'One Way'} | Vehicle: ${vehicleLabel} | Stops: ${validStops.length}${specialInstructions ? ` | Notes: ${specialInstructions}` : ''}`,
+        scheduled_at: `${journeyDate}T${journeyTime}:00Z`,
+      });
+
+      setCustomConfirmedRef(booking.booking_reference);
+      toast.success(`Custom booking ${booking.booking_reference} submitted for dispatcher review!`);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to submit custom booking request.');
+    } finally {
+      setIsCustomSubmitting(false);
+    }
+  };
+
+  // ─── Render ────────────────────────────────────────────────────────────
+
   return (
     <div className="page-shell space-y-6 pb-24 sm:pb-8">
-      {/* 1. Active Journey Banner (if customer has a live trip in progress) */}
+
+      {/* ── Active Journey Banner ──────────────────────────────────────── */}
       {activeCustomerBooking && (
         <div className="p-5 rounded-3xl bg-gradient-to-r from-emerald-800 via-emerald-900 to-slate-900 border-2 border-emerald-500/50 shadow-2xl relative overflow-hidden animate-fade-up">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="space-y-1.5">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-700/80 text-emerald-200 text-xs font-bold border border-emerald-500/40">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
-                <span>ACTIVE JOURNEY: {activeCustomerBooking.status.replace('_', ' ').toUpperCase()}</span>
+                <span>ACTIVE JOURNEY: {activeCustomerBooking.status.replace(/_/g, ' ').toUpperCase()}</span>
               </div>
               <div className="text-white font-semibold text-sm">
                 Ref: <span className="text-amber-300 font-mono">{activeCustomerBooking.booking_reference}</span> &bull; {activeCustomerBooking.pickup_address} &rarr; {activeCustomerBooking.destination_address}
               </div>
+              {activeDriver && (
+                <div className="text-emerald-200 text-xs flex flex-wrap items-center gap-2 pt-0.5">
+                  <Car className="w-3.5 h-3.5 text-amber-400" />
+                  <span>
+                    Chauffeur: <strong className="text-white font-bold">{activeDriver.profile?.full_name || activeDriver.full_name || 'Assigned Chauffeur'}</strong>
+                    {(activeDriver.assigned_vehicle?.plate_number || activeDriver.vehicle?.plate_number) ? ` (${activeDriver.assigned_vehicle?.plate_number || activeDriver.vehicle?.plate_number})` : ''}
+                  </span>
+                  {liveDriverLocation && (
+                    <span className="inline-flex items-center gap-1 text-[11px] text-emerald-300 bg-emerald-950/70 px-2.5 py-0.5 rounded-full border border-emerald-500/30 font-semibold">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                      Live Radar Synced
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
             <Link
               href="/customer/track"
@@ -602,433 +976,690 @@ export default function CustomerHomePage() {
         </div>
       )}
 
-      {/* 2. Welcome Bar with Quick GPS Status */}
+      {/* ── Welcome Bar ────────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <span className="chip mb-1.5 !bg-emerald-800/40 !text-emerald-300 !border-emerald-600/30">
-            <Sparkles className="w-3 h-3 text-amber-400" />
-            Al Harmain Ride System
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 text-xs font-semibold mb-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+            Al Harmain Fixed-Fare Booking
           </span>
           <h1 className="type-section-title text-primary">
-            Where would you like to go, <span className="text-amber-500">{currentUser.full_name.split(' ')[0]}</span>?
+            Where would you like to go, <span className="text-amber-600 dark:text-amber-400">{currentUser.full_name.split(' ')[0]}</span>?
           </h1>
         </div>
 
-        {/* Current Location Badge / Refresh GPS */}
         <div className="flex items-center gap-2 self-start sm:self-center">
-          {gpsStatus === 'locating' ? (
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-medium">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-              <span>Detecting Location…</span>
-            </div>
-          ) : gpsStatus === 'success' ? (
+          {/* GPS badge */}
+          {gpsStatus === 'success' ? (
             <button
               type="button"
               onClick={handleUseCurrentLocation}
-              title="Click to refresh current GPS location"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-xs font-semibold transition-colors cursor-pointer"
             >
               <Crosshair className="w-3.5 h-3.5 text-emerald-500" />
-              <span>GPS Active</span>
-              {gpsAccuracy != null && (
-                <span className={`font-bold tabular-nums ${
-                  gpsAccuracy <= 30 ? 'text-emerald-500 dark:text-emerald-400' :
-                  gpsAccuracy <= 80 ? 'text-amber-500 dark:text-amber-400' : 'text-orange-500'
-                }`}>
-                  ±{gpsAccuracy}m
-                </span>
-              )}
+              <span>Live GPS Active</span>
             </button>
           ) : (
             <button
               type="button"
               onClick={handleUseCurrentLocation}
-              title={gpsErrorMsg || 'Location detection failed. Click to retry.'}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-semibold transition-colors cursor-pointer"
             >
-              <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
-              <span>{gpsStatus === 'denied' ? 'Permission Denied · Retry' : 'Use Current Location'}</span>
+              <Crosshair className="w-3.5 h-3.5 text-amber-500" />
+              <span>Use GPS</span>
             </button>
           )}
 
-          <Link
-            href="/customer/bookings"
-            className="text-xs font-semibold text-secondary hover:text-primary px-3 py-1.5 rounded-xl border border-base bg-card hover:bg-elevated transition-colors"
-          >
-            My Trips
-          </Link>
+          {selectedService && (
+            <button
+              type="button"
+              onClick={resetBooking}
+              className="text-xs font-semibold text-muted hover:text-rose-500 px-3 py-1.5 rounded-full border border-base bg-card hover:bg-elevated transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Reset</span>
+            </button>
+          )}
         </div>
       </div>
 
-      {/* 3. Main Split Experience: Booking Control Drawer + Interactive Map (Map on top on mobile) */}
+      {/* ── Booking Mode Switcher ────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-card/60 p-2 rounded-2xl border border-base shadow-sm">
+        <button
+          type="button"
+          onClick={() => setBookingMethod('fixed')}
+          className={`p-3.5 rounded-xl border text-left transition-all flex items-start gap-3 cursor-pointer ${
+            bookingMethod === 'fixed'
+              ? 'bg-gradient-to-r from-emerald-500/15 to-emerald-500/5 border-emerald-500/50 shadow-sm text-primary'
+              : 'bg-surface/50 border-transparent hover:bg-surface text-secondary hover:text-primary'
+          }`}
+        >
+          <div
+            className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+              bookingMethod === 'fixed'
+                ? 'bg-emerald-500 text-slate-950 font-bold'
+                : 'bg-surface text-muted border border-base'
+            }`}
+          >
+            <Route className="w-5 h-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-xs">Fixed Fare Booking</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                Predefined Rates
+              </span>
+            </div>
+            <p className="text-[11px] text-muted mt-0.5">
+              Predefined routes (Jeddah, Makkah, Madinah, Ziyarat) with guaranteed fixed prices.
+            </p>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setBookingMethod('custom')}
+          className={`p-3.5 rounded-xl border text-left transition-all flex items-start gap-3 cursor-pointer ${
+            bookingMethod === 'custom'
+              ? 'bg-gradient-to-r from-amber-500/15 to-amber-500/5 border-amber-500/50 shadow-sm text-primary'
+              : 'bg-surface/50 border-transparent hover:bg-surface text-secondary hover:text-primary'
+          }`}
+        >
+          <div
+            className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+              bookingMethod === 'custom'
+                ? 'bg-amber-500 text-slate-950 font-bold'
+                : 'bg-surface text-muted border border-base'
+            }`}
+          >
+            <Navigation className="w-5 h-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-xs">Custom Route Booking</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                Dispatcher Confirmed
+              </span>
+            </div>
+            <p className="text-[11px] text-muted mt-0.5">
+              Choose your own pickup &amp; destination with optional stops. Fare confirmed by dispatcher.
+            </p>
+          </div>
+        </button>
+      </div>
+
+      {/* ── Main Layout: Booking Panel + Map ──────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Booking Card / Drawer: Order 2 on mobile (under map), Order 1 on desktop (left) */}
+
+        {/* ── Booking Panel (left) ──────────────────────────────────── */}
         <div className="order-2 lg:order-1 lg:col-span-5 space-y-5">
-          {/* Main Booking Panel */}
-          <div className="bg-card border border-base rounded-3xl p-6 shadow-xl space-y-5">
-            {/* Location Inputs (Pickup & Destination) */}
-            <div className="space-y-3 relative">
-              {/* Vertical connector line */}
-              <div className="absolute left-[18px] top-[38px] bottom-[38px] w-0.5 bg-gradient-to-b from-emerald-500 to-amber-500 z-0" />
+          {bookingMethod === 'custom' ? (
+            <CustomRouteBookingPanel
+              pickup={customPickup}
+              destination={customDestination}
+              stops={customStops}
+              onOpenSearch={(field) => {
+                if (field === 'pickup') setActiveSearchField('custom_pickup');
+                else if (field === 'destination') setActiveSearchField('custom_destination');
+                else setActiveSearchField(field as any);
+              }}
+              onUseCurrentLocation={handleCustomUseCurrentLocation}
+              onAddStop={handleAddCustomStop}
+              onRemoveStop={handleRemoveCustomStop}
+              onSwapPickupDestination={handleSwapCustomPickupDestination}
+              distanceKm={customDistanceKm}
+              durationMinutes={customDurationMinutes}
+              isRouting={isCustomRouting}
+              routeError={customRouteError}
+              passengerName={passengerName}
+              setPassengerName={setPassengerName}
+              passengerPhone={passengerPhone}
+              setPassengerPhone={setPassengerPhone}
+              passengerCount={passengerCount}
+              setPassengerCount={setPassengerCount}
+              journeyDate={journeyDate}
+              setJourneyDate={setJourneyDate}
+              journeyTime={journeyTime}
+              setJourneyTime={setJourneyTime}
+              specialInstructions={specialInstructions}
+              setSpecialInstructions={setSpecialInstructions}
+              tripType={customTripType}
+              setTripType={setCustomTripType}
+              returnDate={customReturnDate}
+              setReturnDate={setCustomReturnDate}
+              returnTime={customReturnTime}
+              setReturnTime={setCustomReturnTime}
+              selectedVehicle={selectedCustomVehicle}
+              setSelectedVehicle={setSelectedCustomVehicle}
+              onSubmitCustomBooking={handleSubmitCustomBooking}
+              isSubmitting={isCustomSubmitting}
+              confirmedBookingRef={customConfirmedRef}
+              onResetCustomBooking={resetCustomBooking}
+            />
+          ) : (
+            <>
+          {/* ── Step Indicator ──────────────────────────────────────── */}
+          {bookingStep !== 'service' && bookingStep !== 'submitted' && (
+            <div className="flex items-center gap-1 text-[10px] font-bold text-muted uppercase tracking-widest">
+              {(['service', 'route', 'vehicle', 'details', 'summary_payment'] as const).map((step, i) => {
+                const stepIndex = ['service', 'route', 'vehicle', 'details', 'summary_payment'].indexOf(bookingStep);
+                const isActive = step === bookingStep;
+                const isDone = i < stepIndex;
+                return (
+                  <React.Fragment key={step}>
+                    <span className={`px-2 py-0.5 rounded-full border transition-all ${
+                      isActive ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-600 dark:text-emerald-400' :
+                      isDone ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500/70' :
+                      'border-base text-muted/50'
+                    }`}>
+                      {i + 1}. {step.replace(/_/g, ' ')}
+                    </span>
+                    {i < 4 && <span className="text-muted/30">›</span>}
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          )}
 
-              {/* Pickup Location Input */}
-              <div className="relative z-10">
-                <div className="flex items-center justify-between text-xs text-muted mb-1 px-1">
-                  <span className="font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                    Pickup Location
+          {/* ════ STEP 1: SELECT SERVICE ════════════════════════════════ */}
+          {bookingStep === 'service' && (
+            <div className="bg-card border border-base rounded-3xl shadow-2xl overflow-hidden">
+              <div className="px-5 pt-5 pb-4 border-b border-base bg-gradient-to-r from-emerald-500/5 via-transparent to-amber-500/5">
+                <h2 className="text-sm font-bold text-primary flex items-center gap-2">
+                  <span className="w-7 h-7 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0">
+                    <Route className="w-3.5 h-3.5 text-emerald-500" />
                   </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleUseCurrentLocation}
-                      title="Set pickup to your detected GPS coordinates"
-                      className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:text-emerald-500 flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 transition-all cursor-pointer"
-                    >
-                      <Crosshair className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
-                      <span>Use Current Location</span>
-                    </button>
-                    <span>&bull;</span>
-                    <button
-                      type="button"
-                      onClick={() => setInteractiveMode(interactiveMode === 'pickup' ? 'none' : 'pickup')}
-                      className={`text-xs hover:underline flex items-center gap-1 ${
-                        interactiveMode === 'pickup' ? 'text-amber-500 font-bold' : 'text-secondary'
-                      }`}
-                    >
-                      <MapPin className="w-3 h-3" />
-                      Map Pin
-                    </button>
-                  </div>
-                </div>
-
-                <div className="relative flex items-center">
-                  <div className="absolute left-3.5 flex items-center justify-center w-6 h-6 rounded-full bg-emerald-600 text-white text-xs font-bold shadow">
-                    P
-                  </div>
-                  <input
-                    type="text"
-                    readOnly
-                    onClick={() => {
-                      setActiveSearchField('pickup');
-                      setSearchQuery(pickup?.address || '');
-                    }}
-                    value={pickup?.address || 'Detecting pickup location…'}
-                    placeholder="Enter pickup location..."
-                    className="w-full pl-12 pr-10 py-3.5 rounded-2xl bg-input border border-base text-primary font-medium text-xs sm:text-sm focus:outline-none focus:border-emerald-500 cursor-pointer shadow-sm truncate"
-                  />
-                  {pickup && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveSearchField('pickup');
-                        setSearchQuery('');
-                      }}
-                      className="absolute right-3 p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated transition-colors"
-                    >
-                      <Search className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
+                  Select Your Service
+                </h2>
+                <p className="text-[11px] text-muted mt-0.5 pl-9">All fares are fixed — no hidden charges</p>
               </div>
 
-              {/* Swap Button on center-right */}
-              <div className="flex justify-end pr-2 -my-2 relative z-20">
-                <button
-                  type="button"
-                  onClick={handleSwapLocations}
-                  title="Swap pickup and destination"
-                  className="w-7 h-7 rounded-full bg-card hover:bg-elevated border border-base text-secondary hover:text-primary shadow-sm flex items-center justify-center transition-all hover:rotate-180"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              {/* Destination Input */}
-              <div className="relative z-10">
-                <div className="flex items-center justify-between text-xs text-muted mb-1 px-1">
-                  <span className="font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-amber-500" />
-                    Where to? (Destination)
-                  </span>
+              <div className="p-4 space-y-2">
+                {SERVICE_OPTIONS.map((svc) => (
                   <button
+                    key={svc.type}
                     type="button"
-                    onClick={() => setInteractiveMode(interactiveMode === 'destination' ? 'none' : 'destination')}
-                    className={`text-[11px] hover:underline flex items-center gap-1 ${
-                      interactiveMode === 'destination' ? 'text-amber-500 font-bold' : 'text-secondary'
-                    }`}
+                    onClick={() => handleServiceSelect(svc.type)}
+                    className="w-full text-left p-4 rounded-2xl border border-base bg-surface hover:bg-emerald-500/5 hover:border-emerald-500/40 transition-all group cursor-pointer flex items-center gap-3"
                   >
-                    <MapPin className="w-3 h-3" />
-                    Map Pin
+                    <span className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0 group-hover:bg-emerald-500/20 transition-colors">
+                      {svc.icon}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-xs text-primary group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">{svc.label}</div>
+                      <div className="text-[11px] text-muted">{svc.desc}</div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-muted group-hover:text-emerald-500 transition-colors shrink-0" />
                   </button>
-                </div>
-
-                <div className="relative flex items-center">
-                  <div className="absolute left-3.5 flex items-center justify-center w-6 h-6 rounded-full bg-amber-500 text-slate-950 text-xs font-bold shadow">
-                    D
-                  </div>
-                  <input
-                    type="text"
-                    readOnly
-                    onClick={() => {
-                      setActiveSearchField('destination');
-                      setSearchQuery(destination?.address || '');
-                    }}
-                    value={destination?.address || ''}
-                    placeholder="Search destination, hotel, airport, or landmark…"
-                    className="w-full pl-12 pr-10 py-3.5 rounded-2xl bg-input border border-base text-primary font-medium text-xs sm:text-sm focus:outline-none focus:border-amber-500 cursor-pointer shadow-sm truncate placeholder:text-muted"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveSearchField('destination');
-                      setSearchQuery('');
-                    }}
-                    className="absolute right-3 p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated transition-colors"
-                  >
-                    <Search className="w-4 h-4" />
-                  </button>
-                </div>
+                ))}
               </div>
             </div>
+          )}
 
-            {/* Validation Error Message */}
-            {routeError && (
-              <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs flex items-start gap-2.5 animate-fade-up">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{routeError}</span>
+          {/* ════ STEP 2: ROUTE / TERMINAL SELECTION ════════════════════ */}
+          {bookingStep === 'route' && selectedService && (
+            <div className="bg-card border border-base rounded-3xl shadow-2xl overflow-hidden">
+              <div className="px-5 pt-5 pb-4 border-b border-base bg-gradient-to-r from-emerald-500/5 via-transparent to-amber-500/5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-bold text-primary flex items-center gap-2">
+                      <span className="w-7 h-7 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center shrink-0">
+                        <MapPin className="w-3.5 h-3.5 text-amber-500" />
+                      </span>
+                      {SERVICE_LABELS[selectedService]}
+                    </h2>
+                    <p className="text-[11px] text-muted mt-0.5 pl-9">Enter pickup{!isZiyarat ? ' & destination' : ''}{needsTerminal ? ' and select terminal' : ''}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setBookingStep('service')}
+                    className="text-[10px] font-semibold text-muted hover:text-primary px-2.5 py-1.5 rounded-xl bg-elevated border border-base hover:border-strong transition-all cursor-pointer"
+                  >
+                    ← Back
+                  </button>
+                </div>
               </div>
-            )}
 
-            {/* Quick Saved Places & Recent Chips */}
-            <div className="space-y-2 pt-2 border-t border-base">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-secondary flex items-center gap-1.5">
-                  <Bookmark className="w-3.5 h-3.5 text-amber-500" />
-                  Saved Places
-                </span>
+              <div className="px-5 pt-5 pb-4 space-y-4">
+
+                {/* Terminal Selection (for Jeddah→Makkah) */}
+                {needsTerminal && (
+                  <div>
+                    <label className="type-label mb-2 block flex items-center gap-1.5">
+                      <Plane className="w-3.5 h-3.5 text-amber-500" />
+                      Jeddah Airport Terminal *
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {TERMINAL_OPTIONS.map((t) => (
+                        <button
+                          key={t.code}
+                          type="button"
+                          onClick={() => setSelectedTerminal(t.code)}
+                          className={`py-2.5 px-3 rounded-xl border font-bold text-xs flex flex-col items-center gap-0.5 transition-all cursor-pointer ${
+                            selectedTerminal === t.code
+                              ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-500 text-amber-700 dark:text-amber-300 ring-2 ring-amber-500/20'
+                              : 'bg-surface border-base text-secondary hover:border-amber-500/40'
+                          }`}
+                        >
+                          <Plane className="w-3.5 h-3.5 mb-0.5" />
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+                    {!selectedTerminal && (
+                      <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1.5 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" />
+                        Terminal selection is required for airport pricing
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Pickup field */}
+                {!isZiyarat && (
+                  <div className="space-y-0">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        Pickup Location
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleUseCurrentLocation}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-colors cursor-pointer"
+                      >
+                        <Crosshair className="w-3 h-3" />
+                        Use GPS
+                      </button>
+                    </div>
+                    <div className="relative group">
+                      <div className="absolute left-0 top-0 bottom-0 w-11 flex items-center justify-center z-10 pointer-events-none">
+                        <div className="w-7 h-7 rounded-xl bg-emerald-600 flex items-center justify-center shadow-md shadow-emerald-900/30">
+                          <MapPin className="w-3.5 h-3.5 text-white" />
+                        </div>
+                      </div>
+                      <input
+                        type="text"
+                        readOnly
+                        onClick={() => { setActiveSearchField('pickup'); setSearchQuery(pickup?.address || ''); }}
+                        value={pickup?.address || ''}
+                        placeholder="Search pickup: hotel, landmark, address…"
+                        className="w-full pl-11 pr-10 py-3.5 rounded-2xl bg-input border border-base text-primary font-medium text-xs focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/15 cursor-pointer transition-all shadow-sm placeholder:text-muted truncate group-hover:border-strong"
+                      />
+                      {pickup && (
+                        <button type="button" onClick={() => setPickup(null)} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-lg text-muted hover:text-rose-500 hover:bg-elevated transition-colors">
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Destination field */}
+                {!isZiyarat && (
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                        Destination
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setInteractiveMode(interactiveMode === 'destination' ? 'none' : 'destination')}
+                        className={`text-[10px] font-semibold flex items-center gap-1 px-2 py-1 rounded-lg border transition-all cursor-pointer ${interactiveMode === 'destination' ? 'bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400' : 'bg-elevated border-base text-muted hover:text-primary'}`}
+                      >
+                        <MapPin className="w-3 h-3" />
+                        Map Pin
+                      </button>
+                    </div>
+                    <div className="relative group">
+                      <div className="absolute left-0 top-0 bottom-0 w-11 flex items-center justify-center z-10 pointer-events-none">
+                        <div className="w-7 h-7 rounded-xl bg-amber-500 flex items-center justify-center shadow-md shadow-amber-900/20">
+                          <Navigation className="w-3.5 h-3.5 text-slate-950" />
+                        </div>
+                      </div>
+                      <input
+                        type="text"
+                        readOnly
+                        onClick={() => { setActiveSearchField('destination'); setSearchQuery(destination?.address || ''); }}
+                        value={destination?.address || ''}
+                        placeholder="Search destination: city, mosque, hotel…"
+                        className="w-full pl-11 pr-10 py-3.5 rounded-2xl bg-input border border-base text-primary font-medium text-xs focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/15 cursor-pointer transition-all shadow-sm placeholder:text-muted truncate group-hover:border-strong"
+                      />
+                      {destination && (
+                        <button type="button" onClick={() => setDestination(null)} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-lg text-muted hover:text-rose-500 hover:bg-elevated transition-colors">
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Ziyarat info banner */}
+                {isZiyarat && (
+                  <div className="p-4 rounded-2xl bg-emerald-500/5 border border-emerald-500/20 text-xs text-emerald-700 dark:text-emerald-300">
+                    <div className="font-bold flex items-center gap-1.5 mb-1">
+                      <Star className="w-3.5 h-3.5 text-amber-500" />
+                      Ziyarat Service — Pickup from Your Location
+                    </div>
+                    <p className="text-muted">Our driver will pick you up and take you on the full {SERVICE_LABELS[selectedService]} tour. No destination entry needed.</p>
+                    <div className="mt-3">
+                      <div className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-1.5">Your Pickup Location</div>
+                      <div className="relative group">
+                        <div className="absolute left-0 top-0 bottom-0 w-11 flex items-center justify-center z-10 pointer-events-none">
+                          <div className="w-7 h-7 rounded-xl bg-emerald-600 flex items-center justify-center">
+                            <MapPin className="w-3.5 h-3.5 text-white" />
+                          </div>
+                        </div>
+                        <input
+                          type="text"
+                          readOnly
+                          onClick={() => { setActiveSearchField('pickup'); setSearchQuery(pickup?.address || ''); }}
+                          value={pickup?.address || ''}
+                          placeholder="Enter your hotel or current location…"
+                          className="w-full pl-11 pr-10 py-3 rounded-2xl bg-input border border-base text-primary font-medium text-xs focus:outline-none focus:border-emerald-500 cursor-pointer transition-all shadow-sm placeholder:text-muted truncate"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleUseCurrentLocation}
+                        className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
+                      >
+                        <Crosshair className="w-3 h-3" />
+                        Use current GPS location
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Saved places quick-select */}
+                {(homePlace || workPlace || customPlaces.length > 0) && !isZiyarat && (
+                  <div className="pt-2 border-t border-base">
+                    <div className="text-[10px] font-bold text-muted uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                      <Bookmark className="w-3 h-3 text-amber-500" />
+                      Saved Places
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {homePlace && (
+                        <button type="button" onClick={() => handleSelectPlace(homePlace)} className="inline-flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-xl bg-elevated hover:bg-emerald-500/10 border border-base hover:border-emerald-500/30 text-primary text-[11px] font-semibold transition-all cursor-pointer">
+                          <Home className="w-3 h-3 text-emerald-500" />
+                          Home
+                        </button>
+                      )}
+                      {workPlace && (
+                        <button type="button" onClick={() => handleSelectPlace(workPlace)} className="inline-flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-xl bg-elevated hover:bg-amber-500/10 border border-base hover:border-amber-500/30 text-primary text-[11px] font-semibold transition-all cursor-pointer">
+                          <Briefcase className="w-3 h-3 text-amber-500" />
+                          Work
+                        </button>
+                      )}
+                      {customPlaces.slice(0, 2).map((cp) => (
+                        <button key={cp.id} type="button" onClick={() => handleSelectPlace(cp)} className="inline-flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-xl bg-elevated border border-base text-primary text-[11px] font-semibold transition-all cursor-pointer">
+                          <Bookmark className="w-3 h-3 text-emerald-500" />
+                          <span className="truncate max-w-[80px]">{cp.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {routeError && (
+                  <div className="p-3 rounded-2xl bg-rose-500/8 border border-rose-500/25 text-rose-600 dark:text-rose-400 text-[11px] flex items-start gap-2">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <span>{routeError}</span>
+                  </div>
+                )}
+
                 <button
                   type="button"
-                  onClick={() => openAddPlaceModal('custom')}
-                  className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1"
+                  disabled={
+                    (!isZiyarat && !pickup) ||
+                    (needsTerminal && !selectedTerminal)
+                  }
+                  onClick={handleRouteConfirmed}
+                  className="w-full py-4 rounded-2xl text-sm font-bold transition-all shadow-xl disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-600 text-white hover:from-emerald-500 hover:to-emerald-500 flex items-center justify-center gap-2"
                 >
+                  <span>Select Vehicle & View Fare</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ════ STEP 3: VEHICLE SELECTION ═════════════════════════════ */}
+          {bookingStep === 'vehicle' && selectedService && (
+            <div className="bg-card border border-base rounded-3xl shadow-2xl overflow-hidden">
+              <div className="px-5 pt-5 pb-4 border-b border-base bg-gradient-to-r from-emerald-500/5 via-transparent to-amber-500/5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-bold text-primary flex items-center gap-2">
+                      <span className="w-7 h-7 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0">
+                        <Car className="w-3.5 h-3.5 text-emerald-500" />
+                      </span>
+                      Choose Your Vehicle
+                    </h2>
+                    <p className="text-[11px] text-muted mt-0.5 pl-9">Fixed fares — prices shown are exact totals</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setBookingStep('route')}
+                    className="text-[10px] font-semibold text-muted hover:text-primary px-2.5 py-1.5 rounded-xl bg-elevated border border-base hover:border-strong transition-all cursor-pointer"
+                  >
+                    ← Back
+                  </button>
+                </div>
+              </div>
+
+              {/* Service + terminal info bar */}
+              <div className="mx-5 mt-4 p-3 rounded-2xl bg-surface border border-base text-xs flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <span className="text-secondary font-medium">{SERVICE_LABELS[selectedService]}</span>
+                </div>
+                {selectedTerminal && (
+                  <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px] font-bold border border-amber-500/20">
+                    {TERMINAL_LABELS[selectedTerminal]}
+                  </span>
+                )}
+              </div>
+
+              <div className="p-4 space-y-2.5">
+                {VEHICLE_CATEGORIES.map((cat) => {
+                  const isAvailable = availableVehicles.includes(cat);
+                  const fare = isAvailable ? resolveFixedFare(cat, selectedService, selectedTerminal) : null;
+                  const isSelected = selectedVehicle === cat;
+                  const cap = VEHICLE_CAPACITY[cat];
+
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      disabled={!isAvailable}
+                      onClick={() => setSelectedVehicle(cat)}
+                      className={`w-full text-left p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden ${
+                        !isAvailable
+                          ? 'opacity-40 cursor-not-allowed bg-surface border-base'
+                          : isSelected
+                          ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-500 ring-2 ring-emerald-500/20 shadow-md shadow-emerald-900/10'
+                          : 'bg-card border-base hover:border-emerald-500/40 hover:bg-emerald-500/5'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          {/* Selection indicator */}
+                          <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
+                            isSelected ? 'border-emerald-500 bg-emerald-500' : 'border-muted bg-transparent'
+                          }`}>
+                            {isSelected && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
+                          </div>
+                          <div>
+                            <div className={`font-bold text-xs ${isSelected ? 'text-emerald-700 dark:text-emerald-300' : 'text-primary'}`}>
+                              {VEHICLE_LABELS[cat]}
+                            </div>
+                            <div className="text-[10px] text-muted flex items-center gap-2 mt-0.5">
+                              <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {cap.passengers} pax</span>
+                              <span>·</span>
+                              <span className="flex items-center gap-1"><Luggage className="w-3 h-3" /> {cap.luggage} bags</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Fare badge */}
+                        {fare?.found ? (
+                          <div className={`text-right shrink-0 ${isSelected ? 'text-emerald-600 dark:text-emerald-400' : 'text-secondary'}`}>
+                            <div className="font-black text-base leading-tight">{formatFareSAR(fare.fare)}</div>
+                            <div className="text-[9px] font-semibold text-muted uppercase tracking-widest">Fixed Fare</div>
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-muted text-right">Not available</div>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+
+                {/* No vehicles available notice */}
+                {availableVehicles.length === 0 && (
+                  <div className="p-4 rounded-2xl bg-amber-500/5 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
+                    <div>
+                      <div className="font-bold mb-0.5">Fare not available</div>
+                      <p>No vehicles have a configured fare for this route and terminal. Please contact our team for a custom quote.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Fare disclaimer */}
+              <div className="mx-5 mb-4 p-3 rounded-2xl bg-emerald-500/5 border border-emerald-500/20 text-[10px] text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                All fares are fixed and verified by Al Harmain management. No surge pricing or hidden fees.
+              </div>
+
+              <div className="px-5 pb-5">
+                <button
+                  type="button"
+                  disabled={!selectedVehicle || isFareValidating}
+                  onClick={handleVehicleConfirmed}
+                  className="w-full py-4 rounded-2xl text-sm font-bold transition-all shadow-xl disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-600 text-white hover:from-emerald-500 hover:to-emerald-500 flex items-center justify-center gap-2.5"
+                >
+                  {isFareValidating ? (
+                    <>
+                      <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                      <span>Verifying Fare…</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Continue Booking</span>
+                      {selectedVehicle && farePreview?.found && (
+                        <span className="bg-white/20 text-white px-2.5 py-0.5 rounded-xl text-xs font-extrabold">
+                          {formatFareSAR(farePreview.fare)}
+                        </span>
+                      )}
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Map + saved places section (visible in route/vehicle steps) */}
+          {(bookingStep === 'route' || bookingStep === 'vehicle') && (
+            <div className="bg-card border border-base rounded-3xl shadow-xl overflow-hidden">
+              <div className="px-5 pt-4 pb-3 border-b border-base">
+                <span className="text-[10px] font-bold text-muted uppercase tracking-widest flex items-center gap-1.5">
+                  <Bookmark className="w-3 h-3 text-amber-500" />
+                  Quick Shortcuts
+                </span>
+              </div>
+              <div className="p-4 flex flex-wrap gap-2">
+                {!homePlace ? (
+                  <button type="button" onClick={() => openAddPlaceModal('home')} className="inline-flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-xl bg-surface/50 hover:bg-emerald-500/8 border border-dashed border-base hover:border-emerald-500/30 text-muted hover:text-emerald-600 dark:hover:text-emerald-400 text-[11px] transition-all cursor-pointer">
+                    <Home className="w-3.5 h-3.5" />
+                    <span>Add Home</span>
+                  </button>
+                ) : (
+                  <button type="button" onClick={() => handleSelectPlace(homePlace)} className="inline-flex items-center gap-1.5 pl-2.5 pr-3 py-1.5 rounded-xl bg-elevated hover:bg-emerald-500/10 border border-base hover:border-emerald-500/30 text-primary text-[11px] font-semibold transition-all cursor-pointer">
+                    <Home className="w-3 h-3 text-emerald-500" />
+                    <span>Home</span>
+                  </button>
+                )}
+                {!workPlace ? (
+                  <button type="button" onClick={() => openAddPlaceModal('work')} className="inline-flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-xl bg-surface/50 hover:bg-amber-500/8 border border-dashed border-base hover:border-amber-500/30 text-muted hover:text-amber-600 dark:hover:text-amber-400 text-[11px] transition-all cursor-pointer">
+                    <Briefcase className="w-3.5 h-3.5" />
+                    <span>Add Work</span>
+                  </button>
+                ) : (
+                  <button type="button" onClick={() => handleSelectPlace(workPlace)} className="inline-flex items-center gap-1.5 pl-2.5 pr-3 py-1.5 rounded-xl bg-elevated hover:bg-amber-500/10 border border-base hover:border-amber-500/30 text-primary text-[11px] font-semibold transition-all cursor-pointer">
+                    <Briefcase className="w-3 h-3 text-amber-500" />
+                    <span>Work</span>
+                  </button>
+                )}
+                <button type="button" onClick={() => openAddPlaceModal('custom')} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-elevated border border-base text-muted hover:text-emerald-600 dark:hover:text-emerald-400 text-[11px] font-semibold transition-all cursor-pointer hover:border-emerald-500/30">
                   <Plus className="w-3 h-3" />
                   Add Place
                 </button>
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                {/* Home Place Chip */}
-                {homePlace ? (
-                  <button
-                    type="button"
-                    onClick={() => handleSelectPlace(homePlace)}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-surface hover:bg-elevated border border-base text-primary text-xs font-medium transition-all group"
-                  >
-                    <Home className="w-3.5 h-3.5 text-emerald-500" />
-                    <span>Home</span>
-                    <span className="text-[10px] text-muted truncate max-w-[90px]">{homePlace.address.split(',')[0]}</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => openAddPlaceModal('home')}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-surface/50 hover:bg-surface border border-dashed border-base text-muted hover:text-primary text-xs transition-colors"
-                  >
-                    <Home className="w-3.5 h-3.5 text-muted" />
-                    <span>+ Add Home</span>
-                  </button>
-                )}
-
-                {/* Work Place Chip */}
-                {workPlace ? (
-                  <button
-                    type="button"
-                    onClick={() => handleSelectPlace(workPlace)}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-surface hover:bg-elevated border border-base text-primary text-xs font-medium transition-all group"
-                  >
-                    <Briefcase className="w-3.5 h-3.5 text-amber-500" />
-                    <span>Work</span>
-                    <span className="text-[10px] text-muted truncate max-w-[90px]">{workPlace.address.split(',')[0]}</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => openAddPlaceModal('work')}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-surface/50 hover:bg-surface border border-dashed border-base text-muted hover:text-primary text-xs transition-colors"
-                  >
-                    <Briefcase className="w-3.5 h-3.5 text-muted" />
-                    <span>+ Add Work</span>
-                  </button>
-                )}
-
-                {/* Custom Saved Places */}
-                {customPlaces.slice(0, 2).map((cp) => (
-                  <button
-                    key={cp.id}
-                    type="button"
-                    onClick={() => handleSelectPlace(cp)}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-surface hover:bg-elevated border border-base text-primary text-xs font-medium transition-all"
-                  >
-                    <Bookmark className="w-3.5 h-3.5 text-emerald-500" />
-                    <span>{cp.name}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Recent Locations Section */}
-            {recentLocations.length > 0 && (
-              <div className="space-y-2 pt-2 border-t border-base">
-                <div className="flex items-center justify-between text-xs text-muted">
-                  <span className="font-semibold text-secondary flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-muted" />
-                    Recent Destinations
-                  </span>
-                  <button
-                    type="button"
-                    onClick={clearRecentLocations}
-                    className="text-[10px] text-muted hover:text-rose-500 transition-colors"
-                  >
-                    Clear
-                  </button>
-                </div>
-
-                <div className="space-y-1">
-                  {recentLocations.slice(0, 3).map((rec) => (
-                    <button
-                      key={rec.id}
-                      type="button"
-                      onClick={() => handleSelectPlace(rec)}
-                      className="w-full text-left px-3 py-2 rounded-xl hover:bg-surface border border-transparent hover:border-base text-xs flex items-center justify-between group transition-colors"
-                    >
-                      <div className="flex items-center gap-2.5 truncate">
-                        <Clock className="w-3.5 h-3.5 text-muted shrink-0 group-hover:text-amber-500" />
-                        <span className="text-primary truncate font-medium">{rec.address}</span>
-                      </div>
-                      <ChevronRight className="w-3.5 h-3.5 text-muted group-hover:text-primary shrink-0" />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* 4. Trip Estimate Summary Card (shown once route is calculated) */}
-            {destination && pickup && distanceKm > 0 && (
-              <div className="p-4 rounded-2xl bg-gradient-to-br from-surface to-elevated border border-base space-y-3 animate-fade-up">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-secondary uppercase tracking-wider flex items-center gap-1.5">
-                    <Car className="w-4 h-4 text-emerald-500" />
-                    Trip Estimate
-                  </span>
-                  <span className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">
-                    Live Road Route
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div className="p-3 rounded-xl bg-card/60 border border-base">
-                    <div className="text-muted text-[11px]">Distance</div>
-                    <div className="text-base font-bold text-primary mt-0.5">
-                      {formatDistance(distanceKm)}
-                    </div>
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-card/60 border border-base">
-                    <div className="text-muted text-[11px]">Estimated Travel Time</div>
-                    <div className="text-base font-bold text-amber-600 dark:text-amber-400 mt-0.5">
-                      ~{formatDuration(durationMinutes)}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Vehicle Class Selector */}
-                <div className="space-y-2 pt-1">
-                  <div className="text-[11px] font-semibold text-muted uppercase">Select Vehicle Class</div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {vehicleOptions.map((v) => {
-                      const fare = calculateEstimatedFare(v.type, distanceKm, durationMinutes);
-                      return (
-                        <button
-                          key={v.type}
-                          type="button"
-                          onClick={() => setSelectedVehicle(v.type)}
-                          className={`p-2.5 rounded-xl border text-left transition-all ${
-                            selectedVehicle === v.type
-                              ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-500 ring-2 ring-emerald-500/20 shadow-md'
-                              : 'bg-card/70 border-base hover:border-strong'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-primary text-xs truncate">{v.name.split(' ')[0]}</span>
-                            <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                              {fare.total_fare} {settings.currency}
-                            </span>
-                          </div>
-                          <div className="text-[10px] text-muted flex items-center gap-2 mt-1">
-                            <span>{v.capacity} seats</span>
-                            <span>&bull;</span>
-                            <span>{v.luggage} bags</span>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Continue Booking CTA Button */}
-            <button
-              type="button"
-              disabled={!pickup || !destination || isSameLocation(pickup, destination) || isRouting}
-              onClick={() => setBookingStep('details')}
-              className="btn-primary w-full py-4 text-sm disabled:opacity-50 disabled:cursor-not-allowed shadow-xl flex items-center justify-center gap-2"
-            >
-              {isRouting ? (
-                <>
-                  <span className="w-4 h-4 rounded-full border-2 border-slate-950/30 border-t-slate-950 animate-spin" />
-                  <span>Calculating route…</span>
-                </>
-              ) : (
-                <>
-                  <span>Continue Booking</span>
-                  {fareEstimate && (
-                    <span className="font-bold bg-slate-950/20 px-2 py-0.5 rounded-md text-xs">
-                      {fareEstimate.total_fare} {settings.currency}
+              {/* Recent Destinations */}
+              {recentLocations.length > 0 && (
+                <div className="border-t border-base px-4 pt-3 pb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-bold text-muted uppercase tracking-widest flex items-center gap-1.5">
+                      <Clock className="w-3 h-3" /> Recent
                     </span>
-                  )}
-                  <ArrowRight className="w-4 h-4" />
-                </>
+                    <button type="button" onClick={clearRecentLocations} className="text-[10px] text-muted hover:text-rose-500 transition-colors px-2 py-0.5 rounded-lg hover:bg-rose-500/8 cursor-pointer">Clear all</button>
+                  </div>
+                  <div className="space-y-0.5">
+                    {recentLocations.slice(0, 3).map((rec) => (
+                      <button
+                        key={rec.id}
+                        type="button"
+                        onClick={() => handleSelectPlace(rec)}
+                        className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-surface border border-transparent hover:border-base text-[11px] flex items-center justify-between group transition-all cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2.5 truncate">
+                          <Clock className="w-3 h-3 text-muted group-hover:text-amber-500 transition-colors shrink-0" />
+                          <span className="text-primary truncate font-medium">{rec.address}</span>
+                        </div>
+                        <ChevronRight className="w-3.5 h-3.5 text-muted shrink-0" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
-            </button>
-          </div>
+            </div>
+          )}
+          </>
+          )}
+
         </div>
 
-        {/* Interactive Map: Order 1 on mobile (top), Order 2 on desktop (right) */}
+        {/* ── Interactive Map (right / top on mobile) ───────────────── */}
         <div className="order-1 lg:order-2 lg:col-span-7 h-[300px] sm:h-[380px] lg:h-[620px] relative lg:sticky lg:top-20 rounded-3xl overflow-hidden shadow-2xl border border-base">
           <BookingMap
-            pickup={pickup}
-            destination={destination}
+            pickup={bookingMethod === 'custom' ? customPickup : pickup}
+            destination={bookingMethod === 'custom' ? customDestination : destination}
+            stops={bookingMethod === 'custom' ? customStops : undefined}
             userLocation={userLocation}
-            routeCoords={routeCoords}
-            distanceKm={distanceKm}
-            durationMinutes={durationMinutes}
+            driverLocation={liveDriverLocation}
+            routeCoords={bookingMethod === 'custom' ? customRouteCoords : routeCoords}
+            distanceKm={bookingMethod === 'custom' ? customDistanceKm : distanceKm}
+            durationMinutes={bookingMethod === 'custom' ? customDurationMinutes : durationMinutes}
             interactiveMode={interactiveMode}
             onLocationPick={handleMapLocationPick}
-            onPickupAdjust={handlePickupAdjust}
-            onDestinationAdjust={handleDestinationAdjust}
-            onRecenterClick={handleUseCurrentLocation}
+            onPickupAdjust={bookingMethod === 'custom' ? handleCustomPickupAdjust : handlePickupAdjust}
+            onDestinationAdjust={bookingMethod === 'custom' ? handleCustomDestinationAdjust : handleDestinationAdjust}
+            onRecenterClick={bookingMethod === 'custom' ? handleCustomUseCurrentLocation : handleUseCurrentLocation}
             className="h-full w-full rounded-3xl"
           />
         </div>
       </div>
 
-      {/* 4. Full-featured Address Search Modal / Tray */}
+      {/* ── Address Search Modal ─────────────────────────────────────── */}
       {activeSearchField && (
         <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-start justify-center p-4 pt-16 sm:pt-24 animate-fade-up">
           <div className="bg-card border border-base rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
-            {/* Header / Input */}
             <div className="p-4 sm:p-5 border-b border-base flex items-center gap-3">
               <Search className="w-5 h-5 text-emerald-500 shrink-0" />
               <input
@@ -1037,50 +1668,47 @@ export default function CustomerHomePage() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={
-                  activeSearchField === 'pickup'
+                  activeSearchField === 'pickup' || activeSearchField === 'custom_pickup'
                     ? 'Search pickup address, hotel, or landmark…'
+                    : typeof activeSearchField === 'string' && activeSearchField.startsWith('stop_')
+                    ? 'Search intermediate stop address, mosque, or landmark…'
                     : 'Search destination, airport, market, or city…'
                 }
                 className="w-full bg-transparent text-primary text-sm sm:text-base placeholder:text-muted focus:outline-none"
               />
               {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="p-1 rounded-full hover:bg-elevated text-muted hover:text-primary"
-                >
+                <button type="button" onClick={() => setSearchQuery('')} className="p-1 rounded-full hover:bg-elevated text-muted hover:text-primary">
                   <X className="w-4 h-4" />
                 </button>
               )}
               <button
                 type="button"
-                onClick={() => {
-                  setActiveSearchField(null);
-                  setSearchQuery('');
-                }}
+                onClick={() => { setActiveSearchField(null); setSearchQuery(''); }}
                 className="px-3 py-1.5 rounded-xl bg-elevated hover:bg-surface text-secondary text-xs font-semibold"
               >
                 Cancel
               </button>
             </div>
 
-            {/* Content Suggestions */}
-            <div className="overflow-y-auto p-3 space-y-1 divide-y divide-base">
+            <div className="overflow-y-auto p-3 space-y-1">
               {isSearching && (
                 <div className="py-8 text-center text-muted text-xs flex items-center justify-center gap-2">
                   <span className="w-4 h-4 rounded-full border-2 border-emerald-500/30 border-t-emerald-500 animate-spin" />
-                  <span>Searching locations across Saudi Arabia &amp; region…</span>
+                  <span>Searching locations…</span>
                 </div>
               )}
 
-              {/* Current GPS Location Option */}
-              {activeSearchField === 'pickup' && !searchQuery && (
+              {(activeSearchField === 'pickup' || activeSearchField === 'custom_pickup') && !searchQuery && (
                 <button
                   type="button"
                   onClick={async () => {
                     setActiveSearchField(null);
                     setSearchQuery('');
-                    await handleUseCurrentLocation();
+                    if (activeSearchField === 'custom_pickup') {
+                      await handleCustomUseCurrentLocation();
+                    } else {
+                      await handleUseCurrentLocation();
+                    }
                   }}
                   className="w-full text-left p-3 rounded-2xl hover:bg-surface border border-transparent hover:border-base flex items-center gap-3 transition-colors cursor-pointer"
                 >
@@ -1088,34 +1716,17 @@ export default function CustomerHomePage() {
                     <Crosshair className="w-5 h-5 text-emerald-500" />
                   </div>
                   <div>
-                    <div className="font-semibold text-primary text-xs sm:text-sm flex items-center gap-1.5">
-                      <span>Use Current Location</span>
-                      {gpsAccuracy != null && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold">
-                          ±{gpsAccuracy}m
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-[11px] text-muted truncate">
-                      {detectedAddress || 'Detecting your GPS location…'}
-                    </div>
+                    <div className="font-semibold text-primary text-xs sm:text-sm">Use Current Location</div>
+                    <div className="text-[11px] text-muted truncate">{detectedAddress || 'Tap to detect live GPS coordinates'}</div>
                   </div>
                 </button>
               )}
 
-              {/* Saved Places list in Search */}
               {!searchQuery && savedPlaces.length > 0 && (
                 <div className="py-2">
-                  <div className="text-[10px] font-bold text-muted uppercase tracking-wider px-3 mb-1">
-                    Saved Places
-                  </div>
+                  <div className="text-[10px] font-bold text-muted uppercase tracking-wider px-3 mb-1">Saved Places</div>
                   {savedPlaces.map((sp) => (
-                    <button
-                      key={sp.id}
-                      type="button"
-                      onClick={() => handleSelectPlace(sp)}
-                      className="w-full text-left p-3 rounded-2xl hover:bg-surface flex items-center gap-3 transition-colors"
-                    >
+                    <button key={sp.id} type="button" onClick={() => handleSelectPlace(sp)} className="w-full text-left p-3 rounded-2xl hover:bg-surface flex items-center gap-3 transition-colors">
                       <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
                         {sp.type === 'home' ? <Home className="w-4 h-4" /> : sp.type === 'work' ? <Briefcase className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
                       </div>
@@ -1128,14 +1739,8 @@ export default function CustomerHomePage() {
                 </div>
               )}
 
-              {/* Search Suggestions */}
               {suggestions.map((item) => (
-                <button
-                  key={item.placeId}
-                  type="button"
-                  onClick={() => handleSelectPlace(item)}
-                  className="w-full text-left p-3 rounded-2xl hover:bg-surface flex items-center gap-3 transition-colors"
-                >
+                <button key={item.placeId} type="button" onClick={() => handleSelectPlace(item)} className="w-full text-left p-3 rounded-2xl hover:bg-surface flex items-center gap-3 transition-colors">
                   <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
                     <MapPin className="w-4 h-4" />
                   </div>
@@ -1147,143 +1752,79 @@ export default function CustomerHomePage() {
               ))}
 
               {searchQuery && !isSearching && suggestions.length === 0 && (
-                <div className="py-8 text-center text-muted text-xs">
-                  No exact matches found. Try checking the spelling or use the map pin.
-                </div>
+                <div className="py-8 text-center text-muted text-xs">No exact matches found. Try checking the spelling or use the map pin.</div>
               )}
             </div>
           </div>
         </div>
       )}
 
-      {/* 5. Step 2: Passenger Details & Scheduling Modal */}
-      {bookingStep === 'details' && pickup && destination && (
+      {/* ── Step 4: Passenger Details Modal ────────────────────────── */}
+      {bookingStep === 'details' && selectedService && selectedVehicle && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-fade-up">
           <div className="bg-card border border-base rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden p-6 sm:p-8 space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <span className="chip !bg-emerald-800/40 !text-emerald-300">Step 2 of 3</span>
-                <h3 className="type-card-title text-xl mt-1">Passenger &amp; Schedule Details</h3>
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">Step 4 of 5</span>
+                <h3 className="type-card-title text-xl mt-1">Passenger & Schedule</h3>
               </div>
-              <button
-                type="button"
-                onClick={() => setBookingStep('route')}
-                className="p-1 rounded-xl text-muted hover:text-primary hover:bg-elevated"
-              >
+              <button type="button" onClick={() => setBookingStep('vehicle')} className="p-1 rounded-xl text-muted hover:text-primary hover:bg-elevated">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Route Overview */}
+            {/* Booking summary card */}
             <div className="p-4 rounded-2xl bg-surface border border-base space-y-2 text-xs">
-              <div className="flex items-start gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 mt-1 shrink-0" />
-                <span className="text-secondary">Pickup: <strong className="text-primary">{pickup.address}</strong></span>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span className="font-bold text-secondary">{SERVICE_LABELS[selectedService]}</span>
+                {selectedTerminal && <span className="px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px] font-bold">{TERMINAL_LABELS[selectedTerminal]}</span>}
               </div>
-              <div className="flex items-start gap-2">
-                <span className="w-2 h-2 rounded-full bg-amber-500 mt-1 shrink-0" />
-                <span className="text-secondary">Destination: <strong className="text-amber-500">{destination.address}</strong></span>
-              </div>
-              <div className="pt-2 border-t border-base flex items-center justify-between text-muted text-[11px]">
-                <span>Distance: {formatDistance(distanceKm)}</span>
-                <span>Travel Time: ~{formatDuration(durationMinutes)}</span>
-                <span className="text-emerald-600 dark:text-emerald-400 font-bold">
-                  {fareEstimate ? `${fareEstimate.total_fare} ${settings.currency}` : ''}
-                </span>
+              {pickup && <div className="text-secondary"><span className="text-muted text-[10px] mr-1">Pickup:</span><strong className="text-primary">{pickup.address}</strong></div>}
+              {destination && <div className="text-secondary"><span className="text-muted text-[10px] mr-1">To:</span><strong className="text-amber-500">{destination.address}</strong></div>}
+              <div className="flex items-center justify-between pt-2 border-t border-base/60">
+                <span className="text-muted">{VEHICLE_LABELS[selectedVehicle]}</span>
+                {farePreview?.found && (
+                  <span className="font-black text-emerald-600 dark:text-emerald-400 text-sm">{formatFareSAR(farePreview.fare)}</span>
+                )}
               </div>
             </div>
 
-            {/* Passenger & Schedule Form */}
             <form onSubmit={handleDetailsSubmit} className="space-y-4 text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="type-label">Lead Passenger Name *</label>
-                  <input
-                    type="text"
-                    required
-                    value={passengerName}
-                    onChange={(e) => setPassengerName(e.target.value)}
-                    placeholder="Full Name"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-emerald-500"
-                  />
+                  <input type="text" required value={passengerName} onChange={(e) => setPassengerName(e.target.value)} placeholder="Full Name" className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-emerald-500" />
                 </div>
                 <div>
-                  <label className="type-label">Passenger Phone (WhatsApp) *</label>
-                  <input
-                    type="tel"
-                    required
-                    value={passengerPhone}
-                    onChange={(e) => setPassengerPhone(e.target.value)}
-                    placeholder="+966 5x xxx xxxx"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-emerald-500"
-                  />
+                  <label className="type-label">Phone (WhatsApp) *</label>
+                  <input type="tel" required value={passengerPhone} onChange={(e) => setPassengerPhone(e.target.value)} placeholder="+966 5x xxx xxxx" className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-emerald-500" />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="type-label">Date</label>
-                  <input
-                    type="date"
-                    required
-                    value={journeyDate}
-                    onChange={(e) => setJourneyDate(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-emerald-500"
-                  />
+                  <label className="type-label">Journey Date</label>
+                  <input type="date" required value={journeyDate} onChange={(e) => setJourneyDate(e.target.value)} className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-emerald-500" />
                 </div>
                 <div>
-                  <label className="type-label">Time</label>
-                  <input
-                    type="time"
-                    required
-                    value={journeyTime}
-                    onChange={(e) => setJourneyTime(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-emerald-500"
-                  />
+                  <label className="type-label">Pickup Time</label>
+                  <input type="time" required value={journeyTime} onChange={(e) => setJourneyTime(e.target.value)} className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-emerald-500" />
                 </div>
                 <div>
                   <label className="type-label">Passengers</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={14}
-                    value={passengerCount}
-                    onChange={(e) => setPassengerCount(parseInt(e.target.value) || 1)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs text-center font-bold focus:outline-none focus:border-emerald-500"
-                  />
+                  <input type="number" min={1} max={14} value={passengerCount} onChange={(e) => setPassengerCount(parseInt(e.target.value) || 1)} className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs text-center font-bold focus:outline-none focus:border-emerald-500" />
                 </div>
               </div>
 
               <div>
-                <label className="type-label">Flight Details or Special Requests</label>
-                <textarea
-                  rows={2}
-                  placeholder="e.g. Flight SV-124, baby seat required, extra luggage assistance."
-                  value={specialInstructions}
-                  onChange={(e) => setSpecialInstructions(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl bg-input border border-base text-primary placeholder:text-muted text-xs focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs flex items-center justify-between">
-                <span>Vehicle: <strong>{selectedVehicle.toUpperCase().replace('_', ' ')}</strong></span>
-                <span className="font-bold text-sm text-emerald-600 dark:text-emerald-400">
-                  Total Fare: {fareEstimate?.total_fare} {settings.currency}
-                </span>
+                <label className="type-label">Flight Details / Special Requests</label>
+                <textarea rows={2} placeholder="e.g. Flight SV-124, baby seat required, extra luggage." value={specialInstructions} onChange={(e) => setSpecialInstructions(e.target.value)} className="w-full px-3.5 py-2 rounded-xl bg-input border border-base text-primary placeholder:text-muted text-xs focus:outline-none focus:border-emerald-500" />
               </div>
 
               <div className="flex items-center gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setBookingStep('route')}
-                  className="btn-secondary flex-1 py-3 text-xs"
-                >
-                  Back
-                </button>
-                <button
-                  type="submit"
-                  className="btn-primary flex-[2] py-3 text-xs flex items-center justify-center gap-2 font-bold"
-                >
+                <button type="button" onClick={() => setBookingStep('vehicle')} className="btn-secondary flex-1 py-3 text-xs">Back</button>
+                <button type="submit" className="btn-primary flex-[2] py-3 text-xs flex items-center justify-center gap-2 font-bold">
                   <span>Proceed to Payment Proof</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
@@ -1293,66 +1834,66 @@ export default function CustomerHomePage() {
         </div>
       )}
 
-      {/* 6. Step 3: Booking Summary & Payment Proof Upload Modal */}
-      {bookingStep === 'summary_payment' && pickup && destination && (
+      {/* ── Step 5: Final Summary & Payment Upload Modal ─────────────── */}
+      {bookingStep === 'summary_payment' && selectedService && selectedVehicle && (
         <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto animate-fade-up">
           <div className="bg-card border border-base rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden p-6 sm:p-8 space-y-6 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-base pb-3">
               <div>
-                <span className="chip !bg-gold-500/20 !text-amber-400">Final Step 3 of 3</span>
-                <h3 className="type-card-title text-xl mt-1">Booking Summary &amp; Payment Proof</h3>
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20">Final Step 5 of 5</span>
+                <h3 className="type-card-title text-xl mt-1">Booking Summary & Payment Proof</h3>
               </div>
-              <button
-                type="button"
-                onClick={() => setBookingStep('details')}
-                className="p-1.5 rounded-xl text-muted hover:text-primary hover:bg-elevated"
-              >
+              <button type="button" onClick={() => setBookingStep('details')} className="p-1.5 rounded-xl text-muted hover:text-primary hover:bg-elevated">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Trip Summary Card */}
+            {/* Full summary card */}
             <div className="rounded-2xl bg-surface/80 border border-base p-4 space-y-3 text-xs">
               <div className="flex items-center justify-between text-muted text-[11px] border-b border-base/60 pb-2">
                 <span className="font-semibold text-secondary uppercase tracking-wider">Journey Summary</span>
                 <span>{journeyDate} at {journeyTime}</span>
               </div>
 
-              <div className="space-y-2">
-                <div className="flex items-start gap-2.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 mt-1 shrink-0 shadow-sm" />
-                  <div>
-                    <span className="text-muted text-[10px] uppercase font-bold">Pickup</span>
-                    <p className="font-semibold text-primary">{pickup.address}</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-2.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 mt-1 shrink-0 shadow-sm" />
-                  <div>
-                    <span className="text-muted text-[10px] uppercase font-bold">Destination</span>
-                    <p className="font-semibold text-amber-500">{destination.address}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-base/60 text-[11px]">
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
                 <div>
-                  <span className="text-muted block text-[10px]">Passenger</span>
-                  <span className="font-semibold text-primary truncate block">{passengerName}</span>
+                  <span className="text-muted block text-[10px]">Service</span>
+                  <span className="font-semibold text-primary">{SERVICE_LABELS[selectedService]}</span>
                 </div>
-                <div>
-                  <span className="text-muted block text-[10px]">WhatsApp</span>
-                  <span className="font-semibold text-primary">{passengerPhone}</span>
-                </div>
+                {selectedTerminal && (
+                  <div>
+                    <span className="text-muted block text-[10px]">Terminal</span>
+                    <span className="font-semibold text-amber-500">{TERMINAL_LABELS[selectedTerminal]}</span>
+                  </div>
+                )}
                 <div>
                   <span className="text-muted block text-[10px]">Vehicle</span>
-                  <span className="font-semibold text-primary uppercase">{selectedVehicle.replace('_', ' ')}</span>
+                  <span className="font-semibold text-primary">{VEHICLE_LABELS[selectedVehicle]}</span>
                 </div>
                 <div>
                   <span className="text-muted block text-[10px]">Passengers</span>
                   <span className="font-semibold text-primary">{passengerCount} Pax</span>
                 </div>
               </div>
+
+              {pickup && (
+                <div className="flex items-start gap-2.5 pt-1">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 mt-1 shrink-0" />
+                  <div>
+                    <span className="text-muted text-[10px] uppercase font-bold">Pickup</span>
+                    <p className="font-semibold text-primary">{pickup.address}</p>
+                  </div>
+                </div>
+              )}
+              {destination && (
+                <div className="flex items-start gap-2.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 mt-1 shrink-0" />
+                  <div>
+                    <span className="text-muted text-[10px] uppercase font-bold">Destination</span>
+                    <p className="font-semibold text-amber-500">{destination.address}</p>
+                  </div>
+                </div>
+              )}
 
               {specialInstructions && (
                 <div className="pt-2 border-t border-base/60 text-[11px]">
@@ -1361,47 +1902,42 @@ export default function CustomerHomePage() {
                 </div>
               )}
 
-              <div className="flex items-center justify-between pt-2 border-t border-base font-bold text-sm bg-emerald-500/10 p-3 rounded-xl">
-                <span className="text-secondary text-xs">Total Fare Due:</span>
-                <span className="text-emerald-500 text-base font-black">
-                  {fareEstimate?.total_fare} {settings.currency}
-                </span>
-              </div>
+              {/* Fixed Fare — prominent display */}
+              {farePreview?.found && (
+                <div className="flex items-center justify-between pt-3 border-t border-base bg-emerald-500/10 p-3 rounded-xl mt-2">
+                  <div>
+                    <span className="text-secondary text-xs font-bold">Total Fixed Fare</span>
+                    <div className="text-[10px] text-muted mt-0.5 flex items-center gap-1">
+                      <ShieldCheck className="w-3 h-3 text-emerald-500" />
+                      Server-verified · No hidden charges
+                    </div>
+                  </div>
+                  <span className="text-emerald-500 text-2xl font-black tracking-tight">
+                    {formatFareSAR(farePreview.fare)}
+                  </span>
+                </div>
+              )}
             </div>
 
-            {/* Official Transfer Instructions */}
+            {/* Payment Instructions */}
             <div className="rounded-2xl bg-amber-500/5 border border-amber-500/20 p-4 space-y-2 text-xs">
               <div className="flex items-center gap-2 text-amber-500 font-bold">
                 <Building2 className="w-4 h-4" />
                 <span>Bank Transfer / Payment Instructions</span>
               </div>
               <p className="text-[11px] text-secondary">
-                Please transfer the trip fare of <strong>{fareEstimate?.total_fare} {settings.currency}</strong> to complete your request.
+                Please transfer <strong>{farePreview?.found ? formatFareSAR(farePreview.fare) : 'the fare amount'}</strong> to complete your request.
               </p>
               <div className="bg-card p-3 rounded-xl border border-base font-mono text-xs space-y-1">
-                <div className="flex justify-between text-secondary">
-                  <span>Bank Name:</span>
-                  <strong className="text-primary">Al Rajhi Bank / SNB</strong>
-                </div>
-                <div className="flex justify-between text-secondary">
-                  <span>Account Name:</span>
-                  <strong className="text-primary">Al Harmain VIP Transport</strong>
-                </div>
-                <div className="flex justify-between text-secondary">
-                  <span>Corporate IBAN:</span>
-                  <strong className="text-amber-500 select-all">SA44 8000 0456 6080 1012 3456</strong>
-                </div>
-                <div className="flex justify-between text-secondary">
-                  <span>STC Pay / Urpay:</span>
-                  <strong className="text-emerald-500 select-all">+966 54 888 1234</strong>
-                </div>
+                <div className="flex justify-between text-secondary"><span>Bank Name:</span><strong className="text-primary">Al Rajhi Bank / SNB</strong></div>
+                <div className="flex justify-between text-secondary"><span>Account Name:</span><strong className="text-primary">Al Harmain VIP Transport</strong></div>
+                <div className="flex justify-between text-secondary"><span>Corporate IBAN:</span><strong className="text-amber-500 select-all">SA44 8000 0456 6080 1012 3456</strong></div>
+                <div className="flex justify-between text-secondary"><span>STC Pay / Urpay:</span><strong className="text-emerald-500 select-all">+966 54 888 1234</strong></div>
               </div>
-              <p className="text-[10px] text-muted italic">
-                * Note: Your booking will be placed in &quot;Pending Verification&quot; until our operations desk confirms receipt.
-              </p>
+              <p className="text-[10px] text-muted italic">* Your booking will be held as "Pending Verification" until our operations desk confirms receipt.</p>
             </div>
 
-            {/* Payment Proof File Uploader */}
+            {/* Payment file upload */}
             <form onSubmit={handleConfirmBooking} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-primary mb-1.5 flex items-center justify-between">
@@ -1412,30 +1948,16 @@ export default function CustomerHomePage() {
                   <span className="text-[10px] text-muted">Required</span>
                 </label>
 
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/jpg,image/webp"
-                  onChange={handlePaymentFileChange}
-                  className="hidden"
-                  id="payment-receipt-upload"
-                />
+                <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/jpg,image/webp" onChange={handlePaymentFileChange} className="hidden" id="payment-receipt-upload" />
 
                 {!paymentPreviewUrl ? (
-                  <label
-                    htmlFor="payment-receipt-upload"
-                    className="cursor-pointer border-2 border-dashed border-base hover:border-emerald-500/60 rounded-2xl p-6 bg-surface/50 hover:bg-surface flex flex-col items-center justify-center text-center gap-2 transition-all group"
-                  >
+                  <label htmlFor="payment-receipt-upload" className="cursor-pointer border-2 border-dashed border-base hover:border-emerald-500/60 rounded-2xl p-6 bg-surface/50 hover:bg-surface flex flex-col items-center justify-center text-center gap-2 transition-all group">
                     <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center group-hover:scale-110 transition-transform">
                       <UploadCloud className="w-6 h-6" />
                     </div>
                     <div>
-                      <span className="text-xs font-bold text-primary group-hover:text-emerald-400 transition-colors">
-                        Click or Drag &amp; Drop Transfer Screenshot
-                      </span>
-                      <p className="text-[11px] text-muted mt-0.5">
-                        PNG, JPG, or WebP (up to 10MB)
-                      </p>
+                      <span className="text-xs font-bold text-primary group-hover:text-emerald-400 transition-colors">Click or Drag & Drop Transfer Screenshot</span>
+                      <p className="text-[11px] text-muted mt-0.5">PNG, JPG, or WebP (up to 10MB)</p>
                     </div>
                   </label>
                 ) : (
@@ -1445,45 +1967,22 @@ export default function CustomerHomePage() {
                         <FileImage className="w-4 h-4 text-emerald-500 shrink-0" />
                         <span className="truncate">{paymentFile?.name || 'Payment Receipt'}</span>
                       </div>
-                      <button
-                        type="button"
-                        onClick={removePaymentFile}
-                        className="text-[11px] text-rose-500 hover:text-rose-400 font-bold hover:underline"
-                      >
-                        Remove
-                      </button>
+                      <button type="button" onClick={removePaymentFile} className="text-[11px] text-rose-500 hover:text-rose-400 font-bold hover:underline">Remove</button>
                     </div>
-
-                    <div className="relative rounded-xl overflow-hidden max-h-48 border border-base bg-slate-950 flex items-center justify-center">
+                    <div className="relative rounded-xl overflow-hidden max-h-48 border border-base bg-surface flex items-center justify-center p-2">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={paymentPreviewUrl}
-                        alt="Payment Screenshot Preview"
-                        className="max-h-48 object-contain w-full rounded-xl"
-                      />
+                      <img src={paymentPreviewUrl} alt="Payment Screenshot Preview" className="max-h-48 object-contain w-full rounded-xl" />
                     </div>
-
                     <div className="flex items-center justify-between text-[10px] text-muted">
                       <span>Size: {paymentFile ? (paymentFile.size / 1024).toFixed(1) + ' KB' : ''}</span>
-                      <label
-                        htmlFor="payment-receipt-upload"
-                        className="cursor-pointer text-emerald-500 hover:underline font-semibold"
-                      >
-                        Replace Image
-                      </label>
+                      <label htmlFor="payment-receipt-upload" className="cursor-pointer text-emerald-500 hover:underline font-semibold">Replace Image</label>
                     </div>
                   </div>
                 )}
               </div>
 
               <div className="flex items-center gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setBookingStep('details')}
-                  className="btn-secondary flex-1 py-3 text-xs"
-                >
-                  Back to Details
-                </button>
+                <button type="button" onClick={() => setBookingStep('details')} className="btn-secondary flex-1 py-3 text-xs">Back to Details</button>
                 <button
                   type="submit"
                   disabled={isSubmitting || !paymentFile}
@@ -1492,7 +1991,7 @@ export default function CustomerHomePage() {
                   {isSubmitting ? (
                     <>
                       <span className="w-4 h-4 rounded-full border-2 border-slate-950/30 border-t-slate-950 animate-spin" />
-                      <span>Submitting Booking &amp; Proof…</span>
+                      <span>Submitting Booking…</span>
                     </>
                   ) : (
                     <>
@@ -1507,7 +2006,7 @@ export default function CustomerHomePage() {
         </div>
       )}
 
-      {/* 7. Step 4: Booking Submitted Success Modal */}
+      {/* ── Step 6: Booking Submitted Success ────────────────────────── */}
       {bookingStep === 'submitted' && confirmedBookingRef && (
         <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 animate-fade-up">
           <div className="bg-card border border-emerald-500/40 rounded-3xl w-full max-w-md shadow-2xl p-6 sm:p-8 space-y-5 text-center">
@@ -1517,43 +2016,43 @@ export default function CustomerHomePage() {
 
             <div className="space-y-1">
               <h3 className="type-card-title text-xl">Booking Request Received!</h3>
-              <p className="text-xs text-secondary">
-                Your reservation and payment receipt have been saved to Supabase.
-              </p>
+              <p className="text-xs text-secondary">Your reservation and payment receipt have been saved securely.</p>
             </div>
 
             <div className="p-4 rounded-2xl bg-surface border border-base space-y-2 text-left">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted">Booking Reference:</span>
-                <span className="font-mono text-base font-black text-amber-500">{confirmedBookingRef}</span>
+                <span className="font-mono text-base font-black text-amber-600 dark:text-amber-400">{confirmedBookingRef}</span>
               </div>
+              {selectedService && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted">Service:</span>
+                  <span className="font-semibold text-primary">{SERVICE_LABELS[selectedService]}</span>
+                </div>
+              )}
+              {selectedVehicle && farePreview?.found && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted">Fixed Fare:</span>
+                  <span className="font-black text-emerald-600 dark:text-emerald-400">{formatFareSAR(farePreview.fare)}</span>
+                </div>
+              )}
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted">Status:</span>
-                <span className="px-2.5 py-0.5 rounded-full text-[11px] uppercase font-bold bg-amber-500/10 text-amber-500 border border-amber-500/30">
-                  Pending Verification
-                </span>
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] uppercase font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30">Pending Verification</span>
               </div>
               <p className="text-[11px] text-muted pt-1 border-t border-base/60 leading-relaxed">
-                Our central dispatch team will review your payment screenshot. Upon verification, the booking is confirmed and a captain will be assigned.
+                Our dispatch team will review your payment screenshot. Upon verification, the booking is confirmed and a captain will be assigned.
               </p>
             </div>
 
             <div className="flex flex-col gap-2 pt-2">
-              <Link
-                href="/customer/bookings"
-                className="btn-primary w-full py-3 text-xs flex items-center justify-center gap-2 font-bold"
-              >
+              <Link href="/customer/bookings" className="btn-primary w-full py-3 text-xs flex items-center justify-center gap-2 font-bold">
                 <Clock className="w-4 h-4" />
                 <span>View Booking in My Rides</span>
               </Link>
               <button
                 type="button"
-                onClick={() => {
-                  setBookingStep('route');
-                  setConfirmedBookingRef(null);
-                  setPaymentFile(null);
-                  setPaymentPreviewUrl(null);
-                }}
+                onClick={resetBooking}
                 className="text-xs text-muted hover:text-primary py-2"
               >
                 + Book Another Journey
@@ -1563,19 +2062,13 @@ export default function CustomerHomePage() {
         </div>
       )}
 
-      {/* 7. Manage Saved Places Modal */}
+      {/* ── Manage Saved Places Modal ─────────────────────────────────── */}
       {isSavedPlacesModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-up">
           <div className="bg-card border border-base rounded-3xl w-full max-w-md shadow-2xl p-6 space-y-5">
             <div className="flex items-center justify-between">
-              <h3 className="type-card-title text-lg">
-                {editingPlace ? 'Edit Saved Place' : 'Save a New Place'}
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsSavedPlacesModalOpen(false)}
-                className="p-1 rounded-xl text-muted hover:text-primary hover:bg-elevated"
-              >
+              <h3 className="type-card-title text-lg">{editingPlace ? 'Edit Saved Place' : 'Save a New Place'}</h3>
+              <button type="button" onClick={() => setIsSavedPlacesModalOpen(false)} className="p-1 rounded-xl text-muted hover:text-primary hover:bg-elevated">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -1588,16 +2081,8 @@ export default function CustomerHomePage() {
                     <button
                       key={t}
                       type="button"
-                      onClick={() => {
-                        setPlaceType(t);
-                        if (t === 'home') setPlaceName('Home');
-                        else if (t === 'work') setPlaceName('Work');
-                      }}
-                      className={`py-2 px-3 rounded-xl border font-semibold capitalize text-xs flex items-center justify-center gap-1.5 ${
-                        placeType === t
-                          ? 'bg-emerald-50 dark:bg-emerald-950 border-emerald-500 text-emerald-700 dark:text-emerald-300'
-                          : 'bg-surface border-base text-secondary'
-                      }`}
+                      onClick={() => { setPlaceType(t); if (t === 'home') setPlaceName('Home'); else if (t === 'work') setPlaceName('Work'); }}
+                      className={`py-2 px-3 rounded-xl border font-semibold capitalize text-xs flex items-center justify-center gap-1.5 ${placeType === t ? 'bg-emerald-50 dark:bg-emerald-950 border-emerald-500 text-emerald-700 dark:text-emerald-300' : 'bg-surface border-base text-secondary'}`}
                     >
                       {t === 'home' ? <Home className="w-3.5 h-3.5" /> : t === 'work' ? <Briefcase className="w-3.5 h-3.5" /> : <Bookmark className="w-3.5 h-3.5" />}
                       <span>{t}</span>
@@ -1608,79 +2093,41 @@ export default function CustomerHomePage() {
 
               <div>
                 <label className="type-label">Label Name *</label>
-                <input
-                  type="text"
-                  required
-                  value={placeName}
-                  onChange={(e) => setPlaceName(e.target.value)}
-                  placeholder="e.g. Home, Work, Aunt's House, Hotel"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-emerald-500"
-                />
+                <input type="text" required value={placeName} onChange={(e) => setPlaceName(e.target.value)} placeholder="e.g. Home, Work, Hotel" className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-emerald-500" />
               </div>
 
               <div>
                 <label className="type-label">Full Address *</label>
-                <input
-                  type="text"
-                  required
-                  value={placeAddress}
-                  onChange={(e) => setPlaceAddress(e.target.value)}
-                  placeholder="Street, City, Landmark"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-emerald-500"
-                />
+                <input type="text" required value={placeAddress} onChange={(e) => setPlaceAddress(e.target.value)} placeholder="Street, City, Landmark" className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-emerald-500" />
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (userLocation) {
-                      setPlaceLat(userLocation.latitude);
-                      setPlaceLng(userLocation.longitude);
-                      try {
-                        const addr = await reverseGeocode(userLocation.latitude, userLocation.longitude);
-                        if (addr) setPlaceAddress(addr);
-                      } catch {}
-                      toast.success('Filled with current GPS location');
-                    } else {
-                      await handleUseCurrentLocation();
-                    }
-                  }}
-                  className="text-[11px] text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
-                >
-                  <Crosshair className="w-3.5 h-3.5" />
-                  Use Current Location
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (userLocation) {
+                    setPlaceLat(userLocation.latitude);
+                    setPlaceLng(userLocation.longitude);
+                    try { const addr = await reverseGeocode(userLocation.latitude, userLocation.longitude); if (addr) setPlaceAddress(addr); } catch { }
+                    toast.success('Filled with current GPS location');
+                  } else {
+                    await handleUseCurrentLocation();
+                  }
+                }}
+                className="text-[11px] text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <Crosshair className="w-3.5 h-3.5" />
+                Use Current Location
+              </button>
 
               <div className="flex items-center justify-between gap-3 pt-3 border-t border-base">
                 {editingPlace && (
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      await deleteSavedPlace(editingPlace.id);
-                      setIsSavedPlacesModalOpen(false);
-                    }}
-                    className="p-2.5 rounded-xl text-rose-500 hover:bg-rose-500/10 transition-colors"
-                    title="Delete place"
-                  >
+                  <button type="button" onClick={async () => { await deleteSavedPlace(editingPlace.id); setIsSavedPlacesModalOpen(false); }} className="p-2.5 rounded-xl text-rose-500 hover:bg-rose-500/10 transition-colors" title="Delete place">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 )}
                 <div className="flex items-center gap-2 ml-auto">
-                  <button
-                    type="button"
-                    onClick={() => setIsSavedPlacesModalOpen(false)}
-                    className="btn-secondary py-2.5 px-4 text-xs"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="btn-primary py-2.5 px-5 text-xs"
-                  >
-                    Save Place
-                  </button>
+                  <button type="button" onClick={() => setIsSavedPlacesModalOpen(false)} className="btn-secondary py-2.5 px-4 text-xs">Cancel</button>
+                  <button type="submit" className="btn-primary py-2.5 px-5 text-xs">Save Place</button>
                 </div>
               </div>
             </form>

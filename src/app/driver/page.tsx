@@ -29,12 +29,14 @@ import {
   CalendarCheck,
   Sparkles,
   Radio,
+  Crosshair,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   categorizeDriverAssignments,
   getWorkflowStep,
 } from '@/lib/assignment-utils';
+import { isValidCoordinate } from '@/lib/maps/location-service';
 
 const LiveMap = dynamic(() => import('@/components/map/LiveMap'), {
   ssr: false,
@@ -110,26 +112,49 @@ export default function DriverCockpitPage() {
   const [chargeDesc, setChargeDesc] = useState<string>('Airport Express Toll');
 
   // Browser Geolocation watching
-  const [gpsActive, setGpsActive] = useState<boolean>(false);
+  const [gpsActive, setGpsActive] = useState<boolean>(true);
+  const [gpsLoading, setGpsLoading] = useState<boolean>(true);
+  const [gpsError, setGpsError] = useState<string | null>(null);
+  const [viewCenter, setViewCenter] = useState<[number, number] | null>(null);
   const [heading, setHeading] = useState<number>(currentDriver?.location?.heading || 0);
-  const [driverPos, setDriverPos] = useState({
-    lat: currentDriver?.location?.latitude || 21.685,
-    lng: currentDriver?.location?.longitude || 39.157,
+  const [driverPos, setDriverPos] = useState<{ lat: number; lng: number } | null>(() => {
+    if (
+      currentDriver?.location?.latitude &&
+      currentDriver?.location?.longitude &&
+      isValidCoordinate(currentDriver.location.latitude, currentDriver.location.longitude)
+    ) {
+      return { lat: currentDriver.location.latitude, lng: currentDriver.location.longitude };
+    }
+    return null;
   });
-  const isTracking = gpsActive;
+  const isTracking = gpsActive && driverPos !== null;
 
-  // Continuously stream driver GPS position while active
+  // Continuously stream driver GPS position with high accuracy and fresh readings (maximumAge: 0)
   useEffect(() => {
-    let watchId: number | null = null;
+    if (typeof window === 'undefined' || !('geolocation' in navigator)) {
+      setGpsError('Browser Geolocation is not supported on this device.');
+      setGpsLoading(false);
+      return;
+    }
 
-    if (gpsActive && currentDriver && typeof window !== 'undefined' && 'geolocation' in navigator) {
-      watchId = navigator.geolocation.watchPosition(
-        (pos) => {
-          const { latitude, longitude, heading: gpsHeading, speed } = pos.coords;
-          setDriverPos({ lat: latitude, lng: longitude });
-          if (gpsHeading !== null && !isNaN(gpsHeading)) {
-            setHeading(gpsHeading);
-          }
+    if (!gpsActive) return;
+
+    setGpsLoading(true);
+
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const { latitude, longitude, heading: gpsHeading, speed } = pos.coords;
+        if (!isValidCoordinate(latitude, longitude)) return;
+
+        setDriverPos({ lat: latitude, lng: longitude });
+        setGpsLoading(false);
+        setGpsError(null);
+
+        if (gpsHeading !== null && !isNaN(gpsHeading)) {
+          setHeading(gpsHeading);
+        }
+
+        if (currentDriver?.id) {
           updateDriverLocation(
             currentDriver.id,
             latitude,
@@ -137,31 +162,30 @@ export default function DriverCockpitPage() {
             gpsHeading || 0,
             speed || 0
           );
-        },
-        (err) => {
-          console.warn('Driver GPS watcher error:', err.message);
-          if (err.code === 1) {
-            toast.error('Location permission was denied. Please enable GPS permissions in your browser.');
-            setGpsActive(false);
-          }
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
-      );
-    }
+        }
+      },
+      (err) => {
+        console.warn('Driver GPS watcher error:', err.message);
+        setGpsLoading(false);
+        if (err.code === 1) { // PERMISSION_DENIED
+          setGpsActive(false);
+          setGpsError('Location permission was denied. Please enable GPS permissions in your browser settings.');
+          toast.error('Location permission was denied. Please enable GPS permissions in your browser.');
+        } else if (err.code === 2) { // POSITION_UNAVAILABLE
+          setGpsError('GPS signal is currently unavailable. Please verify device location services are enabled.');
+        } else if (err.code === 3) { // TIMEOUT
+          setGpsError('GPS location request timed out. Retrying satellite lock...');
+        } else {
+          setGpsError(err.message || 'GPS hardware error');
+        }
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
 
     return () => {
-      if (watchId !== null && typeof window !== 'undefined' && 'geolocation' in navigator) {
-        navigator.geolocation.clearWatch(watchId);
-      }
+      navigator.geolocation.clearWatch(watchId);
     };
   }, [gpsActive, currentDriver?.id, updateDriverLocation]);
-
-  // Automatically deactivate GPS when there is no active in-progress ride
-  useEffect(() => {
-    if (!activeAssignment && gpsActive) {
-      setGpsActive(false);
-    }
-  }, [activeAssignment, gpsActive]);
 
   if (isDataLoading) {
     return (
@@ -192,60 +216,48 @@ export default function DriverCockpitPage() {
     );
   }
 
-  const toggleGps = () => {
-    if (!gpsActive) {
-      if (typeof window !== 'undefined' && 'geolocation' in navigator) {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            const { latitude, longitude, heading: gpsHeading, speed } = pos.coords;
-            setDriverPos({ lat: latitude, lng: longitude });
-            if (gpsHeading !== null && !isNaN(gpsHeading)) {
-              setHeading(gpsHeading);
-            }
-            if (currentDriver) {
-              updateDriverLocation(currentDriver.id, latitude, longitude, gpsHeading || 0, speed || 0);
-            }
-            setGpsActive(true);
-            toast.success('Live GPS Sharing Activated! Broadcasting telemetry to dispatch & passenger.');
-          },
-          (err) => {
-            toast.error(`Unable to retrieve GPS: ${err.message}. Please allow location access.`);
-          },
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-        );
-      } else {
-        toast.error('Browser Geolocation is not supported on this device.');
-      }
-    } else {
-      setGpsActive(false);
-      toast.info('GPS Tracking Session Paused.');
+  const refreshGps = () => {
+    if (typeof window === 'undefined' || !('geolocation' in navigator)) {
+      toast.error('Browser Geolocation is not supported on this device.');
+      return;
     }
-  };
-
-  const handleStartDriving = async (bookingId: string) => {
-    await driverUpdateRideStatus(bookingId, 'driver_arriving');
-    if (typeof window !== 'undefined' && 'geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const { latitude, longitude, heading: gpsHeading, speed } = pos.coords;
+    setGpsLoading(true);
+    setGpsActive(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude, heading: gpsHeading, speed } = pos.coords;
+        if (isValidCoordinate(latitude, longitude)) {
           setDriverPos({ lat: latitude, lng: longitude });
+          setViewCenter(null);
+          setGpsLoading(false);
+          setGpsError(null);
           if (gpsHeading !== null && !isNaN(gpsHeading)) {
             setHeading(gpsHeading);
           }
-          if (currentDriver) {
+          if (currentDriver?.id) {
             updateDriverLocation(currentDriver.id, latitude, longitude, gpsHeading || 0, speed || 0);
           }
-        },
-        () => {},
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
-      );
-      setGpsActive(true);
-    }
+          toast.success('Live GPS coordinates updated successfully.');
+        }
+      },
+      (err) => {
+        setGpsLoading(false);
+        setGpsError(err.message);
+        toast.error(`Unable to retrieve GPS: ${err.message}. Please allow location access.`);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  };
+
+  const toggleGps = refreshGps;
+
+  const handleStartDriving = async (bookingId: string) => {
+    await driverUpdateRideStatus(bookingId, 'driver_arriving');
+    refreshGps();
   };
 
   const handleCompleteTrip = async (bookingId: string) => {
     await driverUpdateRideStatus(bookingId, 'trip_completed');
-    setGpsActive(false);
   };
 
   const handleStatusChange = (status: DriverStatus) => {
@@ -324,15 +336,14 @@ export default function DriverCockpitPage() {
                 {currentDriver.profile?.full_name?.charAt(0) || currentDriver.full_name?.charAt(0) || 'C'}
               </div>
               <span
-                className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-card ring-2 ring-card shadow ${
-                  currentDriver.status === 'available'
+                className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-card ring-2 ring-card shadow ${currentDriver.status === 'available'
                     ? 'bg-emerald-500'
                     : currentDriver.status === 'on_trip'
-                    ? 'bg-purple-500'
-                    : currentDriver.status === 'assigned'
-                    ? 'bg-amber-500'
-                    : 'bg-rose-500'
-                }`}
+                      ? 'bg-purple-500'
+                      : currentDriver.status === 'assigned'
+                        ? 'bg-amber-500'
+                        : 'bg-rose-500'
+                  }`}
                 title={`Status: ${currentDriver.status}`}
               />
             </div>
@@ -386,17 +397,18 @@ export default function DriverCockpitPage() {
               </div>
             )}
 
-            {/* GPS Toggle */}
+            {/* GPS Refresh / Status Button */}
             <button
-              onClick={toggleGps}
+              onClick={refreshGps}
+              title="Click to refresh fresh GPS hardware reading"
               className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-2 shadow-sm ${
-                gpsActive
-                  ? 'bg-emerald-500/15 border-emerald-500 text-emerald-600 dark:text-emerald-300 ring-2 ring-emerald-500/30 animate-pulse'
+                driverPos
+                  ? 'bg-emerald-500/15 border-emerald-500 text-emerald-600 dark:text-emerald-300 ring-2 ring-emerald-500/30'
                   : 'bg-surface border-base text-secondary hover:text-primary hover:border-emerald-500/40'
               }`}
             >
-              <Compass className={`w-4 h-4 ${gpsActive ? 'text-emerald-500' : 'text-muted'}`} />
-              <span>{gpsActive ? 'GPS Sharing: ON' : 'Start GPS Share'}</span>
+              <Compass className={`w-4 h-4 ${gpsLoading ? 'animate-spin text-emerald-500' : driverPos ? 'text-emerald-500' : 'text-muted'}`} />
+              <span>{driverPos ? 'Live GPS Online' : gpsLoading ? 'Acquiring GPS…' : 'Refresh GPS'}</span>
             </button>
 
             {/* Duty status segment buttons */}
@@ -405,11 +417,10 @@ export default function DriverCockpitPage() {
                 <button
                   key={st}
                   onClick={() => handleStatusChange(st)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-all ${
-                    currentDriver.status === st
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-all ${currentDriver.status === st
                       ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950/20'
                       : 'text-secondary hover:text-primary'
-                  }`}
+                    }`}
                 >
                   {st.replace('_', ' ')}
                 </button>
@@ -543,13 +554,12 @@ export default function DriverCockpitPage() {
                 return (
                   <div
                     key={step.num}
-                    className={`p-3 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 ${
-                      isCurrent
+                    className={`p-3 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 ${isCurrent
                         ? 'bg-emerald-500/20 border-emerald-500 text-emerald-700 dark:text-emerald-300 font-bold shadow-md shadow-emerald-950/20 ring-1 ring-emerald-500/50'
                         : isPassed
-                        ? 'bg-surface border-emerald-500/40 text-emerald-600 dark:text-emerald-400 font-medium'
-                        : 'bg-card/40 border-base text-muted opacity-50'
-                    }`}
+                          ? 'bg-surface border-emerald-500/40 text-emerald-600 dark:text-emerald-400 font-medium'
+                          : 'bg-card/40 border-base text-muted opacity-50'
+                      }`}
                   >
                     <div className="flex items-center justify-center gap-1 text-[11px]">
                       {isPassed ? (
@@ -634,17 +644,25 @@ export default function DriverCockpitPage() {
             <div className="lg:col-span-5">
               <div className="rounded-2xl overflow-hidden border border-emerald-500/40 shadow-xl">
                 <LiveMap
-                  center={[driverPos.lat, driverPos.lng]}
+                  center={
+                    driverPos
+                      ? [driverPos.lat, driverPos.lng]
+                      : [activeAssignment.pickup_latitude, activeAssignment.pickup_longitude]
+                  }
                   zoom={12}
                   markers={[
-                    {
-                      lat: driverPos.lat,
-                      lng: driverPos.lng,
-                      label: 'Your Vehicle',
-                      type: 'driver',
-                      subText: currentDriver.vehicle?.plate_number || 'VIP Chauffeur',
-                      heading: heading || 0,
-                    },
+                    ...(driverPos
+                      ? [
+                          {
+                            lat: driverPos.lat,
+                            lng: driverPos.lng,
+                            label: 'Your Vehicle',
+                            type: 'driver' as const,
+                            subText: currentDriver.vehicle?.plate_number || 'VIP Chauffeur',
+                            heading: heading || 0,
+                          },
+                        ]
+                      : []),
                     {
                       lat: activeAssignment.pickup_latitude,
                       lng: activeAssignment.pickup_longitude,
@@ -711,13 +729,13 @@ export default function DriverCockpitPage() {
               {(activeAssignment.status === 'started' ||
                 activeAssignment.status === 'trip_started' ||
                 activeAssignment.status === 'ride_started') && (
-                <button
-                  onClick={() => handleCompleteTrip(activeAssignment.id)}
-                  className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold px-6 py-3 rounded-xl shadow-lg shadow-emerald-950/20 transition-all flex items-center justify-center gap-2 transform active:scale-95"
-                >
-                  <CheckCircle2 className="w-4 h-4" /> Complete Trip Successfully (End GPS)
-                </button>
-              )}
+                  <button
+                    onClick={() => handleCompleteTrip(activeAssignment.id)}
+                    className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold px-6 py-3 rounded-xl shadow-lg shadow-emerald-950/20 transition-all flex items-center justify-center gap-2 transform active:scale-95"
+                  >
+                    <CheckCircle2 className="w-4 h-4" /> Complete Trip Successfully (End GPS)
+                  </button>
+                )}
             </div>
           </div>
         </div>
@@ -745,61 +763,103 @@ export default function DriverCockpitPage() {
             </div>
 
             <div className="flex items-center gap-2.5 flex-wrap">
-              <div className="bg-surface px-3 py-1.5 rounded-xl border border-base text-xs font-mono text-secondary flex items-center gap-2">
-                <Radio className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
-                <span className="text-primary font-bold">{driverPos.lat.toFixed(4)}° N, {driverPos.lng.toFixed(4)}° E</span>
-              </div>
-              <span className="px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
-                {isTracking ? 'Broadcasting 5G' : 'GPS Offline'}
+              {driverPos && (
+                <div className="bg-surface px-3 py-1.5 rounded-xl border border-base text-xs font-mono text-secondary flex items-center gap-2">
+                  <Radio className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
+                  <span className="text-primary font-bold">{driverPos.lat.toFixed(4)}° N, {driverPos.lng.toFixed(4)}° E</span>
+                </div>
+              )}
+              <span className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider ${
+                driverPos
+                  ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
+                  : gpsError
+                  ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/30'
+                  : 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30'
+              }`}>
+                {driverPos ? 'Broadcasting Live GPS' : gpsError ? 'GPS Permission Needed' : 'Acquiring GPS...'}
               </span>
             </div>
           </div>
 
           {/* Interactive Map Component */}
-          <div className="rounded-2xl overflow-hidden border border-base shadow-lg">
+          <div className="rounded-2xl overflow-hidden border border-base shadow-lg relative">
+            {gpsError && !driverPos && (
+              <div className="p-3.5 bg-rose-500/10 border-b border-rose-500/20 text-rose-300 text-xs flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>{gpsError}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={refreshGps}
+                  className="px-3 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 font-bold border border-rose-500/40 text-[11px] cursor-pointer"
+                >
+                  Retry GPS
+                </button>
+              </div>
+            )}
             <LiveMap
-              center={[driverPos.lat, driverPos.lng]}
-              zoom={13}
-              markers={[
-                {
-                  lat: driverPos.lat,
-                  lng: driverPos.lng,
-                  label: currentDriver?.profile?.full_name || currentDriver?.full_name || 'Captain Chauffeur',
-                  type: 'driver',
-                  subText: `${currentDriver?.vehicle?.plate_number || 'VIP KSA 7788'} • Active Chauffeur`,
-                  heading: heading || 0,
-                },
-              ]}
+              center={
+                viewCenter
+                  ? viewCenter
+                  : driverPos
+                  ? [driverPos.lat, driverPos.lng]
+                  : [21.4225, 39.8262]
+              }
+              zoom={driverPos ? 13 : 11}
+              markers={
+                driverPos
+                  ? [
+                      {
+                        lat: driverPos.lat,
+                        lng: driverPos.lng,
+                        label: currentDriver?.profile?.full_name || currentDriver?.full_name || 'Captain Chauffeur',
+                        type: 'driver',
+                        subText: `${currentDriver?.vehicle?.plate_number || 'VIP KSA 7788'} • Active Chauffeur`,
+                        heading: heading || 0,
+                      },
+                    ]
+                  : []
+              }
               showRoute={false}
               className="h-80 sm:h-96 w-full"
             />
           </div>
 
-          {/* Quick Hub Territory Presets */}
+          {/* Quick Hub Territory Presets (Pan view only - never spoof actual GPS) */}
           <div className="flex items-center justify-between gap-3 flex-wrap text-xs text-secondary pt-1">
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-primary">Territory Presets:</span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-semibold text-primary">Territory View:</span>
               <button
                 type="button"
-                onClick={() => setDriverPos({ lat: 21.4225, lng: 39.8262 })}
+                onClick={() => setViewCenter([21.4225, 39.8262])}
                 className="px-2.5 py-1 rounded-lg bg-surface hover:bg-elevated border border-base text-secondary hover:text-primary transition-colors font-medium text-[11px]"
               >
                 Makkah Haram
               </button>
               <button
                 type="button"
-                onClick={() => setDriverPos({ lat: 21.6796, lng: 39.1565 })}
+                onClick={() => setViewCenter([21.6796, 39.1565])}
                 className="px-2.5 py-1 rounded-lg bg-surface hover:bg-elevated border border-base text-secondary hover:text-primary transition-colors font-medium text-[11px]"
               >
                 Jeddah Airport (KAIA)
               </button>
               <button
                 type="button"
-                onClick={() => setDriverPos({ lat: 24.4672, lng: 39.6111 })}
+                onClick={() => setViewCenter([24.4672, 39.6111])}
                 className="px-2.5 py-1 rounded-lg bg-surface hover:bg-elevated border border-base text-secondary hover:text-primary transition-colors font-medium text-[11px]"
               >
                 Madinah Haram
               </button>
+              {viewCenter && driverPos && (
+                <button
+                  type="button"
+                  onClick={() => setViewCenter(null)}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 transition-colors font-bold text-[11px] flex items-center gap-1 cursor-pointer"
+                >
+                  <Crosshair className="w-3 h-3" /> Snap to My Vehicle
+                </button>
+              )}
             </div>
 
             <div className="text-[11px] text-muted flex items-center gap-1.5">
@@ -831,17 +891,15 @@ export default function DriverCockpitPage() {
           <div className="flex items-center gap-2 bg-surface p-1.5 px-2 rounded-2xl border border-base shadow-inner overflow-x-auto max-w-full shrink-0 scrollbar-none">
             <button
               onClick={() => setActiveTab('today')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 whitespace-nowrap ${
-                activeTab === 'today'
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 whitespace-nowrap ${activeTab === 'today'
                   ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950/20'
                   : 'text-secondary hover:text-primary hover:bg-card/50'
-              }`}
+                }`}
             >
               <Calendar className="w-3.5 h-3.5" /> Today
               <span
-                className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${
-                  activeTab === 'today' ? 'bg-white/25 text-white' : 'bg-card text-muted border border-base'
-                }`}
+                className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${activeTab === 'today' ? 'bg-white/25 text-white' : 'bg-card text-muted border border-base'
+                  }`}
               >
                 {todayAssignments.length}
               </span>
@@ -849,17 +907,15 @@ export default function DriverCockpitPage() {
 
             <button
               onClick={() => setActiveTab('tomorrow')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 whitespace-nowrap ${
-                activeTab === 'tomorrow'
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 whitespace-nowrap ${activeTab === 'tomorrow'
                   ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950/20'
                   : 'text-secondary hover:text-primary hover:bg-card/50'
-              }`}
+                }`}
             >
               <Clock className="w-3.5 h-3.5" /> Tomorrow
               <span
-                className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${
-                  activeTab === 'tomorrow' ? 'bg-white/25 text-white' : 'bg-card text-muted border border-base'
-                }`}
+                className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${activeTab === 'tomorrow' ? 'bg-white/25 text-white' : 'bg-card text-muted border border-base'
+                  }`}
               >
                 {tomorrowAssignments.length}
               </span>
@@ -867,17 +923,15 @@ export default function DriverCockpitPage() {
 
             <button
               onClick={() => setActiveTab('upcoming')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 whitespace-nowrap ${
-                activeTab === 'upcoming'
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 whitespace-nowrap ${activeTab === 'upcoming'
                   ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950/20'
                   : 'text-secondary hover:text-primary hover:bg-card/50'
-              }`}
+                }`}
             >
               <Layers className="w-3.5 h-3.5" /> Upcoming
               <span
-                className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${
-                  activeTab === 'upcoming' ? 'bg-white/25 text-white' : 'bg-card text-muted border border-base'
-                }`}
+                className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${activeTab === 'upcoming' ? 'bg-white/25 text-white' : 'bg-card text-muted border border-base'
+                  }`}
               >
                 {upcomingAssignments.length}
               </span>
@@ -885,17 +939,15 @@ export default function DriverCockpitPage() {
 
             <button
               onClick={() => setActiveTab('completed')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 whitespace-nowrap ${
-                activeTab === 'completed'
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 whitespace-nowrap ${activeTab === 'completed'
                   ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950/20'
                   : 'text-secondary hover:text-primary hover:bg-card/50'
-              }`}
+                }`}
             >
               <CheckCircle2 className="w-3.5 h-3.5" /> Completed
               <span
-                className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${
-                  activeTab === 'completed' ? 'bg-white/25 text-white' : 'bg-card text-muted border border-base'
-                }`}
+                className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${activeTab === 'completed' ? 'bg-white/25 text-white' : 'bg-card text-muted border border-base'
+                  }`}
               >
                 {completedAssignments.length}
               </span>
@@ -926,26 +978,24 @@ export default function DriverCockpitPage() {
                   return (
                     <div
                       key={assignment.id}
-                      className={`p-5 sm:p-6 rounded-3xl border transition-all ${
-                        isCurrentActive
+                      className={`p-5 sm:p-6 rounded-3xl border transition-all ${isCurrentActive
                           ? 'bg-emerald-950/15 border-emerald-500 shadow-xl ring-1 ring-emerald-500/30'
                           : isActionable
-                          ? 'bg-card border-amber-500/50 shadow-lg'
-                          : 'bg-surface border-base opacity-90 hover:opacity-100'
-                      }`}
+                            ? 'bg-card border-amber-500/50 shadow-lg'
+                            : 'bg-surface border-base opacity-90 hover:opacity-100'
+                        }`}
                     >
                       {/* Top Header of Card */}
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-base pb-4">
                         <div className="flex items-center gap-3">
                           {/* Chronological order index */}
                           <div
-                            className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-mono font-bold shadow-sm ${
-                              isCurrentActive
+                            className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-mono font-bold shadow-sm ${isCurrentActive
                                 ? 'bg-emerald-500 text-slate-950'
                                 : isActionable
-                                ? 'bg-amber-500 text-slate-950'
-                                : 'bg-card text-muted border border-base'
-                            }`}
+                                  ? 'bg-amber-500 text-slate-950'
+                                  : 'bg-card text-muted border border-base'
+                              }`}
                           >
                             #{index + 1}
                           </div>
@@ -1142,13 +1192,13 @@ export default function DriverCockpitPage() {
                               {(assignment.status === 'trip_started' ||
                                 assignment.status === 'started' ||
                                 assignment.status === 'ride_started') && (
-                                <button
-                                  onClick={() => handleCompleteTrip(assignment.id)}
-                                  className="py-2.5 px-5 rounded-xl text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-md transition-all flex items-center gap-1.5"
-                                >
-                                  <CheckCircle2 className="w-4 h-4" /> Complete Trip Successfully
-                                </button>
-                              )}
+                                  <button
+                                    onClick={() => handleCompleteTrip(assignment.id)}
+                                    className="py-2.5 px-5 rounded-xl text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-md transition-all flex items-center gap-1.5"
+                                  >
+                                    <CheckCircle2 className="w-4 h-4" /> Complete Trip Successfully
+                                  </button>
+                                )}
                             </div>
                           ) : (
                             <div className="px-4 py-2 rounded-xl bg-surface text-muted text-xs border border-base flex items-center gap-2 cursor-not-allowed">

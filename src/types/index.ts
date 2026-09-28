@@ -1,4 +1,64 @@
 export type UserRole = 'admin' | 'dispatcher' | 'driver' | 'customer';
+
+// ─── Fixed-Fare System Types ────────────────────────────────────────────────
+
+/** Canonical vehicle categories for the fixed-fare rate table */
+export type VehicleCategory =
+  | 'sedan'       // Toyota Camry / Hyundai Sonata
+  | 'staria'      // Hyundai Staria
+  | 'gmc'         // GMC — Nusuk
+  | 'hiroof';     // HiRoof — Nusuk
+
+/** Service types as stable string enums */
+export type ServiceType =
+  | 'intercity_jeddah_makkah'       // Jeddah → Makkah
+  | 'intercity_makkah_jeddah'       // Makkah → Jeddah
+  | 'intercity_makkah_madinah'      // Makkah → Madinah → Makkah (standard)
+  | 'intercity_makkah_madinah_sameday' // Same-day round trip
+  | 'ziyarat_taif'                  // Taif Ziyarat
+  | 'ziyarat_taif_bani_saad'        // Taif Ziyarat + Bani Saad
+  | 'ziyarat_makkah';               // Makkah Ziyarat
+
+/** Airport terminals — only applicable to Jeddah → Makkah */
+export type TerminalCode = 'terminal_1' | 'terminal_h' | 'terminal_n' | null;
+
+/** A single row from the fixed_fare_rates table */
+export interface FixedFareRate {
+  id: string;
+  vehicle_category: VehicleCategory;
+  service_type: ServiceType;
+  terminal: TerminalCode;
+  fare_amount: number;
+  currency: 'SAR';
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Result returned by the authoritative fare resolver */
+export interface FixedFareResult {
+  found: true;
+  fare: number;
+  currency: 'SAR';
+  fareType: 'fixed';
+  rateId: string;
+}
+
+export interface FixedFareNotFound {
+  found: false;
+  reason: string;
+}
+
+export type FareResolution = FixedFareResult | FixedFareNotFound;
+
+/** Shape sent to the server when requesting fare validation */
+export interface FareValidationRequest {
+  vehicleCategory: VehicleCategory;
+  serviceType: ServiceType;
+  terminal?: TerminalCode;
+}
+
+// ─── End Fixed-Fare Types ───────────────────────────────────────────────────
 export type UserStatus = 'active' | 'suspended' | 'deactivated';
 
 export type VehicleType = 'sedan' | 'suv' | 'van' | 'vip_gmc' | 'bus';
@@ -7,7 +67,20 @@ export type VehicleStatus = 'available' | 'assigned' | 'maintenance' | 'inactive
 export type DriverStatus = 'available' | 'assigned' | 'on_trip' | 'busy' | 'offline' | 'on_break' | 'unavailable';
 
 export type BookingType = 'immediate' | 'scheduled';
+export type BookingMethod = 'fixed' | 'custom';
+export type TripType = 'one_way' | 'round_trip';
+
+export interface IntermediateStop {
+  id: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  placeId?: string | null;
+  stop_order: number;
+}
+
 export type BookingStatus =
+  | 'pending_review'
   | 'pending_verification'
   | 'payment_rejected'
   | 'payment_verified'
@@ -178,6 +251,9 @@ export interface Booking {
   passenger_name: string;
   passenger_phone: string;
   booking_type: BookingType;
+  booking_method?: BookingMethod;
+  trip_type?: TripType;
+  intermediate_stops?: IntermediateStop[];
   status: BookingStatus;
   pickup_address: string;
   pickup_latitude: number;
@@ -186,15 +262,24 @@ export interface Booking {
   destination_latitude: number;
   destination_longitude: number;
   scheduled_at?: string | null;
+  return_scheduled_at?: string | null;
   vehicle_type: VehicleType;
+  // Fixed-fare fields
+  vehicle_category?: VehicleCategory | null;
+  service_type?: ServiceType | null;
+  terminal?: TerminalCode;
+  fixed_fare_amount?: number | null;
+  fare_rate_id?: string | null;
   assigned_driver_id?: string | null;
   passenger_count: number;
   notes?: string | null;
   special_instructions?: string | null;
   estimated_distance_km: number;
   estimated_duration_min: number;
-  estimated_fare: number;
+  estimated_fare?: number | null;
   final_fare?: number | null;
+  confirmed_fare?: number | null;
+  dispatcher_notes?: string | null;
   cancellation_reason?: string | null;
   cancelled_by?: string | null;
   cancelled_at?: string | null;

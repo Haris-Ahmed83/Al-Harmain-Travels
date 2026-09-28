@@ -22,7 +22,7 @@ export default function AdminReportsPage() {
 
   const totalRevenue = bookings
     .filter((b) => b.status === 'ride_completed' || b.status === 'payment_completed' || b.status === 'trip_completed')
-    .reduce((sum, b) => sum + (b.final_fare || b.estimated_fare), 0);
+    .reduce((sum, b) => sum + (b.final_fare || b.estimated_fare || 0), 0);
 
   const totalCash = drivers.reduce((sum, d) => sum + (d.cash_collected || 0), 0);
   const totalOnline = Math.max(0, totalRevenue - totalCash);

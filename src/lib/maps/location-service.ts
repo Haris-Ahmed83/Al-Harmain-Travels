@@ -16,16 +16,56 @@ const geocodeCache = new Map<string, string>();
 const routeCache = new Map<string, RouteEstimate>();
 
 let googleMapsPromise: Promise<boolean> | null = null;
+let googleMapsAuthFailed = false;
+const authFailureListeners = new Set<() => void>();
+
+export function markGoogleMapsAuthFailed(): void {
+  googleMapsAuthFailed = true;
+  googleMapsPromise = Promise.resolve(false);
+  authFailureListeners.forEach((fn) => {
+    try {
+      fn();
+    } catch {}
+  });
+}
+
+export function hasGoogleMapsAuthFailed(): boolean {
+  return googleMapsAuthFailed;
+}
+
+export function onGoogleMapsAuthFailure(cb: () => void): () => void {
+  authFailureListeners.add(cb);
+  if (googleMapsAuthFailed) {
+    cb();
+  }
+  return () => {
+    authFailureListeners.delete(cb);
+  };
+}
+
+if (typeof window !== 'undefined') {
+  const existingFailure = (window as any).gm_authFailure;
+  (window as any).gm_authFailure = () => {
+    console.warn('[Al Harmain Maps] Google Maps auth failure (billing/key restriction). Switching to resilient Leaflet engine.');
+    markGoogleMapsAuthFailed();
+    if (typeof existingFailure === 'function') {
+      try { existingFailure(); } catch {}
+    }
+  };
+}
 
 export function getGoogleMapsStatus(): boolean | null {
-  return typeof window !== 'undefined' && !!(window as any).google?.maps;
+  if (googleMapsAuthFailed) return false;
+  return typeof window !== 'undefined' && !!(window as any).google?.maps?.Map;
 }
 
 /**
- * Returns true only if Google Maps is loaded on window.
+ * Returns true only if Google Maps is loaded on window and has not failed authentication.
+ * With loading=async, checks google.maps.Map to confirm libraries are fully hydrated.
  */
 export function isGoogleMapsReady(): boolean {
-  return typeof window !== 'undefined' && !!(window as any).google?.maps;
+  if (googleMapsAuthFailed) return false;
+  return typeof window !== 'undefined' && !!(window as any).google?.maps?.Map;
 }
 
 /**
@@ -35,12 +75,12 @@ export function isGoogleMapsReady(): boolean {
 export function loadGoogleMaps(): Promise<boolean> {
   if (typeof window === 'undefined') return Promise.resolve(false);
 
-  // 1. If Google Maps is already initialized on window, return true immediately
-  if ((window as any).google?.maps) {
+  // 1. Already fully ready — google.maps.Map is populated
+  if ((window as any).google?.maps?.Map) {
     return Promise.resolve(true);
   }
 
-  // 2. If already loading, reuse the in-flight promise
+  // 2. Reuse the in-flight promise (prevents duplicate script injection)
   if (googleMapsPromise) {
     return googleMapsPromise;
   }
@@ -52,54 +92,67 @@ export function loadGoogleMaps(): Promise<boolean> {
   }
 
   googleMapsPromise = new Promise<boolean>((resolve) => {
-    // Check if script tag was already injected into DOM
+    // If script is already in DOM (e.g. after HMR / promise reset), poll for readiness
     const existing = document.getElementById('google-maps-script') as HTMLScriptElement | null;
     if (existing) {
-      if ((window as any).google?.maps) {
+      if ((window as any).google?.maps?.Map) {
         resolve(true);
         return;
       }
-
+      // Poll until the callback fires and google.maps.Map appears
       const poll = setInterval(() => {
-        if ((window as any).google?.maps) {
+        if ((window as any).google?.maps?.Map) {
           clearInterval(poll);
           resolve(true);
         }
       }, 50);
-
-      existing.addEventListener('load', () => {
-        clearInterval(poll);
-        resolve(true);
-      }, { once: true });
-
       existing.addEventListener('error', () => {
         clearInterval(poll);
         googleMapsPromise = null;
         resolve(false);
       }, { once: true });
-
       setTimeout(() => {
         clearInterval(poll);
-        resolve(!!(window as any).google?.maps);
+        resolve(!!(window as any).google?.maps?.Map);
       }, 8000);
       return;
     }
 
-    // Inject script tag exactly once
+    // Define the callback BEFORE injecting the script.
+    // With loading=async + callback + libraries=marker, Google calls this function once
+    // ALL constructors are ready: google.maps.Map, InfoWindow, marker.AdvancedMarkerElement.
+    // No importLibrary('maps') call is needed — avoiding the extra auth validation pass
+    // that was causing the "API key required" overlay on previously working keys.
+    const callbackName = '__alharmain_maps_ready__';
+    (window as any)[callbackName] = () => {
+      try { delete (window as any)[callbackName]; } catch {}
+      // Yield one tick so gm_authFailure can fire first if the key is rejected
+      setTimeout(() => {
+        if (googleMapsAuthFailed) {
+          googleMapsPromise = null;
+          resolve(false);
+        } else {
+          resolve(!!(window as any).google?.maps?.Map);
+        }
+      }, 50);
+    };
+
+    // Inject script exactly once
     const script = document.createElement('script');
     script.id = 'google-maps-script';
     script.type = 'text/javascript';
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&v=weekly`;
+    // loading=async  → suppresses the "loaded without loading=async" console warning
+    // callback=...   → fires our function when all requested libraries are ready
+    // libraries=marker → pre-loads AdvancedMarkerElement alongside the core bundle
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&v=weekly&libraries=marker&loading=async&callback=${callbackName}`;
     script.async = true;
     script.defer = true;
 
-    script.onload = () => {
-      resolve(true);
-    };
-
     script.onerror = (e) => {
       console.warn('[Al Harmain Maps] Script loading error:', e);
-      googleMapsPromise = null;
+      try { delete (window as any)[callbackName]; } catch {}
+      
+            googleMapsPromise = null;
       resolve(false);
     };
 
@@ -108,6 +161,33 @@ export function loadGoogleMaps(): Promise<boolean> {
 
   return googleMapsPromise;
 }
+
+let markerLibraryPromise: Promise<any> | null = null;
+
+/**
+ * Loads and returns the AdvancedMarkerElement class using google.maps.importLibrary('marker').
+ */
+export async function loadMarkerLibrary(): Promise<any> {
+  const isLoaded = await loadGoogleMaps();
+  if (!isLoaded || typeof window === 'undefined' || !(window as any).google?.maps) {
+    return null;
+  }
+  const google = (window as any).google;
+  if (google.maps.marker?.AdvancedMarkerElement) {
+    return google.maps.marker.AdvancedMarkerElement;
+  }
+  if (!markerLibraryPromise) {
+    markerLibraryPromise = google.maps.importLibrary('marker')
+      .then((lib: any) => lib.AdvancedMarkerElement)
+      .catch((err: any) => {
+        console.warn('[Al Harmain Maps] Failed to load marker library:', err);
+        markerLibraryPromise = null;
+        return null;
+      });
+  }
+  return markerLibraryPromise;
+}
+
 
 /**
  * Validate that latitude and longitude are valid finite numbers within geographical bounds.
@@ -125,9 +205,13 @@ export function isValidCoordinate(lat: unknown, lng: unknown): lat is number {
   );
 }
 
+export const MAX_ACCEPTABLE_GPS_ACCURACY_METERS = 50000;
+export const HIGH_ACCURACY_GPS_THRESHOLD_METERS = 100;
+
 /**
- * Request user's current GPS position using navigator.geolocation.getCurrentPosition.
- * Uses high accuracy and maximumAge: 0 to guarantee fresh hardware GPS position without stale cache.
+ * Request user's current GPS position using hardware/Wi-Fi positioning with high accuracy.
+ * Uses maximumAge: 0 to guarantee fresh hardware GPS position without stale cache.
+ * Resolves as soon as a valid fix is acquired (typically < 1s) and handles desktop/mobile gracefully.
  */
 export async function getCurrentLocation(options?: {
   timeout?: number;
@@ -138,44 +222,80 @@ export async function getCurrentLocation(options?: {
     throw new Error('Geolocation is not supported by your browser or device.');
   }
 
-  const timeout = options?.timeout ?? 10_000;
+  const timeoutMs = options?.timeout ?? 5_000;
   const maximumAge = options?.maximumAge ?? 0;
   const enableHighAccuracy = options?.enableHighAccuracy ?? true;
 
   return new Promise((resolve, reject) => {
+    let isDone = false;
+
+    const finishSuccess = (latitude: number, longitude: number, accuracy?: number) => {
+      if (isDone) return;
+      isDone = true;
+      resolve({ latitude, longitude, accuracy });
+    };
+
+    const finishError = (err: Error) => {
+      if (isDone) return;
+      isDone = true;
+      reject(err);
+    };
+
+    // First attempt: High accuracy hardware/Wi-Fi positioning
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude, longitude, accuracy } = pos.coords;
         if (!isValidCoordinate(latitude, longitude)) {
-          reject(new Error('Received invalid GPS coordinates from device.'));
+          finishError(new Error('Received invalid GPS coordinates from device.'));
           return;
         }
-        resolve({
-          latitude,
-          longitude,
-          accuracy: accuracy ?? undefined,
-        });
+
+        const acc = typeof accuracy === 'number' && Number.isFinite(accuracy) ? accuracy : undefined;
+        finishSuccess(latitude, longitude, acc);
       },
       (err) => {
-        switch (err.code) {
-          case err.PERMISSION_DENIED:
-            reject(new Error('Location permission was denied. Please allow location access in your browser settings to detect your pickup location.'));
-            break;
-          case err.POSITION_UNAVAILABLE:
-            reject(new Error('Location information is unavailable. Please ensure GPS/location services are turned on.'));
-            break;
-          case err.TIMEOUT:
-            reject(new Error('Location request timed out. Please tap "Use Current Location" to retry.'));
-            break;
-          default:
-            reject(new Error(err.message || 'Unable to retrieve your location. Please check device settings.'));
-            break;
+        if (isDone) return;
+
+        // If permission was explicitly denied, fail fast with helpful message
+        if (err.code === err.PERMISSION_DENIED) {
+          finishError(
+            new Error(
+              'Location permission was denied. Please allow location access in your browser settings to detect your pickup location.'
+            )
+          );
+          return;
         }
+
+        // Second attempt: Fallback to standard network accuracy if highAccuracy timed out (e.g. desktop PCs)
+        if (enableHighAccuracy) {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              const { latitude, longitude, accuracy } = pos.coords;
+              if (isValidCoordinate(latitude, longitude)) {
+                const acc = typeof accuracy === 'number' && Number.isFinite(accuracy) ? accuracy : undefined;
+                finishSuccess(latitude, longitude, acc);
+                return;
+              }
+              finishError(new Error('Location information is unavailable. Please ensure location services are enabled.'));
+            },
+            (fallbackErr) => {
+              finishError(new Error(err.message || fallbackErr.message || 'Unable to retrieve location.'));
+            },
+            {
+              enableHighAccuracy: false,
+              timeout: 4000,
+              maximumAge: 30000,
+            }
+          );
+          return;
+        }
+
+        finishError(new Error(err.message || 'Unable to retrieve location.'));
       },
       {
         enableHighAccuracy,
-        timeout,
-        maximumAge, // CRITICAL: 0 forces fresh GPS read without stale cache
+        timeout: timeoutMs,
+        maximumAge,
       }
     );
   });
@@ -183,6 +303,7 @@ export async function getCurrentLocation(options?: {
 
 /**
  * Continuously watch the user's GPS position with high accuracy.
+ * Streams real-time device updates to track user motion.
  * Returns a teardown/cleanup function to stop watching when unmounted.
  */
 export function watchCurrentLocation(
@@ -198,13 +319,14 @@ export function watchCurrentLocation(
   const watchId = navigator.geolocation.watchPosition(
     (pos) => {
       const { latitude, longitude, accuracy } = pos.coords;
-      if (isValidCoordinate(latitude, longitude)) {
-        onSuccess({
-          latitude,
-          longitude,
-          accuracy: accuracy ?? undefined,
-        });
-      }
+      if (!isValidCoordinate(latitude, longitude)) return;
+
+      const acc = typeof accuracy === 'number' && Number.isFinite(accuracy) ? accuracy : undefined;
+      onSuccess({
+        latitude,
+        longitude,
+        accuracy: acc,
+      });
     },
     (err) => {
       let message = 'Unable to update location.';
@@ -456,14 +578,23 @@ function decodePolyline(encoded: string): [number, number][] {
 }
 
 /**
- * Calculate road route, distance, and duration between pickup and destination.
+ * Calculate road route, distance, and duration between pickup and destination,
+ * with optional intermediate waypoints.
  * Tries Google Routes API (New) → OSRM (free) → Haversine fallback.
  */
 export async function calculateRoute(
   pickup: { lat: number; lng: number },
-  destination: { lat: number; lng: number }
+  destination: { lat: number; lng: number },
+  waypoints?: { lat: number; lng: number }[]
 ): Promise<RouteEstimate> {
-  const cacheKey = `${pickup.lat.toFixed(4)},${pickup.lng.toFixed(4)}->${destination.lat.toFixed(4)},${destination.lng.toFixed(4)}`;
+  const validWaypoints = (waypoints || []).filter(
+    (w) => isValidCoordinate(w?.lat, w?.lng)
+  );
+
+  const waypointsKey = validWaypoints.length > 0
+    ? `|stops:${validWaypoints.map((w) => `${w.lat.toFixed(4)},${w.lng.toFixed(4)}`).join(';')}`
+    : '';
+  const cacheKey = `${pickup.lat.toFixed(4)},${pickup.lng.toFixed(4)}->${destination.lat.toFixed(4)},${destination.lng.toFixed(4)}${waypointsKey}`;
   if (routeCache.has(cacheKey)) {
     return routeCache.get(cacheKey)!;
   }
@@ -479,6 +610,26 @@ export async function calculateRoute(
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000);
 
+      const requestBody: any = {
+        origin: {
+          location: { latLng: { latitude: pickup.lat, longitude: pickup.lng } },
+        },
+        destination: {
+          location: { latLng: { latitude: destination.lat, longitude: destination.lng } },
+        },
+        travelMode: 'DRIVE',
+        routingPreference: 'TRAFFIC_AWARE',
+        computeAlternativeRoutes: false,
+        languageCode: 'en-US',
+        units: 'METRIC',
+      };
+
+      if (validWaypoints.length > 0) {
+        requestBody.intermediates = validWaypoints.map((w) => ({
+          location: { latLng: { latitude: w.lat, longitude: w.lng } },
+        }));
+      }
+
       const res = await fetch(
         'https://routes.googleapis.com/directions/v2:computeRoutes',
         {
@@ -489,19 +640,7 @@ export async function calculateRoute(
             'X-Goog-FieldMask':
               'routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline',
           },
-          body: JSON.stringify({
-            origin: {
-              location: { latLng: { latitude: pickup.lat, longitude: pickup.lng } },
-            },
-            destination: {
-              location: { latLng: { latitude: destination.lat, longitude: destination.lng } },
-            },
-            travelMode: 'DRIVE',
-            routingPreference: 'TRAFFIC_AWARE',
-            computeAlternativeRoutes: false,
-            languageCode: 'en-US',
-            units: 'METRIC',
-          }),
+          body: JSON.stringify(requestBody),
           signal: controller.signal,
         }
       );
@@ -537,7 +676,10 @@ export async function calculateRoute(
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 7000);
 
-    const url = `https://router.project-osrm.org/route/v1/driving/${pickup.lng},${pickup.lat};${destination.lng},${destination.lat}?overview=full&geometries=geojson`;
+    const waypointsCoordStr = validWaypoints.length > 0
+      ? ';' + validWaypoints.map((w) => `${w.lng},${w.lat}`).join(';')
+      : '';
+    const url = `https://router.project-osrm.org/route/v1/driving/${pickup.lng},${pickup.lat}${waypointsCoordStr};${destination.lng},${destination.lat}?overview=full&geometries=geojson`;
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timeoutId);
 
@@ -566,21 +708,29 @@ export async function calculateRoute(
     // Fall through to Haversine
   }
 
-  // 3. Haversine straight-line estimate with road curvature factor
-  const distKm = calculateDistanceKm(pickup.lat, pickup.lng, destination.lat, destination.lng);
-  const durationMin = estimateDurationMinutes(distKm);
-
-  const steps = 10;
+  // 3. Haversine straight-line estimate with road curvature factor across legs
+  const allPoints = [pickup, ...validWaypoints, destination];
+  let distKm = 0;
   const polylineCoords: [number, number][] = [];
-  for (let i = 0; i <= steps; i++) {
-    const fraction = i / steps;
-    const lat = pickup.lat + (destination.lat - pickup.lat) * fraction;
-    const lng = pickup.lng + (destination.lng - pickup.lng) * fraction;
-    polylineCoords.push([lat, lng]);
+
+  for (let p = 0; p < allPoints.length - 1; p++) {
+    const from = allPoints[p];
+    const to = allPoints[p + 1];
+    distKm += calculateDistanceKm(from.lat, from.lng, to.lat, to.lng);
+
+    const steps = 10;
+    for (let i = (p === 0 ? 0 : 1); i <= steps; i++) {
+      const fraction = i / steps;
+      const lat = from.lat + (to.lat - from.lat) * fraction;
+      const lng = from.lng + (to.lng - from.lng) * fraction;
+      polylineCoords.push([lat, lng]);
+    }
   }
 
+  const durationMin = estimateDurationMinutes(distKm);
+
   const estimate: RouteEstimate = {
-    distanceKm: distKm,
+    distanceKm: parseFloat(distKm.toFixed(1)),
     durationMinutes: durationMin,
     polylineCoords,
     source: 'haversine',

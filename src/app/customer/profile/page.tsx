@@ -336,7 +336,7 @@ export default function CustomerProfilePage() {
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-xl sm:text-2xl font-bold text-primary">{currentUser.full_name}</h1>
-              <span className="chip !bg-emerald-900/30 !text-emerald-400 !border-emerald-500/40 text-[10px] uppercase font-bold tracking-wider">
+              <span className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 text-[10px] uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-full">
                 Verified Pilgrim
               </span>
             </div>
@@ -347,7 +347,7 @@ export default function CustomerProfilePage() {
 
         {/* Quick Action Badges */}
         <div className="flex flex-row md:flex-col items-center md:items-end gap-2 shrink-0">
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface border border-base text-xs font-semibold text-secondary">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface border border-base text-xs font-semibold text-secondary">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
             <span>Customer ID: #{currentUser.id.slice(-6).toUpperCase()}</span>
           </div>
@@ -365,13 +365,13 @@ export default function CustomerProfilePage() {
       </div>
 
       {/* Tabs Navigation */}
-      <div className="flex items-center gap-2 border-b border-base overflow-x-auto pb-1 text-xs font-semibold scrollbar-none">
+      <div className="flex items-center gap-2 border-b border-base overflow-x-auto pb-2 text-xs font-semibold scrollbar-none">
         <button
           onClick={() => setActiveTab('profile')}
-          className={`px-4 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-2 ${
+          className={`whitespace-nowrap px-4 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
             activeTab === 'profile'
-              ? 'bg-elevated text-amber-500 dark:text-amber-400 border border-base'
-              : 'text-muted hover:text-primary hover:bg-surface/60'
+              ? 'bg-emerald-600 text-white font-bold shadow-sm'
+              : 'bg-card text-secondary hover:text-primary hover:bg-elevated border border-base'
           }`}
         >
           <User className="w-4 h-4" />
@@ -380,10 +380,10 @@ export default function CustomerProfilePage() {
 
         <button
           onClick={() => setActiveTab('emergency')}
-          className={`px-4 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-2 ${
+          className={`whitespace-nowrap px-4 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
             activeTab === 'emergency'
-              ? 'bg-elevated text-amber-500 dark:text-amber-400 border border-base'
-              : 'text-muted hover:text-primary hover:bg-surface/60'
+              ? 'bg-emerald-600 text-white font-bold shadow-sm'
+              : 'bg-card text-secondary hover:text-primary hover:bg-elevated border border-base'
           }`}
         >
           <Phone className="w-4 h-4" />
@@ -392,10 +392,10 @@ export default function CustomerProfilePage() {
 
         <button
           onClick={() => setActiveTab('security')}
-          className={`px-4 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-2 ${
+          className={`whitespace-nowrap px-4 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
             activeTab === 'security'
-              ? 'bg-elevated text-amber-500 dark:text-amber-400 border border-base'
-              : 'text-muted hover:text-primary hover:bg-surface/60'
+              ? 'bg-emerald-600 text-white font-bold shadow-sm'
+              : 'bg-card text-secondary hover:text-primary hover:bg-elevated border border-base'
           }`}
         >
           <Lock className="w-4 h-4" />
@@ -404,10 +404,10 @@ export default function CustomerProfilePage() {
 
         <button
           onClick={() => setActiveTab('status')}
-          className={`px-4 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-2 ${
+          className={`whitespace-nowrap px-4 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
             activeTab === 'status'
-              ? 'bg-elevated text-amber-500 dark:text-amber-400 border border-base'
-              : 'text-muted hover:text-primary hover:bg-surface/60'
+              ? 'bg-emerald-600 text-white font-bold shadow-sm'
+              : 'bg-card text-secondary hover:text-primary hover:bg-elevated border border-base'
           }`}
         >
           <Sparkles className="w-4 h-4" />

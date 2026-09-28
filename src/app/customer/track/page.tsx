@@ -1,11 +1,22 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
 import { Booking, BookingStatus } from '@/types';
+import { isValidCoordinate } from '@/lib/maps/location-service';
+
+const LiveMap = dynamic(() => import('@/components/map/LiveMap'), {
+  ssr: false,
+  loading: () => (
+    <div className="h-72 sm:h-80 w-full rounded-2xl bg-surface animate-pulse flex items-center justify-center text-muted text-xs">
+      Loading Live Vehicle Radar...
+    </div>
+  ),
+});
 import {
   Car,
   Phone,
@@ -445,11 +456,11 @@ export default function CustomerTrackPage() {
 
         {/* Cancellation or Rejection Alerts if applicable */}
         {isCancelled && (
-          <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl flex items-start gap-3 text-xs text-rose-300">
-            <XCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+          <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl flex items-start gap-3 text-xs text-rose-800 dark:text-rose-200">
+            <XCircle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
             <div>
               <span className="font-bold text-sm block">Booking Cancelled</span>
-              <p className="mt-0.5 text-rose-200">
+              <p className="mt-0.5 text-rose-700 dark:text-rose-300">
                 {selectedBooking.cancellation_reason || 'This journey reservation was cancelled.'}
               </p>
             </div>
@@ -457,11 +468,11 @@ export default function CustomerTrackPage() {
         )}
 
         {isPaymentRejected && (
-          <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-start gap-3 text-xs text-amber-300">
-            <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+          <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-start gap-3 text-xs text-amber-800 dark:text-amber-200">
+            <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
             <div>
               <span className="font-bold text-sm block">Payment Verification Required</span>
-              <p className="mt-0.5 text-amber-200">
+              <p className="mt-0.5 text-amber-700 dark:text-amber-300">
                 {selectedBooking.payment_rejected_reason || 'Payment verification could not be confirmed by dispatch staff. Please check with customer support.'}
               </p>
             </div>
@@ -469,6 +480,87 @@ export default function CustomerTrackPage() {
         )}
       </div>
 
+      {/* Live Vehicle Radar Map */}
+      <div className="bg-card border border-base rounded-3xl p-6 sm:p-7 shadow-xl space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-bold mb-1">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+              <span>LIVE JOURNEY RADAR</span>
+            </div>
+            <h2 className="type-card-title text-base sm:text-lg flex items-center gap-2">
+              <Car className="w-5 h-5 text-emerald-500" />
+              Live Chauffeur Positioning &amp; Route
+            </h2>
+            <p className="text-xs text-secondary mt-0.5">
+              Real-time vehicle telemetry synchronized with assigned VIP chauffeur device.
+            </p>
+          </div>
+
+          {assignedDriver?.location && isValidCoordinate(assignedDriver.location.latitude, assignedDriver.location.longitude) ? (
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-xs font-bold self-start sm:self-auto">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+              <span>Chauffeur Live GPS Connected</span>
+            </div>
+          ) : (
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-surface text-secondary border border-base text-xs font-medium self-start sm:self-auto">
+              <Clock className="w-3.5 h-3.5 text-muted" />
+              <span>{assignedDriver ? 'Waiting for chauffeur GPS broadcast' : 'Awaiting chauffeur allocation'}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-2xl overflow-hidden border border-base shadow-lg">
+          <LiveMap
+            center={
+              assignedDriver?.location && isValidCoordinate(assignedDriver.location.latitude, assignedDriver.location.longitude)
+                ? [assignedDriver.location.latitude, assignedDriver.location.longitude]
+                : isValidCoordinate(selectedBooking.pickup_latitude, selectedBooking.pickup_longitude)
+                ? [selectedBooking.pickup_latitude, selectedBooking.pickup_longitude]
+                : [21.4225, 39.8262]
+            }
+            zoom={13}
+            markers={[
+              ...(assignedDriver?.location && isValidCoordinate(assignedDriver.location.latitude, assignedDriver.location.longitude)
+                ? [
+                    {
+                      lat: assignedDriver.location.latitude,
+                      lng: assignedDriver.location.longitude,
+                      label: assignedDriver.profile?.full_name || assignedDriver.full_name || 'Assigned Chauffeur',
+                      type: 'driver' as const,
+                      subText: `${assignedDriver.assigned_vehicle?.plate_number || 'VIP Vehicle'} • Live GPS`,
+                      heading: assignedDriver.location.heading || 0,
+                    },
+                  ]
+                : []),
+              ...(isValidCoordinate(selectedBooking.pickup_latitude, selectedBooking.pickup_longitude)
+                ? [
+                    {
+                      lat: selectedBooking.pickup_latitude,
+                      lng: selectedBooking.pickup_longitude,
+                      label: 'Pickup Location',
+                      type: 'pickup' as const,
+                      subText: selectedBooking.pickup_address,
+                    },
+                  ]
+                : []),
+              ...(isValidCoordinate(selectedBooking.destination_latitude, selectedBooking.destination_longitude)
+                ? [
+                    {
+                      lat: selectedBooking.destination_latitude,
+                      lng: selectedBooking.destination_longitude,
+                      label: 'Destination',
+                      type: 'destination' as const,
+                      subText: selectedBooking.destination_address,
+                    },
+                  ]
+                : []),
+            ]}
+            showRoute={true}
+            className="h-80 sm:h-96 w-full"
+          />
+        </div>
+      </div>
 
       {/* Main Focus: Detailed Trip Route Overview (Vertical Progression Timeline) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -1091,16 +1183,17 @@ export default function CustomerTrackPage() {
               </div>
               <button
                 onClick={() => setShowReceiptModal(false)}
-                className="p-1.5 rounded-lg hover:bg-surface text-muted hover:text-primary transition-colors"
+                className="p-1.5 rounded-xl hover:bg-elevated text-muted hover:text-primary transition-colors cursor-pointer"
+                aria-label="Close modal"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="rounded-2xl overflow-hidden border border-base bg-black/40 flex items-center justify-center max-h-[65vh]">
+            <div className="rounded-2xl overflow-hidden border border-base bg-surface flex items-center justify-center max-h-[65vh] p-2">
               <img
                 src={selectedBooking.payment_screenshot_url}
                 alt="Payment Slip Proof"
-                className="max-h-[65vh] w-auto object-contain rounded-xl"
+                className="max-h-[60vh] w-auto object-contain rounded-xl"
               />
             </div>
             <div className="flex items-center justify-between text-xs text-muted pt-1">
@@ -1109,7 +1202,7 @@ export default function CustomerTrackPage() {
                 href={selectedBooking.payment_screenshot_url}
                 target="_blank"
                 rel="noreferrer"
-                className="text-emerald-600 hover:underline inline-flex items-center gap-1 font-semibold"
+                className="text-emerald-600 dark:text-emerald-400 hover:underline inline-flex items-center gap-1 font-semibold"
               >
                 <ExternalLink className="w-3.5 h-3.5" /> Open Full Image
               </a>

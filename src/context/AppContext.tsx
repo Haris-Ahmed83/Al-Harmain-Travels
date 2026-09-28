@@ -128,10 +128,15 @@ interface AppContextType {
 
   // Booking Actions & Lifecycle
   uploadPaymentScreenshot: (file: File) => Promise<string | null>;
+  uploadCustomerPaymentProof: (bookingId: string, file: File) => Promise<boolean>;
   createBooking: (data: {
     passenger_name: string;
     passenger_phone: string;
     booking_type: 'immediate' | 'scheduled';
+    booking_method?: 'fixed' | 'custom';
+    trip_type?: 'one_way' | 'round_trip';
+    intermediate_stops?: import('@/types').IntermediateStop[];
+    return_scheduled_at?: string;
     pickup_address: string;
     pickup_latitude: number;
     pickup_longitude: number;
@@ -143,11 +148,19 @@ interface AppContextType {
     notes?: string;
     scheduled_at?: string;
     payment_screenshot_url?: string;
+    // Fixed-fare fields (optional — legacy or custom bookings won't have these)
+    vehicle_category?: string | null;
+    service_type?: string | null;
+    terminal?: string | null;
+    fixed_fare_amount?: number | null;
+    fare_rate_id?: string | null;
   }) => Promise<Booking>;
 
   confirmBooking: (bookingId: string) => Promise<void>;
   verifyPayment: (bookingId: string) => Promise<void>;
   rejectPayment: (bookingId: string, reason: string) => Promise<void>;
+  rejectBooking: (bookingId: string, reason: string) => Promise<void>;
+  setCustomBookingFare: (bookingId: string, fare: number, dispatcherNotes?: string) => Promise<void>;
   assignDriver: (bookingId: string, driverId: string) => Promise<boolean>;
   reassignDriver: (bookingId: string, driverId: string) => Promise<boolean>;
   autoAssignDriver: (bookingId: string) => Promise<boolean>;
@@ -269,7 +282,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
   const [userRole, setUserRole] = useState<UserRole>('customer');
   const [currentUser, setCurrentUser] = useState<Profile>(FALLBACK_GUEST_PROFILE);
-  
+
   // Verification state for customer registration (email-only flow)
   const [verificationState, setVerificationState] = useState<VerificationState | null>(null);
 
@@ -395,16 +408,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             prev.map((d) =>
               d.id === updated.driver_id
                 ? {
-                    ...d,
-                    location: {
-                      driver_id: updated.driver_id,
-                      latitude: updated.latitude,
-                      longitude: updated.longitude,
-                      heading: updated.heading || 0,
-                      speed: updated.speed || 0,
-                      updated_at: nowStr,
-                    },
-                  }
+                  ...d,
+                  location: {
+                    driver_id: updated.driver_id,
+                    latitude: updated.latitude,
+                    longitude: updated.longitude,
+                    heading: updated.heading || 0,
+                    speed: updated.speed || 0,
+                    updated_at: nowStr,
+                  },
+                }
                 : d
             )
           );
@@ -413,21 +426,21 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             prev.map((b) =>
               b.assigned_driver_id === updated.driver_id
                 ? {
-                    ...b,
-                    driver: b.driver
-                      ? {
-                          ...b.driver,
-                          location: {
-                            driver_id: updated.driver_id,
-                            latitude: updated.latitude,
-                            longitude: updated.longitude,
-                            heading: updated.heading || 0,
-                            speed: updated.speed || 0,
-                            updated_at: nowStr,
-                          },
-                        }
-                      : b.driver,
-                  }
+                  ...b,
+                  driver: b.driver
+                    ? {
+                      ...b.driver,
+                      location: {
+                        driver_id: updated.driver_id,
+                        latitude: updated.latitude,
+                        longitude: updated.longitude,
+                        heading: updated.heading || 0,
+                        speed: updated.speed || 0,
+                        updated_at: nowStr,
+                      },
+                    }
+                    : b.driver,
+                }
                 : b
             )
           );
@@ -457,11 +470,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
               return prev.map((b) =>
                 b.id === updated.id || (updated.booking_reference && b.booking_reference === updated.booking_reference)
                   ? {
-                      ...b,
-                      ...updated,
-                      id: updated.id,
-                      updated_at: updated.updated_at || new Date().toISOString(),
-                    }
+                    ...b,
+                    ...updated,
+                    id: updated.id,
+                    updated_at: updated.updated_at || new Date().toISOString(),
+                  }
                   : b
               );
             } else {
@@ -487,7 +500,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           // If the currently active user was deleted from the database, force immediate sign out
           setCurrentUser((current) => {
             if (current && current.id === deletedId) {
-              supabase.auth.signOut().catch(() => {});
+              supabase.auth.signOut().catch(() => { });
               setIsAuthenticated(false);
               setUserRole('customer');
               syncRoleCookie(null);
@@ -520,7 +533,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           if (updatedProfile.status === 'deactivated' || updatedProfile.status === 'suspended') {
             setCurrentUser((current) => {
               if (current && current.id === updatedProfile.id) {
-                supabase.auth.signOut().catch(() => {});
+                supabase.auth.signOut().catch(() => { });
                 setIsAuthenticated(false);
                 setUserRole('customer');
                 syncRoleCookie(null);
@@ -603,7 +616,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
           if (profile && isMounted) {
             if (profile.status === 'suspended' || profile.status === 'deactivated') {
-              await supabase.auth.signOut().catch(() => {});
+              await supabase.auth.signOut().catch(() => { });
               setIsAuthenticated(false);
               setCurrentUser(FALLBACK_GUEST_PROFILE);
               setUserRole('customer');
@@ -623,7 +636,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           } else if (isMounted) {
             // Profile does NOT exist in Supabase profiles table (already deleted).
             // Immediately sign out and clear auth state/cookies so user is never redirected to dashboard.
-            await supabase.auth.signOut().catch(() => {});
+            await supabase.auth.signOut().catch(() => { });
             setIsAuthenticated(false);
             setCurrentUser(FALLBACK_GUEST_PROFILE);
             setUserRole('customer');
@@ -670,7 +683,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
         if (profile && isMounted) {
           if (profile.status === 'suspended' || profile.status === 'deactivated') {
-            await supabase.auth.signOut().catch(() => {});
+            await supabase.auth.signOut().catch(() => { });
             setIsAuthenticated(false);
             setCurrentUser(FALLBACK_GUEST_PROFILE);
             setUserRole('customer');
@@ -688,7 +701,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           }
         } else if (isMounted) {
           // Profile was deleted from Supabase: force sign out immediately
-          await supabase.auth.signOut().catch(() => {});
+          await supabase.auth.signOut().catch(() => { });
           setIsAuthenticated(false);
           setCurrentUser(FALLBACK_GUEST_PROFILE);
           setUserRole('customer');
@@ -802,7 +815,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       if (!profile) {
         // Account exists in Supabase Auth, but their profile row in profiles table was deleted!
         // Immediately sign out so session is not persisted and user cannot reach dashboard.
-        await supabase.auth.signOut().catch(() => {});
+        await supabase.auth.signOut().catch(() => { });
         setIsAuthenticated(false);
         setCurrentUser(FALLBACK_GUEST_PROFILE);
         setUserRole('customer');
@@ -820,7 +833,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
       // Check if user account is deactivated or suspended
       if (profile.status === 'suspended' || profile.status === 'deactivated') {
-        await supabase.auth.signOut().catch(() => {});
+        await supabase.auth.signOut().catch(() => { });
         setIsAuthenticated(false);
         setCurrentUser(FALLBACK_GUEST_PROFILE);
         setUserRole('customer');
@@ -1103,12 +1116,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         prev
           ? { ...prev, emailSentAt: Date.now() }
           : {
-              fullName: (typeof window !== 'undefined' && localStorage.getItem('aht_pending_verification_name')) || 'Customer',
-              email: targetEmail,
-              phone: '',
-              emailVerified: false,
-              emailSentAt: Date.now(),
-            }
+            fullName: (typeof window !== 'undefined' && localStorage.getItem('aht_pending_verification_name')) || 'Customer',
+            email: targetEmail,
+            phone: '',
+            emailVerified: false,
+            emailSentAt: Date.now(),
+          }
       );
 
       toast.success('Confirmation email resent. Please check your inbox.');
@@ -1544,7 +1557,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setServices((prev) => [...prev, newService]);
     try {
       await supabase.from('services').insert(newService);
-    } catch {}
+    } catch { }
     addNotification('Service Added', `New service "${service.title}" published.`, 'success', 'admin');
     toast.success(`Service "${service.title}" published`);
   };
@@ -1555,7 +1568,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     );
     try {
       await supabase.from('services').update(partial).eq('id', id);
-    } catch {}
+    } catch { }
     toast.success('Service updated successfully');
   };
 
@@ -1563,7 +1576,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setServices((prev) => prev.filter((s) => s.id !== id));
     try {
       await supabase.from('services').delete().eq('id', id);
-    } catch {}
+    } catch { }
     toast.success('Service removed');
   };
 
@@ -1591,7 +1604,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setUsersList((prev) => [newStaff, ...prev]);
     try {
       await supabase.from('profiles').insert(newStaff);
-    } catch {}
+    } catch { }
     addNotification('Staff Member Created', `${data.full_name} granted Dispatcher access.`, 'info', 'admin');
     toast.success(`Staff account for ${data.full_name} created`);
     return newStaff;
@@ -1636,7 +1649,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setDrivers((prev) => [newDriver, ...prev]);
     try {
       await supabase.from('profiles').insert(newDriverProfile);
-    } catch {}
+    } catch { }
     addNotification('Driver Onboarded', `Captain ${data.full_name} added to fleet.`, 'info', 'admin');
     toast.success(`Driver account for Captain ${data.full_name} created`);
     return newDriverProfile;
@@ -1728,7 +1741,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setVehicles((prev) => [newVehicle, ...prev]);
     try {
       await supabase.from('vehicles').insert(newVehicle);
-    } catch {}
+    } catch { }
     toast.success(`Vehicle ${vehicle.plate_number} added to fleet`);
   };
 
@@ -1738,7 +1751,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     );
     try {
       await supabase.from('vehicles').update(partial).eq('id', id);
-    } catch {}
+    } catch { }
     toast.success('Vehicle updated successfully');
   };
 
@@ -1747,6 +1760,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     passenger_name: string;
     passenger_phone: string;
     booking_type: 'immediate' | 'scheduled';
+    booking_method?: 'fixed' | 'custom';
+    trip_type?: 'one_way' | 'round_trip';
+    intermediate_stops?: import('@/types').IntermediateStop[];
+    return_scheduled_at?: string;
     pickup_address: string;
     pickup_latitude: number;
     pickup_longitude: number;
@@ -1758,7 +1775,19 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     notes?: string;
     scheduled_at?: string;
     payment_screenshot_url?: string;
+    // Fixed-fare fields
+    vehicle_category?: string | null;
+    service_type?: string | null;
+    terminal?: string | null;
+    fixed_fare_amount?: number | null;
+    fare_rate_id?: string | null;
   }): Promise<Booking> => {
+    const isCustom = data.booking_method === 'custom';
+    const bookingMethod = data.booking_method || 'fixed';
+    const tripType = data.trip_type || 'one_way';
+    const intermediateStops = data.intermediate_stops || [];
+    const returnScheduledAt = data.return_scheduled_at || null;
+
     const distKm = calculateDistanceKm(
       data.pickup_latitude,
       data.pickup_longitude,
@@ -1766,7 +1795,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       data.destination_longitude
     );
     const durationMin = estimateDurationMinutes(distKm);
-    const fareEstimate = calculateEstimatedFare(data.vehicle_type, distKm, durationMin);
+
+    // CRITICAL REQUIREMENT:
+    // For custom route bookings, NEVER calculate, estimate, or generate a fare.
+    // Fares MUST remain null until explicitly confirmed by the dispatcher.
+    // For fixed-fare bookings, use the server-validated fixed fare or distance-based estimate.
+    const confirmedFare = isCustom
+      ? null
+      : (data.fixed_fare_amount ?? calculateEstimatedFare(data.vehicle_type, distKm, durationMin).total_fare);
+
+    const initialStatus: BookingStatus = isCustom ? 'pending_review' : 'pending_verification';
 
     const ref = generateBookingReference();
     const customerId = currentUser.id && currentUser.id !== 'guest' ? currentUser.id : null;
@@ -1779,7 +1817,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       passenger_name: data.passenger_name,
       passenger_phone: data.passenger_phone,
       booking_type: data.booking_type,
-      status: 'pending_verification',
+      booking_method: bookingMethod,
+      trip_type: tripType,
+      intermediate_stops: intermediateStops,
+      return_scheduled_at: returnScheduledAt,
+      status: initialStatus,
       pickup_address: data.pickup_address,
       pickup_latitude: data.pickup_latitude,
       pickup_longitude: data.pickup_longitude,
@@ -1787,6 +1829,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       destination_latitude: data.destination_latitude,
       destination_longitude: data.destination_longitude,
       vehicle_type: data.vehicle_type,
+      // Fixed-fare extended fields
+      vehicle_category: (data.vehicle_category as any) ?? null,
+      service_type: (data.service_type as any) ?? null,
+      terminal: (data.terminal as any) ?? null,
+      fixed_fare_amount: isCustom ? null : (data.fixed_fare_amount ?? null),
+      fare_rate_id: isCustom ? null : (data.fare_rate_id ?? null),
       passenger_count: data.passenger_count,
       notes: data.notes,
       scheduled_at: data.scheduled_at,
@@ -1794,8 +1842,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       payment_status: 'pending',
       estimated_distance_km: distKm,
       estimated_duration_min: durationMin,
-      estimated_fare: fareEstimate.total_fare,
-      final_fare: fareEstimate.total_fare,
+      estimated_fare: confirmedFare, // null for custom routes!
+      final_fare: confirmedFare,     // null for custom routes!
+      confirmed_fare: null,
+      dispatcher_notes: null,
       created_at: now,
       updated_at: now,
       customer: currentUser,
@@ -1809,7 +1859,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         passenger_name: newBooking.passenger_name,
         passenger_phone: newBooking.passenger_phone,
         booking_type: newBooking.booking_type,
-        status: 'pending_verification',
+        booking_method: newBooking.booking_method,
+        trip_type: newBooking.trip_type,
+        intermediate_stops: newBooking.intermediate_stops,
+        return_scheduled_at: newBooking.return_scheduled_at,
+        status: newBooking.status,
         pickup_address: newBooking.pickup_address,
         pickup_latitude: newBooking.pickup_latitude,
         pickup_longitude: newBooking.pickup_longitude,
@@ -1817,6 +1871,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         destination_latitude: newBooking.destination_latitude,
         destination_longitude: newBooking.destination_longitude,
         vehicle_type: newBooking.vehicle_type,
+        vehicle_category: newBooking.vehicle_category ?? null,
+        service_type: newBooking.service_type ?? null,
+        terminal: newBooking.terminal ?? null,
+        fixed_fare_amount: newBooking.fixed_fare_amount ?? null,
+        fare_rate_id: newBooking.fare_rate_id ?? null,
         passenger_count: newBooking.passenger_count,
         notes: newBooking.notes,
         scheduled_at: newBooking.scheduled_at,
@@ -1826,26 +1885,32 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         estimated_duration_min: newBooking.estimated_duration_min,
         estimated_fare: newBooking.estimated_fare,
         final_fare: newBooking.final_fare,
+        confirmed_fare: null,
+        dispatcher_notes: null,
       }).select().single();
 
       if (inserted) {
         newBooking = { ...newBooking, id: inserted.id };
 
-        // Insert into payments table
-        await supabase.from('payments').insert({
-          booking_id: inserted.id,
-          customer_id: customerId,
-          amount: newBooking.estimated_fare,
-          method: 'online',
-          status: 'pending',
-          transaction_reference: ref,
-        });
+        // For fixed-fare bookings, insert into payments table with the confirmed fare
+        if (!isCustom && newBooking.estimated_fare) {
+          await supabase.from('payments').insert({
+            booking_id: inserted.id,
+            customer_id: customerId,
+            amount: newBooking.estimated_fare,
+            method: 'online',
+            status: 'pending',
+            transaction_reference: ref,
+          });
+        }
 
         // Insert into booking status history
         await supabase.from('booking_status_history').insert({
           booking_id: inserted.id,
-          status: 'pending_verification',
-          notes: 'Customer submitted booking request with payment proof. Awaiting Staff verification.',
+          status: newBooking.status,
+          notes: isCustom
+            ? 'Customer submitted custom route booking request. Awaiting dispatcher review and manual fare quote.'
+            : 'Customer submitted booking request with payment proof. Awaiting Staff verification.',
         });
       }
     } catch (dbErr) {
@@ -1866,20 +1931,208 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       return [newBooking, ...prev];
     });
 
+    if (isCustom) {
+      addNotification(
+        'New Custom Route Request',
+        `Custom booking ${ref} submitted by ${data.passenger_name}. Awaiting fare quote and review.`,
+        'info',
+        'dispatcher'
+      );
+      addNotification(
+        'Custom Route Request Received',
+        `Your booking request (${ref}) has been received. Our dispatcher will contact you to confirm vehicle availability, fare, and payment details.`,
+        'success',
+        'customer'
+      );
+    } else {
+      addNotification(
+        'New Booking Awaiting Verification',
+        `Booking ${ref} submitted by ${data.passenger_name} with payment proof. Review in Queue.`,
+        'info',
+        'dispatcher'
+      );
+      addNotification(
+        'Booking Request Submitted',
+        `Your booking (${ref}) is received and pending payment verification by our dispatch team.`,
+        'success',
+        'customer'
+      );
+    }
+
+    return newBooking;
+  };
+
+  // Dispatcher confirms custom route fare
+  const setCustomBookingFare = async (bookingId: string, fare: number, dispatcherNotes?: string) => {
+    const booking = bookings.find((b) => b.id === bookingId);
+    if (!booking) return;
+
+    const now = new Date().toISOString();
+    setBookings((prev) =>
+      prev.map((b) =>
+        b.id === bookingId
+          ? {
+            ...b,
+            confirmed_fare: fare,
+            final_fare: fare,
+            estimated_fare: fare,
+            dispatcher_notes: dispatcherNotes || b.dispatcher_notes,
+            updated_at: now,
+          }
+          : b
+      )
+    );
+
+    try {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(booking.id);
+      if (isUuid) {
+        await supabase
+          .from('bookings')
+          .update({
+            confirmed_fare: fare,
+            final_fare: fare,
+            estimated_fare: fare,
+            dispatcher_notes: dispatcherNotes || null,
+            updated_at: now,
+          })
+          .eq('id', booking.id);
+
+        await supabase.from('booking_status_history').insert({
+          booking_id: booking.id,
+          status: booking.status,
+          notes: `Dispatcher confirmed fare of SAR ${fare}. ${dispatcherNotes ? `Notes: ${dispatcherNotes}` : ''}`,
+        });
+      }
+    } catch (err) {
+      console.warn('Supabase setCustomBookingFare error:', err);
+    }
+
     addNotification(
-      'New Booking Awaiting Verification',
-      `Booking ${ref} submitted by ${data.passenger_name} with payment proof. Review in Queue.`,
+      'Fare Confirmed for Custom Route',
+      `Fare of SAR ${fare} set for booking ${booking.booking_reference}.`,
       'info',
       'dispatcher'
     );
     addNotification(
-      'Booking Request Submitted',
-      `Your booking (${ref}) is received and pending payment verification by our dispatch team.`,
+      'Fare Confirmed by Dispatcher',
+      `Dispatcher confirmed fare of SAR ${fare} for booking ${booking.booking_reference}. Please contact dispatch or complete payment.`,
       'success',
       'customer'
     );
+    toast.success(`Fare of SAR ${fare} confirmed for ${booking.booking_reference}`);
+  };
 
-    return newBooking;
+  // Staff rejects a booking request
+  const rejectBooking = async (bookingId: string, reason: string) => {
+    const booking = bookings.find((b) => b.id === bookingId);
+    if (!booking) return;
+
+    const now = new Date().toISOString();
+    setBookings((prev) =>
+      prev.map((b) =>
+        b.id === bookingId
+          ? {
+            ...b,
+            status: 'rejected',
+            cancellation_reason: reason,
+            cancelled_by: currentUser.id,
+            cancelled_at: now,
+            updated_at: now,
+          }
+          : b
+      )
+    );
+
+    try {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(booking.id);
+      if (isUuid) {
+        await supabase
+          .from('bookings')
+          .update({
+            status: 'rejected',
+            cancellation_reason: reason,
+            cancelled_by: currentUser.id,
+            cancelled_at: now,
+            updated_at: now,
+          })
+          .eq('id', booking.id);
+
+        await supabase.from('booking_status_history').insert({
+          booking_id: booking.id,
+          status: 'rejected',
+          notes: `Booking request rejected by Dispatcher. Reason: ${reason}`,
+        });
+      }
+    } catch (err) {
+      console.warn('Supabase rejectBooking error:', err);
+    }
+
+    addNotification(
+      'Booking Request Rejected',
+      `Booking ${booking.booking_reference} rejected. Reason: ${reason}`,
+      'warning',
+      'dispatcher'
+    );
+    addNotification(
+      'Booking Request Rejected',
+      `Your booking request ${booking.booking_reference} could not be confirmed: ${reason}`,
+      'warning',
+      'customer'
+    );
+    toast.info(`Booking ${booking.booking_reference} rejected.`);
+  };
+
+  // Customer uploads payment receipt after fare is confirmed
+  const uploadCustomerPaymentProof = async (bookingId: string, file: File): Promise<boolean> => {
+    const url = await uploadPaymentScreenshot(file);
+    if (!url) return false;
+
+    const now = new Date().toISOString();
+    setBookings((prev) =>
+      prev.map((b) =>
+        b.id === bookingId
+          ? {
+            ...b,
+            payment_screenshot_url: url,
+            status: 'pending_verification',
+            payment_status: 'pending',
+            updated_at: now,
+          }
+          : b
+      )
+    );
+
+    try {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(bookingId);
+      if (isUuid) {
+        await supabase
+          .from('bookings')
+          .update({
+            payment_screenshot_url: url,
+            status: 'pending_verification',
+            payment_status: 'pending',
+            updated_at: now,
+          })
+          .eq('id', bookingId);
+
+        await supabase.from('booking_status_history').insert({
+          booking_id: bookingId,
+          status: 'pending_verification',
+          notes: 'Customer uploaded payment receipt. Awaiting dispatcher verification.',
+        });
+      }
+    } catch (err) {
+      console.warn('uploadCustomerPaymentProof supabase error:', err);
+    }
+
+    addNotification(
+      'Payment Proof Uploaded',
+      `Customer uploaded payment proof. Review in queue.`,
+      'info',
+      'dispatcher'
+    );
+    toast.success('Payment receipt submitted for verification!');
+    return true;
   };
 
   // Staff verifies payment
@@ -1892,11 +2145,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       prev.map((b) =>
         b.id === bookingId
           ? {
-              ...b,
-              status: 'confirmed',
-              payment_status: 'paid',
-              updated_at: now,
-            }
+            ...b,
+            status: 'confirmed',
+            payment_status: 'paid',
+            updated_at: now,
+          }
           : b
       )
     );
@@ -1953,12 +2206,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       prev.map((b) =>
         b.id === bookingId
           ? {
-              ...b,
-              status: 'payment_rejected',
-              payment_status: 'failed',
-              payment_rejected_reason: reason,
-              updated_at: now,
-            }
+            ...b,
+            status: 'payment_rejected',
+            payment_status: 'failed',
+            payment_rejected_reason: reason,
+            updated_at: now,
+          }
           : b
       )
     );
@@ -2082,12 +2335,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       prev.map((b) =>
         b.id === bookingId
           ? {
-              ...b,
-              assigned_driver_id: driverId,
-              driver: selectedDriver,
-              status: 'driver_assigned',
-              updated_at: now,
-            }
+            ...b,
+            assigned_driver_id: driverId,
+            driver: selectedDriver,
+            status: 'driver_assigned',
+            updated_at: now,
+          }
           : b
       )
     );
@@ -2163,12 +2416,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       prev.map((b) =>
         b.id === bookingId
           ? {
-              ...b,
-              assigned_driver_id: newDriverId,
-              driver: newDriver,
-              status: 'driver_assigned',
-              updated_at: now,
-            }
+            ...b,
+            assigned_driver_id: newDriverId,
+            driver: newDriver,
+            status: 'driver_assigned',
+            updated_at: now,
+          }
           : b
       )
     );
@@ -2284,49 +2537,49 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           prev.map((b) =>
             b.id === bookingId || b.booking_reference === bookingId || b.booking_reference === data.bookingReference
               ? {
-                  ...b,
-                  status: 'driver_assigned',
-                  assigned_driver_id: data.driver.id,
-                  driver: {
+                ...b,
+                status: 'driver_assigned',
+                assigned_driver_id: data.driver.id,
+                driver: {
+                  id: data.driver.id,
+                  status: 'assigned',
+                  rating: data.driver.rating,
+                  total_rides: data.driver.totalRides,
+                  total_earnings: 0,
+                  cash_collected: 0,
+                  created_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                  profile: {
                     id: data.driver.id,
-                    status: 'assigned',
-                    rating: data.driver.rating,
-                    total_rides: data.driver.totalRides,
-                    total_earnings: 0,
-                    cash_collected: 0,
+                    role: 'driver',
+                    full_name: data.driver.name,
+                    avatar_url: data.driver.photo,
+                    status: 'active',
                     created_at: new Date().toISOString(),
                     updated_at: new Date().toISOString(),
-                    profile: {
-                      id: data.driver.id,
-                      role: 'driver',
-                      full_name: data.driver.name,
-                      avatar_url: data.driver.photo,
-                      status: 'active',
-                      created_at: new Date().toISOString(),
-                      updated_at: new Date().toISOString(),
-                    },
-                    assigned_vehicle: {
-                      id: 'veh-' + data.driver.id,
-                      plate_number: data.vehicle.plateNumber,
-                      make: data.vehicle.make,
-                      model: data.vehicle.model,
-                      color: data.vehicle.color,
-                      vehicle_type: data.vehicle.vehicleType,
-                      seating_capacity: 4,
-                      status: 'assigned',
-                      created_at: new Date().toISOString(),
-                      updated_at: new Date().toISOString(),
-                    },
-                    location: {
-                      driver_id: data.driver.id,
-                      latitude: data.driver.location?.latitude || 21.4225,
-                      longitude: data.driver.location?.longitude || 39.8262,
-                      heading: 0,
-                      updated_at: new Date().toISOString(),
-                    },
                   },
-                  updated_at: new Date().toISOString(),
-                }
+                  assigned_vehicle: {
+                    id: 'veh-' + data.driver.id,
+                    plate_number: data.vehicle.plateNumber,
+                    make: data.vehicle.make,
+                    model: data.vehicle.model,
+                    color: data.vehicle.color,
+                    vehicle_type: data.vehicle.vehicleType,
+                    seating_capacity: 4,
+                    status: 'assigned',
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                  },
+                  location: {
+                    driver_id: data.driver.id,
+                    latitude: data.driver.location?.latitude || 21.4225,
+                    longitude: data.driver.location?.longitude || 39.8262,
+                    heading: 0,
+                    updated_at: new Date().toISOString(),
+                  },
+                },
+                updated_at: new Date().toISOString(),
+              }
               : b
           )
         );
@@ -2446,12 +2699,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       prev.map((b) =>
         b.id === bookingId
           ? {
-              ...b,
-              status: 'confirmed',
-              assigned_driver_id: null,
-              driver: null,
-              updated_at: now,
-            }
+            ...b,
+            status: 'confirmed',
+            assigned_driver_id: null,
+            driver: null,
+            updated_at: now,
+          }
           : b
       )
     );
@@ -2568,10 +2821,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       prev.map((b) =>
         b.id === bookingId
           ? {
-              ...b,
-              status: canonicalStatus,
-              updated_at: now,
-            }
+            ...b,
+            status: canonicalStatus,
+            updated_at: now,
+          }
           : b
       )
     );
@@ -2594,11 +2847,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         prev.map((d) =>
           d.id === booking.assigned_driver_id
             ? {
-                ...d,
-                status: nextDriverStatus,
-                total_rides: d.total_rides + 1,
-                total_earnings: d.total_earnings + (booking.final_fare || booking.estimated_fare),
-              }
+              ...d,
+              status: nextDriverStatus,
+              total_rides: d.total_rides + 1,
+              total_earnings: d.total_earnings + (booking.final_fare || booking.confirmed_fare || booking.estimated_fare || 0),
+            }
             : d
         )
       );
@@ -2692,11 +2945,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       prev.map((b) =>
         b.id === bookingId
           ? {
-              ...b,
-              status,
-              notes: notes ? `${b.notes || ''} | ${notes}` : b.notes,
-              updated_at: new Date().toISOString(),
-            }
+            ...b,
+            status,
+            notes: notes ? `${b.notes || ''} | ${notes}` : b.notes,
+            updated_at: new Date().toISOString(),
+          }
           : b
       )
     );
@@ -2734,13 +2987,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       prev.map((b) =>
         b.id === bookingId
           ? {
-              ...b,
-              status: 'cancelled',
-              cancellation_reason: reason,
-              cancelled_by: currentUser.id,
-              cancelled_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            }
+            ...b,
+            status: 'cancelled',
+            cancellation_reason: reason,
+            cancelled_by: currentUser.id,
+            cancelled_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }
           : b
       )
     );
@@ -2778,16 +3031,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       prev.map((d) =>
         d.id === driverId
           ? {
-              ...d,
-              location: {
-                driver_id: driverId,
-                latitude: lat,
-                longitude: lng,
-                heading,
-                speed,
-                updated_at: now,
-              },
-            }
+            ...d,
+            location: {
+              driver_id: driverId,
+              latitude: lat,
+              longitude: lng,
+              heading,
+              speed,
+              updated_at: now,
+            },
+          }
           : d
       )
     );
@@ -2797,21 +3050,21 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       prev.map((b) =>
         b.assigned_driver_id === driverId
           ? {
-              ...b,
-              driver: b.driver
-                ? {
-                    ...b.driver,
-                    location: {
-                      driver_id: driverId,
-                      latitude: lat,
-                      longitude: lng,
-                      heading,
-                      speed,
-                      updated_at: now,
-                    },
-                  }
-                : b.driver,
-            }
+            ...b,
+            driver: b.driver
+              ? {
+                ...b.driver,
+                location: {
+                  driver_id: driverId,
+                  latitude: lat,
+                  longitude: lng,
+                  heading,
+                  speed,
+                  updated_at: now,
+                },
+              }
+              : b.driver,
+          }
           : b
       )
     );
@@ -2860,7 +3113,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         if (b.id === bookingId) {
           const currentCharges = b.additional_charges || [];
           const updatedCharges = [...currentCharges, newCharge];
-          const newFinalFare = (b.final_fare || b.estimated_fare) + charge.amount;
+          const newFinalFare = (b.final_fare || b.confirmed_fare || b.estimated_fare || 0) + charge.amount;
           return {
             ...b,
             additional_charges: updatedCharges,
@@ -2977,6 +3230,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         updateUserProfile,
         uploadAvatar,
         uploadPaymentScreenshot,
+        uploadCustomerPaymentProof,
         changePassword,
         addEmergencyContact,
         updateEmergencyContact,
@@ -3026,6 +3280,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         confirmBooking,
         verifyPayment,
         rejectPayment,
+        rejectBooking,
+        setCustomBookingFare,
         assignDriver,
         reassignDriver,
         autoAssignDriver,

@@ -1,8 +1,24 @@
+'use client';
+
 import React from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { Phone, Mail, MapPin, ShieldCheck, MessageCircle } from 'lucide-react';
 
 export default function Footer() {
+  const pathname = usePathname();
+
+  // Completely remove footer from all dashboard portals (customer, driver, dispatcher, admin)
+  const isDashboard =
+    Boolean(pathname) &&
+    (pathname.startsWith('/customer') ||
+      pathname.startsWith('/driver') ||
+      pathname.startsWith('/dispatcher') ||
+      pathname.startsWith('/admin'));
+
+  if (isDashboard) {
+    return null;
+  }
   return (
     <footer className="bg-slate-100 dark:bg-slate-950 border-t border-slate-200 dark:border-emerald-900/30 text-slate-500 dark:text-slate-400 text-sm pb-24 sm:pb-0">
       <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 py-12">
