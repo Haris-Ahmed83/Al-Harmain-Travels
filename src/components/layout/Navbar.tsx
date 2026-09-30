@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
@@ -31,6 +31,8 @@ import {
   Receipt,
 } from 'lucide-react';
 
+import CustomerMobileSidebar from '@/components/customer/CustomerMobileSidebar';
+
 export default function Navbar() {
   const pathname = usePathname();
   const {
@@ -48,13 +50,24 @@ export default function Navbar() {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isCustomerSidebarOpen, setIsCustomerSidebarOpen] = useState(false);
+
+  const handleCloseCustomerSidebar = useCallback(() => {
+    setIsCustomerSidebarOpen(false);
+  }, []);
+
+  const handleToggleCustomerSidebar = useCallback(() => {
+    setIsCustomerSidebarOpen((prev) => !prev);
+    setIsNotifOpen(false);
+  }, []);
 
   const notifRef = useRef<HTMLDivElement>(null);
+  const customerMobileNotifRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
   const isCustomer = userRole === 'customer';
-  const isCustomerPortal = isCustomer && pathname.startsWith('/customer');
+  const isCustomerPortal = pathname.startsWith('/customer');
   const showBookCta = (!isAuthenticated || isCustomer) && !pathname.startsWith('/customer');
   const isMarketingPath =
     pathname === '/' ||
@@ -65,10 +78,13 @@ export default function Navbar() {
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      const insideDesktopNotif = notifRef.current?.contains(target);
+      const insideMobileNotif = customerMobileNotifRef.current?.contains(target);
+      if (!insideDesktopNotif && !insideMobileNotif) {
         setIsNotifOpen(false);
       }
-      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+      if (userMenuRef.current && !userMenuRef.current.contains(target)) {
         setIsUserMenuOpen(false);
       }
     };
@@ -78,6 +94,9 @@ export default function Navbar() {
 
   useEffect(() => {
     setIsMobileMenuOpen(false);
+    setIsCustomerSidebarOpen(false);
+    setIsNotifOpen(false);
+    setIsUserMenuOpen(false);
   }, [pathname]);
 
   const publicLinks = [
@@ -187,7 +206,95 @@ export default function Navbar() {
     <>
       <header className="sticky top-0 z-50 bg-white/90 dark:bg-slate-950/90 backdrop-blur-xl border-b border-slate-200/80 dark:border-slate-800/60 text-slate-900 dark:text-white shadow-sm">
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 xl:px-12">
-          <div className="flex items-center justify-between h-[64px] gap-3">
+          {/* ─────────────────────────────────────────────────────────────
+              1. CUSTOMER DASHBOARD MOBILE NAVBAR (< lg screens)
+              - Left corner: Hamburger menu icon (three lines)
+              - Center: Al Harmain Travels Logo (perfectly centered horizontally)
+              - Right corner: Notification Bell with unread badge
+          ───────────────────────────────────────────────────────────── */}
+          {isCustomerPortal && (
+            <div className="lg:hidden relative flex items-center justify-between h-[64px] w-full">
+              {/* Left corner: Hamburger menu icon */}
+              <div className="flex items-center z-10 shrink-0">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleToggleCustomerSidebar();
+                  }}
+                  className="p-2.5 rounded-xl text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/80 border border-slate-200/80 dark:border-slate-800 transition-colors flex items-center justify-center w-10 h-10 shadow-sm cursor-pointer"
+                  aria-label={isCustomerSidebarOpen ? 'Close navigation sidebar' : 'Open navigation sidebar'}
+                  aria-expanded={isCustomerSidebarOpen}
+                >
+                  <Menu className="w-5 h-5 transition-transform" />
+                </button>
+              </div>
+
+              {/* Center: The Al Harmain Travels logo, perfectly centered horizontally */}
+              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none z-10 select-none">
+                <Link
+                  href="/customer"
+                  className="flex items-center gap-2 group shrink-0 pointer-events-auto"
+                  title="Al Harmain Customer Portal"
+                >
+                  <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-950 flex items-center justify-center shadow-md border border-emerald-500/30 group-hover:border-amber-400/50 transition-colors shrink-0">
+                    <span className="text-base font-bold text-amber-400 tracking-tighter">الح</span>
+                  </div>
+                  <div className="flex items-baseline gap-1 leading-none">
+                    <span className="font-display text-lg sm:text-[1.375rem] font-semibold tracking-heading text-slate-900 dark:text-white">
+                      Al Harmain
+                    </span>
+                    <span className="font-display text-lg sm:text-[1.375rem] font-semibold tracking-heading text-amber-500 dark:text-amber-400">
+                      Travel
+                    </span>
+                  </div>
+                </Link>
+              </div>
+
+              {/* Right corner: Notification bell icon with unread badge */}
+              <div className="flex items-center z-10 shrink-0">
+                <div className="relative" ref={customerMobileNotifRef}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setIsNotifOpen((prev) => !prev);
+                      if (isCustomerSidebarOpen) setIsCustomerSidebarOpen(false);
+                    }}
+                    className="p-2.5 rounded-xl text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/80 border border-slate-200/80 dark:border-slate-800 relative transition-colors flex items-center justify-center w-10 h-10 shadow-sm cursor-pointer"
+                    aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}
+                    aria-expanded={isNotifOpen}
+                  >
+                    <Bell className="w-5 h-5" />
+                    {unreadCount > 0 && (
+                      <span className="absolute -top-1 -right-1 min-w-[1.125rem] h-[1.125rem] px-1 rounded-full bg-amber-400 text-slate-950 text-[10px] font-bold flex items-center justify-center shadow-sm">
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Mobile Notification Popover */}
+                  {isNotifOpen && (
+                    <div className="fixed sm:absolute top-[68px] sm:top-full sm:mt-2 right-2 sm:right-0 w-[min(22rem,calc(100vw-1rem))] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden z-50 animate-in fade-in-50 duration-200">
+                      <NotificationDropdownContent
+                        notifications={notifications}
+                        unreadCount={unreadCount}
+                        markNotificationAsRead={markNotificationAsRead}
+                        clearNotifications={clearNotifications}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ─────────────────────────────────────────────────────────────
+              2. DESKTOP ROW (lg+) OR NON-CUSTOMER ROW (all screens)
+          ───────────────────────────────────────────────────────────── */}
+          <div className={`${isCustomerPortal ? 'hidden lg:flex' : 'flex'} items-center justify-between h-[64px] gap-3`}>
             <Link href="/" className="flex items-center gap-2.5 group shrink-0 min-w-0">
               <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-950 flex items-center justify-center shadow-md border border-emerald-500/30 group-hover:border-amber-400/50 transition-colors">
                 <span className="text-lg font-bold text-amber-400 tracking-tighter">الح</span>
@@ -282,65 +389,12 @@ export default function Navbar() {
 
                 {isNotifOpen && (
                   <div className="absolute right-0 mt-2 w-[min(22rem,calc(100vw-1.5rem))] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden z-50">
-                    <div className="px-4 py-3 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                        <Bell className="w-3.5 h-3.5 text-amber-500" />
-                        Notifications
-                        {unreadCount > 0 && (
-                          <span className="px-1.5 py-0.5 rounded-full bg-amber-400/20 text-amber-700 dark:text-amber-400 text-[10px] font-bold">
-                            {unreadCount} new
-                          </span>
-                        )}
-                      </span>
-                      {notifications.length > 0 && (
-                        <button
-                          onClick={clearNotifications}
-                          className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
-                        >
-                          Clear all
-                        </button>
-                      )}
-                    </div>
-                    <div className="max-h-72 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
-                      {notifications.length === 0 ? (
-                        <div className="p-8 text-center">
-                          <Bell className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
-                          <p className="text-xs font-medium text-slate-600 dark:text-slate-400">
-                            You&apos;re all caught up
-                          </p>
-                          <p className="text-[11px] text-slate-400 mt-1">
-                            Trip updates will appear here
-                          </p>
-                        </div>
-                      ) : (
-                        notifications.map((n) => (
-                          <button
-                            key={n.id}
-                            type="button"
-                            onClick={() => markNotificationAsRead(n.id)}
-                            className={`w-full text-left px-4 py-3 text-xs transition-colors ${n.read
-                                ? 'bg-white dark:bg-slate-900/40 text-slate-500'
-                                : 'bg-emerald-50/70 dark:bg-emerald-950/20 text-slate-800 dark:text-slate-200'
-                              } hover:bg-slate-50 dark:hover:bg-slate-800/60`}
-                          >
-                            <div className="flex items-center justify-between mb-0.5 gap-2">
-                              <span className="font-semibold text-emerald-700 dark:text-emerald-400">
-                                {n.title}
-                              </span>
-                              <span className="text-[10px] text-slate-400 shrink-0">
-                                {new Date(n.timestamp).toLocaleTimeString([], {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
-                              </span>
-                            </div>
-                            <p className="line-clamp-2 text-slate-500 dark:text-slate-400 text-[11px] leading-relaxed">
-                              {n.message}
-                            </p>
-                          </button>
-                        ))
-                      )}
-                    </div>
+                    <NotificationDropdownContent
+                      notifications={notifications}
+                      unreadCount={unreadCount}
+                      markNotificationAsRead={markNotificationAsRead}
+                      clearNotifications={clearNotifications}
+                    />
                   </div>
                 )}
               </div>
@@ -470,19 +524,21 @@ export default function Navbar() {
                 </Link>
               )}
 
-              <button
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="lg:hidden p-2.5 rounded-xl text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800"
-                aria-label="Toggle menu"
-                aria-expanded={isMobileMenuOpen}
-              >
-                {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-              </button>
+              {!isCustomerPortal && (
+                <button
+                  onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                  className="lg:hidden p-2.5 rounded-xl text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800"
+                  aria-label="Toggle menu"
+                  aria-expanded={isMobileMenuOpen}
+                >
+                  {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+                </button>
+              )}
             </div>
           </div>
         </div>
 
-        {isMobileMenuOpen && (
+        {!isCustomerPortal && isMobileMenuOpen && (
           <div className="lg:hidden bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 px-4 py-4 space-y-4 shadow-2xl max-h-[calc(100vh-64px)] overflow-y-auto">
             {isAuthenticated && (
               <div className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50">
@@ -503,85 +559,30 @@ export default function Navbar() {
               </div>
             )}
 
-            {isCustomerPortal ? (
-              <div className="space-y-3">
-                {activeCustomerBooking && (
-                  <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                        Active Ride Underway
-                      </span>
-                      <span className="font-mono text-amber-500 font-bold">
-                        #{activeCustomerBooking.booking_reference.slice(-5)}
-                      </span>
-                    </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2 px-1">
+                {isAuthenticated ? 'Your portal' : 'Explore'}
+              </p>
+              <div className="space-y-1">
+                {(isAuthenticated ? currentRoleNav : publicLinks).map((item) => {
+                  const isActive = pathname === item.href;
+                  return (
                     <Link
-                      href="/customer/track"
+                      key={item.href}
+                      href={item.href}
                       onClick={() => setIsMobileMenuOpen(false)}
-                      className="btn-primary w-full py-2 text-xs flex items-center justify-center gap-1.5"
+                      className={`flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-semibold ${isActive
+                          ? 'bg-emerald-50 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300'
+                          : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                        }`}
                     >
-                      <MapPin className="w-3.5 h-3.5" />
-                      <span>Open Live Radar</span>
+                      <item.icon className={`w-4 h-4 ${isActive ? 'text-amber-500' : 'text-slate-400'}`} />
+                      {item.label}
                     </Link>
-                  </div>
-                )}
-
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2 px-1">
-                    VIP Concierge &amp; Support
-                  </p>
-                  <div className="space-y-1">
-                    <a
-                      href="https://wa.me/966500000000"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center justify-between px-3.5 py-3 rounded-xl text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-                    >
-                      <span className="flex items-center gap-3">
-                        <PhoneCall className="w-4 h-4 text-emerald-500" />
-                        <span>24/7 VIP Concierge</span>
-                      </span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-bold">WhatsApp</span>
-                    </a>
-
-                    <Link
-                      href="/"
-                      onClick={() => setIsMobileMenuOpen(false)}
-                      className="flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
-                    >
-                      <Compass className="w-4 h-4 text-slate-400" />
-                      <span>Visit Public Website</span>
-                    </Link>
-                  </div>
-                </div>
+                  );
+                })}
               </div>
-            ) : (
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2 px-1">
-                  {isAuthenticated ? 'Your portal' : 'Explore'}
-                </p>
-                <div className="space-y-1">
-                  {(isAuthenticated ? currentRoleNav : publicLinks).map((item) => {
-                    const isActive = pathname === item.href;
-                    return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        onClick={() => setIsMobileMenuOpen(false)}
-                        className={`flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-semibold ${isActive
-                            ? 'bg-emerald-50 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300'
-                            : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
-                          }`}
-                      >
-                        <item.icon className={`w-4 h-4 ${isActive ? 'text-amber-500' : 'text-slate-400'}`} />
-                        {item.label}
-                      </Link>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+            </div>
 
             <div className="border-t border-slate-200 dark:border-slate-800 pt-3 space-y-2">
               {isAuthenticated ? (
@@ -630,6 +631,14 @@ export default function Navbar() {
         )}
       </header>
 
+      {/* Customer Portal Mobile Sidebar Drawer (slides smoothly left to right) */}
+      {isCustomerPortal && (
+        <CustomerMobileSidebar
+          isOpen={isCustomerSidebarOpen}
+          onClose={handleCloseCustomerSidebar}
+        />
+      )}
+
       {/* Mobile sticky book bar: only for customers and guests */}
       {showBookCta && !pathname.startsWith('/customer') && !pathname.startsWith('/auth') && (!isAuthenticated || userRole === 'customer') && (
         <div className="sm:hidden fixed bottom-0 inset-x-0 z-40 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pointer-events-none">
@@ -649,4 +658,89 @@ export default function Navbar() {
 
 function ArrowRightSafe() {
   return <span aria-hidden className="text-base leading-none">→</span>;
+}
+
+interface NotificationDropdownProps {
+  notifications: Array<{
+    id: string;
+    title: string;
+    message: string;
+    timestamp: string | number | Date;
+    read: boolean;
+  }>;
+  unreadCount: number;
+  markNotificationAsRead: (id: string) => void;
+  clearNotifications: () => void;
+}
+
+function NotificationDropdownContent({
+  notifications,
+  unreadCount,
+  markNotificationAsRead,
+  clearNotifications,
+}: NotificationDropdownProps) {
+  return (
+    <>
+      <div className="px-4 py-3 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+        <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+          <Bell className="w-3.5 h-3.5 text-amber-500" />
+          Notifications
+          {unreadCount > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full bg-amber-400/20 text-amber-700 dark:text-amber-400 text-[10px] font-bold">
+              {unreadCount} new
+            </span>
+          )}
+        </span>
+        {notifications.length > 0 && (
+          <button
+            onClick={clearNotifications}
+            className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
+          >
+            Clear all
+          </button>
+        )}
+      </div>
+      <div className="max-h-72 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
+        {notifications.length === 0 ? (
+          <div className="p-8 text-center">
+            <Bell className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
+            <p className="text-xs font-medium text-slate-600 dark:text-slate-400">
+              You&apos;re all caught up
+            </p>
+            <p className="text-[11px] text-slate-400 mt-1">
+              Trip updates will appear here
+            </p>
+          </div>
+        ) : (
+          notifications.map((n) => (
+            <button
+              key={n.id}
+              type="button"
+              onClick={() => markNotificationAsRead(n.id)}
+              className={`w-full text-left px-4 py-3 text-xs transition-colors ${
+                n.read
+                  ? 'bg-white dark:bg-slate-900/40 text-slate-500'
+                  : 'bg-emerald-50/70 dark:bg-emerald-950/20 text-slate-800 dark:text-slate-200'
+              } hover:bg-slate-50 dark:hover:bg-slate-800/60`}
+            >
+              <div className="flex items-center justify-between mb-0.5 gap-2">
+                <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                  {n.title}
+                </span>
+                <span className="text-[10px] text-slate-400 shrink-0">
+                  {new Date(n.timestamp).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </span>
+              </div>
+              <p className="line-clamp-2 text-slate-500 dark:text-slate-400 text-[11px] leading-relaxed">
+                {n.message}
+              </p>
+            </button>
+          ))
+        )}
+      </div>
+    </>
+  );
 }
