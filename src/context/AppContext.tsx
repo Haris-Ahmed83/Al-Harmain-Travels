@@ -211,69 +211,6 @@ interface AppContextType {
   activeDriverBooking?: Booking;
 }
 
-export const DEMO_PROFILES: Record<string, { profile: Profile; password: string }> = {
-  'admin@alharmaintravel.com': {
-    password: 'ChangeMe@12345',
-    profile: {
-      id: 'a0000000-0000-0000-0000-000000000001',
-      role: 'admin',
-      full_name: 'Executive Administrator',
-      email: 'admin@alharmaintravel.com',
-      phone: '+966 50 000 0001',
-      email_verified: true,
-      phone_verified: true,
-      status: 'active',
-      created_at: '2026-09-10T06:33:13.844008+00:00',
-      updated_at: '2026-09-10T06:33:13.844008+00:00',
-    },
-  },
-  'dispatcher@alharmaintravel.com': {
-    password: 'Password@123',
-    profile: {
-      id: 'd0000000-0000-0000-0000-000000000002',
-      role: 'dispatcher',
-      full_name: 'Sara Al-Otaibi (Staff Dispatcher)',
-      email: 'dispatcher@alharmaintravel.com',
-      phone: '+966 53 210 9876',
-      email_verified: true,
-      phone_verified: true,
-      status: 'active',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    },
-  },
-  'driver@alharmaintravel.com': {
-    password: 'Password@123',
-    profile: {
-      id: 'd0000000-0000-0000-0000-000000000003',
-      role: 'driver',
-      full_name: 'Captain Tariq Al-Mansoor',
-      email: 'driver@alharmaintravel.com',
-      phone: '+966 50 123 4567',
-      email_verified: true,
-      phone_verified: true,
-      status: 'active',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    },
-  },
-  'customer@alharmaintravel.com': {
-    password: 'Password@123',
-    profile: {
-      id: 'c0000000-0000-0000-0000-000000000001',
-      role: 'customer',
-      full_name: 'Dr. Abdullah Rahman',
-      email: 'customer@alharmaintravel.com',
-      phone: '+966 56 777 8899',
-      email_verified: true,
-      phone_verified: true,
-      status: 'active',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    },
-  },
-};
-
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
@@ -587,20 +524,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     const restoreSession = async () => {
       try {
-        // Check for active demo user session
-        if (typeof window !== 'undefined') {
-          const demoEmail = localStorage.getItem('aht_demo_user');
-          if (demoEmail && DEMO_PROFILES[demoEmail]) {
-            const demo = DEMO_PROFILES[demoEmail];
-            setCurrentUser(demo.profile);
-            setUserRole(demo.profile.role);
-            setIsAuthenticated(true);
-            syncRoleCookie(demo.profile.role);
-            setIsAuthLoading(false);
-            return;
-          }
-        }
-
         const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
         if (sessionErr) {
           console.error('Session retrieval error:', sessionErr);
@@ -634,13 +557,34 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             setIsAuthenticated(true);
             syncRoleCookie(updatedProfile.role as UserRole);
           } else if (isMounted) {
-            // Profile does NOT exist in Supabase profiles table (already deleted).
-            // Immediately sign out and clear auth state/cookies so user is never redirected to dashboard.
-            await supabase.auth.signOut().catch(() => { });
-            setIsAuthenticated(false);
-            setCurrentUser(FALLBACK_GUEST_PROFILE);
-            setUserRole('customer');
-            syncRoleCookie(null);
+            // Profile does NOT exist in Supabase profiles table.
+            // If user has role metadata in auth.users, upsert into profiles
+            const userMetaRole = session.user.user_metadata?.role as UserRole | undefined;
+            if (userMetaRole) {
+              const newProfile: Profile = {
+                id: session.user.id,
+                role: userMetaRole,
+                full_name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
+                email: session.user.email || '',
+                phone: session.user.user_metadata?.phone || '',
+                email_verified: !!session.user.email_confirmed_at,
+                phone_verified: !!session.user.user_metadata?.phone_verified,
+                status: 'active',
+                created_at: session.user.created_at || new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              };
+              await supabase.from('profiles').upsert(newProfile);
+              setCurrentUser(newProfile);
+              setUserRole(newProfile.role);
+              setIsAuthenticated(true);
+              syncRoleCookie(newProfile.role);
+            } else {
+              await supabase.auth.signOut().catch(() => { });
+              setIsAuthenticated(false);
+              setCurrentUser(FALLBACK_GUEST_PROFILE);
+              setUserRole('customer');
+              syncRoleCookie(null);
+            }
           }
         } else if (isMounted) {
           setIsAuthenticated(false);
@@ -663,13 +607,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       if (!isMounted) return;
 
       if (event === 'SIGNED_OUT' || !session?.user) {
-        const demoEmail = typeof window !== 'undefined' ? localStorage.getItem('aht_demo_user') : null;
-        if (!demoEmail || !DEMO_PROFILES[demoEmail]) {
-          setIsAuthenticated(false);
-          setCurrentUser(FALLBACK_GUEST_PROFILE);
-          setUserRole('customer');
-          syncRoleCookie(null);
-        }
+        setIsAuthenticated(false);
+        setCurrentUser(FALLBACK_GUEST_PROFILE);
+        setUserRole('customer');
+        syncRoleCookie(null);
         setIsAuthLoading(false);
         return;
       }
@@ -745,21 +686,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       });
 
       if (error) {
-        // Check if credentials match one of the predefined demo accounts for this role
-        if (DEMO_PROFILES[cleanEmail] && DEMO_PROFILES[cleanEmail].password === password) {
-          const demo = DEMO_PROFILES[cleanEmail];
-          setUserRole(demo.profile.role);
-          setCurrentUser(demo.profile);
-          setIsAuthenticated(true);
-          syncRoleCookie(demo.profile.role);
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('aht_demo_user', cleanEmail);
-            localStorage.removeItem('aht_pending_verification_email');
-          }
-          addNotification('Signed In', `Welcome back, ${demo.profile.full_name}`, 'success', demo.profile.role);
-          return { success: true, role: demo.profile.role };
-        }
-
         const errMsg = error.message || '';
         const isUnconfirmed =
           errMsg.toLowerCase().includes('email not confirmed') ||
@@ -813,22 +739,31 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         .maybeSingle();
 
       if (!profile) {
-        // Account exists in Supabase Auth, but their profile row in profiles table was deleted!
-        // Immediately sign out so session is not persisted and user cannot reach dashboard.
-        await supabase.auth.signOut().catch(() => { });
-        setIsAuthenticated(false);
-        setCurrentUser(FALLBACK_GUEST_PROFILE);
-        setUserRole('customer');
-        syncRoleCookie(null);
+        // If profile does not exist in profiles table, link/create from user metadata
+        const userMetaRole = (data.user.user_metadata?.role as UserRole) || 'customer';
+        const userMetaName = data.user.user_metadata?.full_name || cleanEmail.split('@')[0];
+        const newProfile: Profile = {
+          id: data.user.id,
+          role: userMetaRole,
+          full_name: userMetaName,
+          email: cleanEmail,
+          phone: data.user.user_metadata?.phone || '',
+          email_verified: !!data.user.email_confirmed_at,
+          phone_verified: !!data.user.user_metadata?.phone_verified,
+          status: 'active',
+          created_at: data.user.created_at || new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        await supabase.from('profiles').upsert(newProfile);
+        setUserRole(userMetaRole);
+        setCurrentUser(newProfile);
+        setIsAuthenticated(true);
+        syncRoleCookie(userMetaRole);
         if (typeof window !== 'undefined') {
-          localStorage.removeItem('aht_user_role');
-          localStorage.removeItem('aht_demo_user');
           localStorage.removeItem('aht_pending_verification_email');
         }
-        return {
-          success: false,
-          error: 'Your account profile does not exist or has been deleted. Please contact support.',
-        };
+        addNotification('Signed In', `Welcome back, ${userMetaName}`, 'success', userMetaRole);
+        return { success: true, role: userMetaRole };
       }
 
       // Check if user account is deactivated or suspended
@@ -859,26 +794,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       syncRoleCookie(profile.role);
       if (typeof window !== 'undefined') {
         localStorage.removeItem('aht_pending_verification_email');
-        localStorage.removeItem('aht_demo_user');
       }
       addNotification('Signed In', `Welcome back, ${profile.full_name}`, 'success', profile.role);
 
       return { success: true, role: profile.role };
     } catch (err: unknown) {
-      // Check demo fallback on unexpected error / network failure
-      if (DEMO_PROFILES[cleanEmail] && DEMO_PROFILES[cleanEmail].password === password) {
-        const demo = DEMO_PROFILES[cleanEmail];
-        setUserRole(demo.profile.role);
-        setCurrentUser(demo.profile);
-        setIsAuthenticated(true);
-        syncRoleCookie(demo.profile.role);
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('aht_demo_user', cleanEmail);
-          localStorage.removeItem('aht_pending_verification_email');
-        }
-        addNotification('Signed In', `Welcome back, ${demo.profile.full_name}`, 'success', demo.profile.role);
-        return { success: true, role: demo.profile.role };
-      }
       const msg = err instanceof Error ? err.message : 'An unexpected error occurred during sign in.';
       return { success: false, error: msg };
     }

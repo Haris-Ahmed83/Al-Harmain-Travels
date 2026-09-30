@@ -4,7 +4,7 @@ import React, { useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
-import { Mail, Lock, ArrowRight, Eye, EyeOff, ShieldCheck, AlertCircle, Shield, Car, Compass, Users } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Eye, EyeOff, ShieldCheck, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 function SignInForm() {
@@ -223,87 +223,6 @@ function SignInForm() {
                 )}
               </button>
             </form>
-
-            {/* Quick Demo Role Testing Section */}
-            <div className="pt-3 border-t border-base space-y-2">
-              <div className="flex items-center justify-between text-2xs uppercase tracking-wider text-muted font-bold">
-                <span>Quick Role Testing</span>
-                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-normal">One-click auto-fill</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmail('admin@alharmaintravel.com');
-                    setPassword('ChangeMe@12345');
-                    setErrorMsg('');
-                  }}
-                  className="flex items-center gap-2 p-2 rounded-xl border border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10 transition-colors text-left group"
-                >
-                  <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0">
-                    <Shield className="w-3.5 h-3.5" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-amber-500 leading-none">Admin</div>
-                    <div className="text-[10px] text-muted truncate mt-0.5">/admin HQ</div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmail('dispatcher@alharmaintravel.com');
-                    setPassword('Password@123');
-                    setErrorMsg('');
-                  }}
-                  className="flex items-center gap-2 p-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10 transition-colors text-left group"
-                >
-                  <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0">
-                    <Compass className="w-3.5 h-3.5" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-emerald-500 leading-none">Staff</div>
-                    <div className="text-[10px] text-muted truncate mt-0.5">/dispatcher</div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmail('driver@alharmaintravel.com');
-                    setPassword('Password@123');
-                    setErrorMsg('');
-                  }}
-                  className="flex items-center gap-2 p-2 rounded-xl border border-teal-500/20 bg-teal-500/5 hover:bg-teal-500/10 transition-colors text-left group"
-                >
-                  <div className="w-7 h-7 rounded-lg bg-teal-500/10 text-teal-500 flex items-center justify-center shrink-0">
-                    <Car className="w-3.5 h-3.5" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-teal-500 leading-none">Driver</div>
-                    <div className="text-[10px] text-muted truncate mt-0.5">/driver Cockpit</div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmail('customer@alharmaintravel.com');
-                    setPassword('Password@123');
-                    setErrorMsg('');
-                  }}
-                  className="flex items-center gap-2 p-2 rounded-xl border border-blue-500/20 bg-blue-500/5 hover:bg-blue-500/10 transition-colors text-left group"
-                >
-                  <div className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0">
-                    <Users className="w-3.5 h-3.5" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-blue-500 leading-none">Customer</div>
-                    <div className="text-[10px] text-muted truncate mt-0.5">/customer Portal</div>
-                  </div>
-                </button>
-              </div>
-            </div>
 
             <div className="flex items-start gap-2 text-[11px] text-muted bg-surface/80 rounded-xl p-3 border border-base">
               <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
