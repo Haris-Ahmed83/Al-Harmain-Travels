@@ -68,7 +68,7 @@ export default function CustomerDashboardShell({ children }: CustomerDashboardSh
     {
       href: '/customer',
       label: 'Book Ride',
-      subtitle: 'Instant radar & booking',
+      subtitle: 'Reserve VIP Fleet',
       icon: Compass,
       exact: true,
       badge: null,
@@ -76,7 +76,7 @@ export default function CustomerDashboardShell({ children }: CustomerDashboardSh
     {
       href: '/customer/bookings',
       label: 'My Trips',
-      subtitle: 'History & receipts',
+      subtitle: 'History & Active',
       icon: Clock,
       exact: false,
       badge: activeBookingsCount > 0 ? activeBookingsCount : null,
@@ -84,7 +84,7 @@ export default function CustomerDashboardShell({ children }: CustomerDashboardSh
     {
       href: '/customer/track',
       label: 'Live Radar',
-      subtitle: 'Real-time chauffeur GPS',
+      subtitle: 'Real-time GPS Radar',
       icon: Navigation,
       exact: false,
       badge: activeCustomerBooking ? 'LIVE' : null,
@@ -93,7 +93,7 @@ export default function CustomerDashboardShell({ children }: CustomerDashboardSh
     {
       href: '/customer/profile',
       label: 'VIP Profile',
-      subtitle: 'Account & contacts',
+      subtitle: 'Account & Places',
       icon: UserCheck,
       exact: false,
       badge: null,
@@ -106,9 +106,8 @@ export default function CustomerDashboardShell({ children }: CustomerDashboardSh
           1. DESKTOP SIDEBAR (lg+ screen size)
       ───────────────────────────────────────────────────────────── */}
       <aside
-        className={`hidden lg:flex flex-col shrink-0 fixed top-[64px] left-0 bottom-0 z-30 h-[calc(100vh-64px)] border-r border-base bg-card/95 backdrop-blur-xl transition-all duration-300 overflow-hidden select-none ${
-          isCollapsed ? 'w-20' : 'w-64'
-        }`}
+        className={`hidden lg:flex flex-col shrink-0 fixed top-[64px] left-0 bottom-0 z-30 h-[calc(100vh-64px)] border-r border-base bg-card/95 backdrop-blur-xl transition-all duration-300 overflow-hidden select-none ${isCollapsed ? 'w-20' : 'w-64'
+          }`}
         style={{ height: 'calc(100vh - 64px)' }}
       >
         {/* Top Header / Profile Banner */}
@@ -182,17 +181,15 @@ export default function CustomerDashboardShell({ children }: CustomerDashboardSh
                 key={item.href}
                 href={item.href}
                 title={isCollapsed ? item.label : undefined}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-2xl font-medium text-xs transition-all relative group ${
-                  isActive
-                    ? 'bg-emerald-600 text-white font-bold shadow-md shadow-emerald-900/20'
-                    : 'text-secondary hover:text-primary hover:bg-elevated border border-transparent hover:border-base'
-                } ${isCollapsed ? 'justify-center px-0' : ''}`}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-2xl font-medium text-xs transition-all relative group ${isActive
+                  ? 'bg-emerald-600 text-white font-bold shadow-md shadow-emerald-900/20'
+                  : 'text-secondary hover:text-primary hover:bg-elevated border border-transparent hover:border-base'
+                  } ${isCollapsed ? 'justify-center px-0' : ''}`}
               >
                 <div className="relative shrink-0">
                   <Icon
-                    className={`w-4 h-4 transition-transform group-hover:scale-110 ${
-                      isActive ? 'text-amber-300' : 'text-emerald-600 dark:text-emerald-400'
-                    }`}
+                    className={`w-4 h-4 transition-transform group-hover:scale-110 ${isActive ? 'text-amber-300' : 'text-emerald-600 dark:text-emerald-400'
+                      }`}
                   />
                   {item.isLive && (
                     <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-400 animate-ping" />
@@ -205,22 +202,20 @@ export default function CustomerDashboardShell({ children }: CustomerDashboardSh
                       <span className="truncate">{item.label}</span>
                       {item.badge && (
                         <span
-                          className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                            item.badge === 'LIVE'
-                              ? 'bg-amber-400 text-slate-950 animate-pulse'
-                              : isActive
+                          className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${item.badge === 'LIVE'
+                            ? 'bg-amber-400 text-slate-950 animate-pulse'
+                            : isActive
                               ? 'bg-white/20 text-white'
                               : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30'
-                          }`}
+                            }`}
                         >
                           {item.badge}
                         </span>
                       )}
                     </div>
                     <span
-                      className={`text-[10px] block truncate ${
-                        isActive ? 'text-emerald-100' : 'text-muted'
-                      }`}
+                      className={`text-[10px] block truncate ${isActive ? 'text-emerald-100' : 'text-muted'
+                        }`}
                     >
                       {item.subtitle}
                     </span>
@@ -261,9 +256,8 @@ export default function CustomerDashboardShell({ children }: CustomerDashboardSh
           {/* Theme Switcher Button */}
           <button
             onClick={toggleTheme}
-            className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-secondary hover:text-primary hover:bg-elevated border border-base transition-colors ${
-              isCollapsed ? 'justify-center px-0' : ''
-            }`}
+            className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-secondary hover:text-primary hover:bg-elevated border border-base transition-colors ${isCollapsed ? 'justify-center px-0' : ''
+              }`}
             title={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
           >
             {isDark ? (
@@ -312,9 +306,8 @@ export default function CustomerDashboardShell({ children }: CustomerDashboardSh
           2. MAIN CONTENT AREA
       ───────────────────────────────────────────────────────────── */}
       <main
-        className={`min-w-0 w-full overflow-x-hidden pb-24 lg:pb-8 transition-all duration-300 ${
-          isCollapsed ? 'lg:pl-20' : 'lg:pl-64'
-        }`}
+        className={`min-w-0 w-full overflow-x-hidden pb-24 lg:pb-8 transition-all duration-300 ${isCollapsed ? 'lg:pl-20' : 'lg:pl-64'
+          }`}
       >
         {children}
       </main>
@@ -336,17 +329,15 @@ export default function CustomerDashboardShell({ children }: CustomerDashboardSh
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex flex-col items-center justify-center py-2 px-2 rounded-2xl transition-all relative ${
-                  isActive
-                    ? 'text-emerald-600 dark:text-emerald-400 font-bold'
-                    : 'text-muted hover:text-primary'
-                }`}
+                className={`flex flex-col items-center justify-center py-2 px-2 rounded-2xl transition-all relative ${isActive
+                  ? 'text-emerald-600 dark:text-emerald-400 font-bold'
+                  : 'text-muted hover:text-primary'
+                  }`}
               >
                 <div className="relative">
                   <Icon
-                    className={`w-5 h-5 transition-transform ${
-                      isActive ? 'scale-110 text-emerald-600 dark:text-emerald-400' : ''
-                    }`}
+                    className={`w-5 h-5 transition-transform ${isActive ? 'scale-110 text-emerald-600 dark:text-emerald-400' : ''
+                      }`}
                   />
                   {item.isLive && (
                     <span className="absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-amber-400 animate-ping" />

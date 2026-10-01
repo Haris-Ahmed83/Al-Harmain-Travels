@@ -5,6 +5,7 @@ import { AppProvider } from '@/context/AppContext';
 import { ThemeProvider } from '@/context/ThemeContext';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
+import AuthRecoveryListener from '@/components/auth/AuthRecoveryListener';
 import { Toaster } from 'sonner';
 
 /* Display: elegant serif for brand & marketing headings */
@@ -42,6 +43,7 @@ export default function RootLayout({
       <body suppressHydrationWarning className="min-h-screen flex flex-col antialiased selection:bg-emerald-500 selection:text-white bg-[var(--background)] text-[var(--foreground)] font-sans text-body">
         <ThemeProvider>
           <AppProvider>
+            <AuthRecoveryListener />
             <a href="#main-content" className="skip-link">
               Skip to main content
             </a>

@@ -15,10 +15,11 @@ import {
   XCircle,
   Eye,
   EyeOff,
-  Globe,
-  HelpCircle,
+  Loader2,
+  ChevronDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import AuthShell from '@/components/auth/AuthShell';
 
 const COUNTRY_CODES = [
   { code: '+966', name: 'Saudi Arabia', flag: '🇸🇦', placeholder: '50 123 4567' },
@@ -61,15 +62,14 @@ export default function SignUpPage() {
   }, [password]);
 
   const strengthScore = useMemo(() => {
-    const passed = Object.values(passwordCriteria).filter(Boolean).length;
-    return passed;
+    return Object.values(passwordCriteria).filter(Boolean).length;
   }, [passwordCriteria]);
 
   const strengthLabel = useMemo(() => {
-    if (password.length === 0) return { label: 'Empty', color: 'bg-slate-300 dark:bg-slate-700', text: 'text-muted' };
-    if (strengthScore <= 2) return { label: 'Weak', color: 'bg-rose-500', text: 'text-rose-500' };
-    if (strengthScore <= 4) return { label: 'Good', color: 'bg-amber-500', text: 'text-amber-500' };
-    return { label: 'Strong', color: 'bg-emerald-500', text: 'text-emerald-500' };
+    if (password.length === 0) return { label: 'Password Strength', color: 'bg-slate-300 dark:bg-slate-700', text: 'text-muted' };
+    if (strengthScore <= 2) return { label: 'Weak', color: 'bg-rose-500', text: 'text-rose-500 font-semibold' };
+    if (strengthScore <= 4) return { label: 'Moderate', color: 'bg-amber-500', text: 'text-amber-500 font-semibold' };
+    return { label: 'Strong & Secure', color: 'bg-emerald-500', text: 'text-emerald-500 font-semibold' };
   }, [password, strengthScore]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -134,251 +134,261 @@ export default function SignUpPage() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-64px)] bg-page text-primary flex items-center justify-center py-10 px-4 sm:px-6 relative overflow-hidden">
-      {/* Ambient background glow */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[520px] h-[520px] bg-emerald-900/15 rounded-full blur-3xl pointer-events-none" />
+    <AuthShell
+      title="Create Customer Account"
+      subtitle="Sign up for executive pilgrimage transfers, real-time chauffeur radar, and flight pickups"
+      maxWidth="max-w-[540px]"
+    >
+      {errorMsg && (
+        <div
+          role="alert"
+          className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/80 text-rose-700 dark:text-rose-300 text-xs font-medium flex items-start gap-2.5 animate-shake shadow-sm"
+        >
+          <XCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
+          <span className="leading-relaxed">{errorMsg}</span>
+        </div>
+      )}
 
-      <div className="max-w-md w-full space-y-5 relative z-10 animate-fade-up">
-        {/* Header Branding */}
-        <div className="text-center space-y-2">
-          <Link href="/" className="inline-flex items-center gap-2.5 group mb-1">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-950 flex items-center justify-center text-amber-400 font-bold text-xl border border-emerald-500/30">
-              الح
-            </div>
-            <div className="text-left">
-              <div className="font-display text-xl font-semibold text-primary leading-tight">
-                Al Harmain <span className="text-amber-500">Travel</span>
-              </div>
-              <div className="text-2xs text-emerald-600 dark:text-emerald-400/80 tracking-label uppercase font-semibold mt-0.5">
-                Makkah · Madinah · Jeddah
-              </div>
-            </div>
-          </Link>
-          <h1 className="type-page-title">Create Customer Account</h1>
-          <p className="type-muted text-xs sm:text-sm">
-            Sign up for executive pilgrimage transfers, flight tracking, and chauffeur bookings.
-          </p>
+      <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+        {/* Full Legal Name */}
+        <div>
+          <label className="type-label flex items-center justify-between">
+            <span>Full Legal Name</span>
+            <span className="text-[10px] text-muted font-normal">As shown on passport / ID</span>
+          </label>
+          <div className="relative group/field">
+            <User className="w-4 h-4 text-muted group-focus-within/field:text-emerald-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none transition-colors duration-200" />
+            <input
+              type="text"
+              required
+              placeholder="e.g. Dr. Abdullah Rahman"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              className="field-input pl-10 h-11 text-xs sm:text-sm bg-input/70 group-hover/field:border-emerald-500/40 transition-all duration-200"
+            />
+          </div>
         </div>
 
-        {/* Card Container */}
-        <div className="surface-card overflow-hidden">
-          <div className="p-6 sm:p-7 space-y-5">
-            {errorMsg && (
-              <div
-                role="alert"
-                className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800/80 text-rose-700 dark:text-rose-300 text-xs font-medium flex items-start gap-2"
+        {/* Email Address */}
+        <div>
+          <label className="type-label flex items-center justify-between">
+            <span>Email Address</span>
+            <span className="text-[10px] text-muted font-normal">Booking confirmations</span>
+          </label>
+          <div className="relative group/field">
+            <Mail className="w-4 h-4 text-muted group-focus-within/field:text-emerald-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none transition-colors duration-200" />
+            <input
+              type="email"
+              required
+              placeholder="name@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="field-input pl-10 h-11 text-xs sm:text-sm bg-input/70 group-hover/field:border-emerald-500/40 transition-all duration-200"
+            />
+          </div>
+        </div>
+
+        {/* Phone Number with Country Code */}
+        <div>
+          <label className="type-label flex items-center justify-between">
+            <span>Phone Number (WhatsApp Active)</span>
+            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">Chauffeur dispatch sync</span>
+          </label>
+          <div className="flex gap-2">
+            <div className="relative w-36 shrink-0">
+              <select
+                value={selectedCountry.code}
+                onChange={(e) => {
+                  const found = COUNTRY_CODES.find((c) => c.code === e.target.value);
+                  if (found) setSelectedCountry(found);
+                }}
+                className="w-full h-11 pl-3 pr-8 rounded-xl bg-input/70 border border-base text-primary text-xs font-medium focus:outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/20 cursor-pointer appearance-none transition-all"
               >
-                <XCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
-                <span>{errorMsg}</span>
+                {COUNTRY_CODES.map((c) => (
+                  <option key={c.code} value={c.code} className="bg-card text-primary py-1">
+                    {c.flag} {c.code} ({c.name})
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-muted absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+
+            <div className="relative flex-1 group/field">
+              <Phone className="w-4 h-4 text-muted group-focus-within/field:text-emerald-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none transition-colors duration-200" />
+              <input
+                type="tel"
+                required
+                placeholder={selectedCountry.placeholder}
+                value={localPhone}
+                onChange={(e) => setLocalPhone(e.target.value)}
+                className="field-input pl-10 h-11 text-xs sm:text-sm bg-input/70 group-hover/field:border-emerald-500/40 transition-all duration-200"
+              />
+            </div>
+          </div>
+          <span className="text-[10px] text-muted mt-1 block">
+            Trip telemetry and driver arrival notifications will be sent directly via WhatsApp &amp; SMS.
+          </span>
+        </div>
+
+        {/* Passwords in 2-Column Responsive Layout */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Create Password */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="type-label !mb-0">Password *</label>
+              <span className={`text-[10px] ${strengthLabel.text}`}>
+                {strengthLabel.label}
+              </span>
+            </div>
+            <div className="relative group/field">
+              <Lock className="w-4 h-4 text-muted group-focus-within/field:text-emerald-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none transition-colors duration-200" />
+              <input
+                type={showPassword ? 'text' : 'password'}
+                required
+                placeholder="Min. 8 chars"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="field-input pl-10 pr-10 h-11 text-xs sm:text-sm bg-input/70 group-hover/field:border-emerald-500/40 transition-all duration-200"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-muted hover:text-primary rounded-lg transition-colors cursor-pointer"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Confirm Password */}
+          <div>
+            <label className="type-label">Confirm Password *</label>
+            <div className="relative group/field">
+              <Lock className="w-4 h-4 text-muted group-focus-within/field:text-emerald-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none transition-colors duration-200" />
+              <input
+                type={showConfirmPassword ? 'text' : 'password'}
+                required
+                placeholder="Re-enter password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className={`field-input pl-10 pr-10 h-11 text-xs sm:text-sm bg-input/70 transition-all duration-200 ${
+                  confirmPassword && password !== confirmPassword
+                    ? 'border-rose-500/80 focus:border-rose-500 focus:ring-rose-500/20'
+                    : 'group-hover/field:border-emerald-500/40'
+                }`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-muted hover:text-primary rounded-lg transition-colors cursor-pointer"
+                aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+              >
+                {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            {confirmPassword && password !== confirmPassword && (
+              <p className="text-[10px] text-rose-500 mt-1 font-medium">Passwords do not match.</p>
+            )}
+          </div>
+        </div>
+
+        {/* Password Strength Progress Bar */}
+        <div className="space-y-1.5 pt-0.5">
+          <div className="grid grid-cols-5 gap-1.5">
+            {[1, 2, 3, 4, 5].map((idx) => (
+              <div
+                key={idx}
+                className={`h-1.5 rounded-full transition-all duration-300 ${
+                  idx <= strengthScore ? strengthLabel.color : 'bg-slate-200 dark:bg-slate-800'
+                }`}
+              />
+            ))}
+          </div>
+
+          {/* Password Requirements Checklist */}
+          <div className="p-3 rounded-2xl bg-surface/70 border border-base/70">
+            <span className="text-[10px] text-muted block uppercase tracking-wider font-semibold mb-1.5">
+              Password Security Requirements
+            </span>
+            <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[11px]">
+              <span className={`flex items-center gap-1.5 transition-colors ${passwordCriteria.length ? 'text-emerald-500 font-semibold' : 'text-muted'}`}>
+                {passwordCriteria.length ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" /> : <span className="w-3.5 h-3.5 rounded-full border border-muted inline-block text-center text-[9px] leading-3 shrink-0">○</span>}
+                <span>8+ characters</span>
+              </span>
+              <span className={`flex items-center gap-1.5 transition-colors ${passwordCriteria.hasUpper ? 'text-emerald-500 font-semibold' : 'text-muted'}`}>
+                {passwordCriteria.hasUpper ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" /> : <span className="w-3.5 h-3.5 rounded-full border border-muted inline-block text-center text-[9px] leading-3 shrink-0">○</span>}
+                <span>Uppercase letter</span>
+              </span>
+              <span className={`flex items-center gap-1.5 transition-colors ${passwordCriteria.hasLower ? 'text-emerald-500 font-semibold' : 'text-muted'}`}>
+                {passwordCriteria.hasLower ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" /> : <span className="w-3.5 h-3.5 rounded-full border border-muted inline-block text-center text-[9px] leading-3 shrink-0">○</span>}
+                <span>Lowercase letter</span>
+              </span>
+              <span className={`flex items-center gap-1.5 transition-colors ${passwordCriteria.hasNumber ? 'text-emerald-500 font-semibold' : 'text-muted'}`}>
+                {passwordCriteria.hasNumber ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" /> : <span className="w-3.5 h-3.5 rounded-full border border-muted inline-block text-center text-[9px] leading-3 shrink-0">○</span>}
+                <span>Number (0-9)</span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Terms Acceptance */}
+        <div className="pt-1">
+          <label className="flex items-start gap-2.5 cursor-pointer text-xs text-secondary select-none">
+            <input
+              type="checkbox"
+              checked={agreeTerms}
+              onChange={(e) => setAgreeTerms(e.target.checked)}
+              className="mt-0.5 w-4 h-4 rounded-md border-base text-emerald-600 focus:ring-emerald-500 focus:ring-offset-0 cursor-pointer"
+            />
+            <span className="leading-snug">
+              I agree to the{' '}
+              <span className="text-amber-500 dark:text-amber-400 underline font-semibold hover:text-amber-600 dark:hover:text-amber-300">
+                Terms of Service
+              </span>{' '}
+              and{' '}
+              <span className="text-amber-500 dark:text-amber-400 underline font-semibold hover:text-amber-600 dark:hover:text-amber-300">
+                Privacy Policy
+              </span>.
+            </span>
+          </label>
+        </div>
+
+        {/* Role Notice */}
+        <div className="p-3.5 rounded-2xl bg-surface/70 border border-base/80 text-[11px] text-muted flex items-start gap-2.5">
+          <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+          <span className="leading-relaxed">
+            Public registration activates a <strong>Customer</strong> account for VIP transfer reservations. Fleet drivers and dispatch operators are onboarded directly through Administration.
+          </span>
+        </div>
+
+        {/* Action Buttons: Create Account (Primary) & Sign In (Secondary underneath) */}
+        <div className="space-y-3 pt-2">
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="relative overflow-hidden w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-emerald-600 via-emerald-600 to-teal-700 hover:from-emerald-500 hover:via-emerald-500 hover:to-teal-600 text-white text-sm font-bold tracking-wide shadow-lg shadow-emerald-950/40 hover:shadow-xl hover:shadow-emerald-600/30 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-300 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed group/btn before:absolute before:inset-0 before:-translate-x-full hover:before:animate-shimmer-sweep before:bg-gradient-to-r before:from-transparent before:via-white/20 before:to-transparent"
+          >
+            {isLoading ? (
+              <div className="flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin text-white" />
+                <span>Creating your account…</span>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center gap-2">
+                <span>Create Customer Account</span>
               </div>
             )}
+          </button>
 
-            <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-              {/* Full Legal Name */}
-              <div>
-                <label className="type-label">Full Legal Name *</label>
-                <div className="relative">
-                  <User className="w-4 h-4 text-muted absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Dr. Abdullah Rahman"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    className="field-input pl-10"
-                  />
-                </div>
-              </div>
-
-              {/* Email Address */}
-              <div>
-                <label className="type-label">Email Address *</label>
-                <div className="relative">
-                  <Mail className="w-4 h-4 text-muted absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <input
-                    type="email"
-                    required
-                    placeholder="name@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="field-input pl-10"
-                  />
-                </div>
-              </div>
-
-              {/* Phone Number with Country Code */}
-              <div>
-                <label className="type-label">Phone Number (WhatsApp Active) *</label>
-                <div className="flex gap-2">
-                  <select
-                    value={selectedCountry.code}
-                    onChange={(e) => {
-                      const found = COUNTRY_CODES.find((c) => c.code === e.target.value);
-                      if (found) setSelectedCountry(found);
-                    }}
-                    className="w-32 py-2.5 px-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-emerald-500 shrink-0 cursor-pointer"
-                  >
-                    {COUNTRY_CODES.map((c) => (
-                      <option key={c.code} value={c.code}>
-                        {c.flag} {c.code}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="relative flex-1">
-                    <Phone className="w-4 h-4 text-muted absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                    <input
-                      type="tel"
-                      required
-                      placeholder={selectedCountry.placeholder}
-                      value={localPhone}
-                      onChange={(e) => setLocalPhone(e.target.value)}
-                      className="field-input pl-10"
-                    />
-                  </div>
-                </div>
-                <span className="text-[10px] text-muted mt-1 block">
-                  SMS &amp; WhatsApp ride updates will be delivered to this number.
-                </span>
-              </div>
-
-              {/* Password */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="type-label !mb-0">Create Password *</label>
-                  <span className={`text-[10px] font-bold ${strengthLabel.text}`}>
-                    {strengthLabel.label}
-                  </span>
-                </div>
-                <div className="relative">
-                  <Lock className="w-4 h-4 text-muted absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    placeholder="Min. 8 characters"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="field-input pl-10 pr-10"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-muted hover:text-primary rounded-lg"
-                    aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-
-                {/* Password Strength Progress Bar */}
-                <div className="grid grid-cols-5 gap-1 mt-1.5">
-                  {[1, 2, 3, 4, 5].map((idx) => (
-                    <div
-                      key={idx}
-                      className={`h-1 rounded-full transition-colors ${
-                        idx <= strengthScore ? strengthLabel.color : 'bg-slate-200 dark:bg-slate-800'
-                      }`}
-                    />
-                  ))}
-                </div>
-
-                {/* Password Requirements List */}
-                <div className="grid grid-cols-2 gap-x-2 gap-y-1 mt-2 text-[10px] text-muted">
-                  <span className={`flex items-center gap-1 ${passwordCriteria.length ? 'text-emerald-500' : ''}`}>
-                    {passwordCriteria.length ? <CheckCircle2 className="w-3 h-3" /> : '○'} 8+ characters
-                  </span>
-                  <span className={`flex items-center gap-1 ${passwordCriteria.hasUpper ? 'text-emerald-500' : ''}`}>
-                    {passwordCriteria.hasUpper ? <CheckCircle2 className="w-3 h-3" /> : '○'} Uppercase letter
-                  </span>
-                  <span className={`flex items-center gap-1 ${passwordCriteria.hasLower ? 'text-emerald-500' : ''}`}>
-                    {passwordCriteria.hasLower ? <CheckCircle2 className="w-3 h-3" /> : '○'} Lowercase letter
-                  </span>
-                  <span className={`flex items-center gap-1 ${passwordCriteria.hasNumber ? 'text-emerald-500' : ''}`}>
-                    {passwordCriteria.hasNumber ? <CheckCircle2 className="w-3 h-3" /> : '○'} Number (0-9)
-                  </span>
-                </div>
-              </div>
-
-              {/* Confirm Password */}
-              <div>
-                <label className="type-label">Confirm Password *</label>
-                <div className="relative">
-                  <Lock className="w-4 h-4 text-muted absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <input
-                    type={showConfirmPassword ? 'text' : 'password'}
-                    required
-                    placeholder="Re-enter password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="field-input pl-10 pr-10"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-muted hover:text-primary rounded-lg"
-                    aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
-                  >
-                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-                {confirmPassword && password !== confirmPassword && (
-                  <p className="text-[10px] text-rose-500 mt-1">Passwords do not match.</p>
-                )}
-              </div>
-
-              {/* Terms & Conditions Acceptance */}
-              <div className="pt-1">
-                <label className="flex items-start gap-2.5 cursor-pointer text-[11px] text-secondary">
-                  <input
-                    type="checkbox"
-                    checked={agreeTerms}
-                    onChange={(e) => setAgreeTerms(e.target.checked)}
-                    className="mt-0.5 w-4 h-4 rounded border-base text-emerald-600 focus:ring-emerald-500"
-                  />
-                  <span>
-                    I agree to the{' '}
-                    <span className="text-amber-500 underline font-semibold">Terms of Service</span> and{' '}
-                    <span className="text-amber-500 underline font-semibold">Privacy Policy</span>.
-                  </span>
-                </label>
-              </div>
-
-              {/* Notice */}
-              <div className="p-3 rounded-xl bg-surface/80 border border-base text-[11px] text-muted flex items-start gap-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                <span>
-                  Public registration grants verified <strong>Customer</strong> booking status. Internal staff and fleet captains are provisioned by Administration.
-                </span>
-              </div>
-
-              {/* Submit Button */}
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="btn-brand w-full py-3.5"
-              >
-                {isLoading ? (
-                  <>
-                    <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                    <span>Creating Account…</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Create Account</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-            </form>
-          </div>
-
-          <div className="border-t border-base px-6 py-4 bg-surface/40 text-center text-xs text-muted">
-            Already have an account?{' '}
-            <Link href="/sign-in" className="text-amber-500 dark:text-amber-400 font-bold hover:underline">
-              Sign In Here
-            </Link>
-          </div>
+          <Link
+            href="/sign-in"
+            className="relative overflow-hidden w-full py-3.5 px-6 rounded-xl border border-base/80 bg-elevated/40 hover:bg-elevated/90 hover:border-emerald-500/50 text-primary hover:text-emerald-500 dark:hover:text-emerald-400 text-sm font-bold tracking-wide shadow-sm hover:shadow-lg hover:shadow-emerald-500/10 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-300 inline-flex items-center justify-center gap-2 group/sign before:absolute before:inset-0 before:-translate-x-full hover:before:animate-shimmer-sweep before:bg-gradient-to-r before:from-transparent before:via-emerald-400/15 before:to-transparent"
+          >
+            <span>Sign In to Existing Account</span>
+          </Link>
         </div>
-      </div>
-    </div>
+      </form>
+    </AuthShell>
   );
 }

@@ -1,18 +1,26 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
+import { useApp } from '@/context/AppContext';
 import {
-  FIXED_RATE_TABLE,
-  SERVICE_LABELS,
-  VEHICLE_LABELS,
-  VEHICLE_CAPACITY,
   TERMINAL_LABELS,
   formatFareSAR,
   resolveFixedFare,
+  getVehicleLabel,
+  getServiceLabel,
+  getVehicleCapacity,
+  isAirportRoute,
+  checkRateConflict,
 } from '@/lib/fixed-fare';
-import type { VehicleCategory, ServiceType, TerminalCode } from '@/types';
+import type {
+  TerminalCode,
+  FixedFareRate,
+  RateVehicleType,
+  RateServiceType,
+  RateRoute,
+  RateTerminal,
+} from '@/types';
 import {
-  ShieldCheck,
   Car,
   Route,
   Plane,
@@ -20,348 +28,2726 @@ import {
   Luggage,
   CheckCircle2,
   AlertTriangle,
-  Filter,
   Download,
   RefreshCw,
+  Plus,
+  Pencil,
+  Trash2,
+  Search,
+  X,
+  Check,
+  Info,
+  Layers,
+  ArrowRight,
+  SlidersHorizontal,
+  TableProperties,
+  ArrowUpDown,
+  CircleDot,
+  PauseCircle,
+  Tag,
+  ShieldCheck,
+  Coins,
+  MapPin,
 } from 'lucide-react';
+import { toast } from 'sonner';
+import { TableSkeletonRows, EmptyStateView } from '@/components/ui/DataStateSkeletons';
 
-const VEHICLE_CATEGORIES: VehicleCategory[] = ['sedan', 'staria', 'gmc', 'hiroof'];
-const SERVICE_TYPES: ServiceType[] = [
-  'intercity_jeddah_makkah',
-  'intercity_makkah_jeddah',
-  'intercity_makkah_madinah',
-  'intercity_makkah_madinah_sameday',
-  'ziyarat_makkah',
-  'ziyarat_taif',
-  'ziyarat_taif_bani_saad',
-];
-
-const TERMINAL_CODES: NonNullable<TerminalCode>[] = ['terminal_1', 'terminal_h', 'terminal_n'];
+type ActiveTab = 'rates' | 'vehicles' | 'routes_terminals' | 'services';
 
 export default function AdminRatesPage() {
-  const [filterVehicle, setFilterVehicle] = useState<VehicleCategory | 'all'>('all');
-  const [filterService, setFilterService] = useState<ServiceType | 'all'>('all');
-  const [showMatrix, setShowMatrix] = useState(false);
+  const {
+    fixedFareRates,
+    addBulkFixedFareRates,
+    updateFixedFareRate,
+    deleteFixedFareRate,
+    toggleFixedFareRateStatus,
+    rateVehicles,
+    addRateVehicle,
+    updateRateVehicle,
+    deleteRateVehicle,
+    rateServices,
+    addRateService,
+    updateRateService,
+    deleteRateService,
+    rateRoutes,
+    addRateRoute,
+    updateRateRoute,
+    deleteRateRoute,
+    rateTerminals,
+    addRateTerminal,
+    updateRateTerminal,
+    deleteRateTerminal,
+    refreshData,
+    isDataLoading,
+  } = useApp();
 
+  // ── Tab Navigation ──────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<ActiveTab>('rates');
+
+  // ── Filters & Search (Rates Tab) ───────────────────────────────────────────
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterVehicle, setFilterVehicle] = useState<string>('all');
+  const [filterService, setFilterService] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
+  const [showMatrix, setShowMatrix] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // ── Bulk Pricing Modal State ────────────────────────────────────────────────
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [bulkRoute, setBulkRoute] = useState<string>('intercity_jeddah_makkah');
+  const [bulkTerminal, setBulkTerminal] = useState<string>('all_terminals');
+  const [bulkFares, setBulkFares] = useState<Record<string, string>>({});
+  const [bulkIsActive, setBulkIsActive] = useState<boolean>(true);
+
+  // ── Rate Deletion & Conflict State ─────────────────────────────────────────
+  const [deletingRate, setDeletingRate] = useState<FixedFareRate | null>(null);
+  const [rateDeleteConflict, setRateDeleteConflict] = useState<{ linkedBookings: number; message: string } | null>(null);
+
+  // ── Vehicle CRUD Modals State ──────────────────────────────────────────────
+  const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false);
+  const [editingVehicle, setEditingVehicle] = useState<RateVehicleType | null>(null);
+  const [vehicleForm, setVehicleForm] = useState({
+    name: '',
+    category: '',
+    seating_capacity: 4,
+    luggage_capacity: 3,
+    description: '',
+    is_active: true,
+  });
+  const [deletingVehicle, setDeletingVehicle] = useState<RateVehicleType | null>(null);
+  const [vehicleDeleteConflict, setVehicleDeleteConflict] = useState<{ linkedBookings?: number; linkedRates?: number; error: string } | null>(null);
+
+  // ── Route CRUD Modals State ────────────────────────────────────────────────
+  const [isRouteModalOpen, setIsRouteModalOpen] = useState(false);
+  const [editingRoute, setEditingRoute] = useState<RateRoute | null>(null);
+  const [routeForm, setRouteForm] = useState({
+    route_name: '',
+    origin_name: '',
+    destination_name: '',
+    service_id: 'intercity',
+    is_airport: false,
+    is_active: true,
+  });
+  const [deletingRoute, setDeletingRoute] = useState<RateRoute | null>(null);
+  const [routeDeleteConflict, setRouteDeleteConflict] = useState<{ linkedBookings?: number; error: string } | null>(null);
+
+  // ── Terminal CRUD Modals State ─────────────────────────────────────────────
+  const [isTerminalModalOpen, setIsTerminalModalOpen] = useState(false);
+  const [editingTerminal, setEditingTerminal] = useState<RateTerminal | null>(null);
+  const [terminalForm, setTerminalForm] = useState({
+    name: '',
+    code: '',
+    route_id: 'intercity_jeddah_makkah',
+    description: '',
+    is_active: true,
+  });
+  const [deletingTerminal, setDeletingTerminal] = useState<RateTerminal | null>(null);
+  const [terminalDeleteConflict, setTerminalDeleteConflict] = useState<{ linkedBookings?: number; error: string } | null>(null);
+
+  // ── Service Category CRUD Modals State ─────────────────────────────────────
+  const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
+  const [editingService, setEditingService] = useState<RateServiceType | null>(null);
+  const [serviceForm, setServiceForm] = useState({
+    name: '',
+    description: '',
+    is_active: true,
+  });
+  const [deletingService, setDeletingService] = useState<RateServiceType | null>(null);
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // ── Dynamic Distinct List Options ──────────────────────────────────────────
+  const activeRoutesList = useMemo(() => {
+    return rateRoutes && rateRoutes.length > 0 ? rateRoutes : [];
+  }, [rateRoutes]);
+
+  const activeVehiclesList = useMemo(() => {
+    return rateVehicles && rateVehicles.length > 0 ? rateVehicles : [];
+  }, [rateVehicles]);
+
+  const activeServicesList = useMemo(() => {
+    return rateServices && rateServices.length > 0 ? rateServices : [];
+  }, [rateServices]);
+
+  // Terminal options for bulk pricing route
+  const currentBulkTerminals = useMemo(() => {
+    const isAirport = isAirportRoute(bulkRoute, rateRoutes);
+    if (!isAirport) return [];
+    const linked = rateTerminals.filter((t) => t.is_active && (!t.route_id || t.route_id === bulkRoute));
+    const list: Array<{ code: string; label: string; desc: string }> = [
+      { code: 'all_terminals', label: 'All Terminals', desc: 'Uniform fixed fare across all KAIA terminals' },
+    ];
+    linked.forEach((t) => {
+      const code = t.code || t.id;
+      if (code !== 'all_terminals') {
+        list.push({ code, label: t.name, desc: t.description || `Airport terminal ${t.name}` });
+      }
+    });
+    return list;
+  }, [bulkRoute, rateRoutes, rateTerminals]);
+
+  // ── Filtered Rates Table ───────────────────────────────────────────────────
   const filteredRates = useMemo(() => {
-    return FIXED_RATE_TABLE.filter((r) => {
+    return fixedFareRates.filter((r) => {
       const matchVehicle = filterVehicle === 'all' || r.vehicle_category === filterVehicle;
       const matchService = filterService === 'all' || r.service_type === filterService;
-      return matchVehicle && matchService;
-    });
-  }, [filterVehicle, filterService]);
+      const matchStatus =
+        filterStatus === 'all' ||
+        (filterStatus === 'active' && r.is_active) ||
+        (filterStatus === 'inactive' && !r.is_active);
 
-  // Build matrix: rows = vehicles, cols = services (+ terminal variants)
+      const q = searchQuery.trim().toLowerCase();
+      const matchSearch =
+        !q ||
+        r.vehicle_category.toLowerCase().includes(q) ||
+        getVehicleLabel(r.vehicle_category, rateVehicles).toLowerCase().includes(q) ||
+        r.service_type.toLowerCase().includes(q) ||
+        getServiceLabel(r.service_type, rateRoutes).toLowerCase().includes(q) ||
+        (r.terminal && r.terminal.toLowerCase().includes(q)) ||
+        (r.terminal && TERMINAL_LABELS[r.terminal as NonNullable<TerminalCode>]?.toLowerCase().includes(q));
+
+      return matchVehicle && matchService && matchStatus && matchSearch;
+    });
+  }, [fixedFareRates, filterVehicle, filterService, filterStatus, searchQuery, rateVehicles, rateRoutes]);
+
+  // ── Statistics ─────────────────────────────────────────────────────────────
+  const stats = useMemo(() => {
+    const total = fixedFareRates.length;
+    const active = fixedFareRates.filter((r) => r.is_active).length;
+    const inactive = total - active;
+    const vehiclesCount = activeVehiclesList.length || new Set(fixedFareRates.map((r) => r.vehicle_category)).size;
+    const routesCount = activeRoutesList.length;
+    return { total, active, inactive, vehiclesCount, routesCount };
+  }, [fixedFareRates, activeVehiclesList, activeRoutesList]);
+
+  // ── Matrix View Columns ────────────────────────────────────────────────────
   const matrixCols = useMemo(() => {
-    const cols: { serviceType: ServiceType; terminal: TerminalCode; label: string }[] = [];
-    SERVICE_TYPES.forEach((svc) => {
-      if (svc === 'intercity_jeddah_makkah') {
-        // Sedan has no terminal variant
-        cols.push({ serviceType: svc, terminal: null, label: SERVICE_LABELS[svc] + ' (Sedan)' });
-        TERMINAL_CODES.forEach((t) =>
-          cols.push({ serviceType: svc, terminal: t, label: SERVICE_LABELS[svc] + ' – ' + TERMINAL_LABELS[t] })
-        );
+    const cols: { serviceType: string; terminal: TerminalCode; label: string }[] = [];
+    activeRoutesList.forEach((r) => {
+      if (r.is_airport) {
+        cols.push({ serviceType: r.id, terminal: 'all_terminals', label: `${r.route_name} (All Terminals)` });
+        const linkedTerms = rateTerminals.filter((t) => t.is_active && (!t.route_id || t.route_id === r.id));
+        linkedTerms.forEach((t) => {
+          if (t.code !== 'all_terminals') {
+            cols.push({ serviceType: r.id, terminal: t.code, label: `${r.route_name} – ${t.name}` });
+          }
+        });
       } else {
-        cols.push({ serviceType: svc, terminal: null, label: SERVICE_LABELS[svc] });
+        cols.push({ serviceType: r.id, terminal: null, label: r.route_name });
       }
     });
     return cols;
-  }, []);
+  }, [activeRoutesList, rateTerminals]);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await refreshData();
+      toast.success('Live rate master refreshed from database.');
+    } catch {
+      toast.error('Failed to refresh rate list.');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const handleExportCSV = () => {
-    const headers = ['ID', 'Vehicle', 'Service', 'Terminal', 'Fare (SAR)', 'Currency'];
-    const rows = FIXED_RATE_TABLE.map((r) => [
-      r.id,
-      VEHICLE_LABELS[r.vehicle_category],
-      SERVICE_LABELS[r.service_type],
-      r.terminal ? TERMINAL_LABELS[r.terminal] : '—',
-      r.fare_amount,
-      'SAR',
-    ]);
+    const headers = ['Vehicle', 'Service Route', 'Terminal', 'Capacity Seats', 'Fixed Fare SAR', 'Status'];
+    const rows = filteredRates.map((r) => {
+      const cap = getVehicleCapacity(r.vehicle_category, rateVehicles);
+      const termLabel = r.terminal
+        ? TERMINAL_LABELS[r.terminal as NonNullable<TerminalCode>] || rateTerminals.find((t) => t.code === r.terminal)?.name || r.terminal
+        : 'All Terminals / City';
+      return [
+        `"${getVehicleLabel(r.vehicle_category, rateVehicles)}"`,
+        `"${getServiceLabel(r.service_type, rateRoutes)}"`,
+        `"${termLabel}"`,
+        cap.passengers,
+        r.fare_amount,
+        r.is_active ? 'Active' : 'Inactive',
+      ];
+    });
 
-    const csv = [headers, ...rows].map((row) => row.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const csv = [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `alharmain-fixed-fares-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `alharmain-rate-list-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+    toast.success('Exported Rate List CSV.');
   };
 
+  // ── Open Bulk Pricing Modal ────────────────────────────────────────────────
+  const handleOpenBulkModal = (initialRoute?: string, initialTerminal?: string | null) => {
+    const chosenRoute = initialRoute || (activeRoutesList[0]?.id ?? 'intercity_jeddah_makkah');
+    setBulkRoute(chosenRoute);
+
+    const isAirport = isAirportRoute(chosenRoute, rateRoutes);
+    const chosenTerm = isAirport ? initialTerminal || 'all_terminals' : 'none';
+    setBulkTerminal(chosenTerm);
+    setBulkIsActive(true);
+
+    // Prepopulate existing rates for active vehicles
+    const nextFares: Record<string, string> = {};
+    const normTerminal = chosenTerm !== 'none' ? chosenTerm : null;
+
+    activeVehiclesList.forEach((v) => {
+      const cat = v.category || v.id;
+      const existing = fixedFareRates.find(
+        (r) =>
+          r.vehicle_category === cat &&
+          r.service_type === chosenRoute &&
+          (r.terminal === normTerminal || (!r.terminal && !normTerminal))
+      );
+      nextFares[cat] = existing ? String(existing.fare_amount) : '';
+    });
+
+    setBulkFares(nextFares);
+    setIsBulkModalOpen(true);
+  };
+
+  // ── Bulk Pricing Submit ────────────────────────────────────────────────────
+  const handleBulkSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bulkRoute) {
+      toast.error('Please specify a service route.');
+      return;
+    }
+
+    const isAirport = isAirportRoute(bulkRoute, rateRoutes);
+    const effectiveTerminal: TerminalCode =
+      isAirport && bulkTerminal !== 'none' ? (bulkTerminal as TerminalCode) : null;
+
+    // Collect non-blank vehicle rates
+    const validRates: Array<{ vehicle_category: string; fare_amount: number; id?: string }> = [];
+
+    activeVehiclesList.forEach((v) => {
+      const cat = v.category || v.id;
+      const rawVal = bulkFares[cat];
+      if (rawVal !== undefined && rawVal !== null && String(rawVal).trim() !== '') {
+        const fare = Number(rawVal);
+        if (isNaN(fare) || fare <= 0) {
+          toast.error(`Fixed fare for ${v.name} must be a positive number greater than 0 SAR.`);
+          return;
+        }
+
+        const existing = fixedFareRates.find(
+          (r) =>
+            r.vehicle_category === cat &&
+            r.service_type === bulkRoute &&
+            (r.terminal === effectiveTerminal || (!r.terminal && !effectiveTerminal))
+        );
+
+        validRates.push({
+          vehicle_category: cat,
+          fare_amount: fare,
+          id: existing?.id,
+        });
+      }
+    });
+
+    if (validRates.length === 0) {
+      toast.error('Please enter a fixed fare for at least one vehicle category before submitting.');
+      return;
+    }
+
+    // Duplicate & conflict validation for every vehicle
+    for (const r of validRates) {
+      const conflict = checkRateConflict(
+        r.vehicle_category,
+        bulkRoute,
+        effectiveTerminal,
+        fixedFareRates,
+        r.id
+      );
+
+      if (conflict.hasConflict && conflict.conflictingRate?.id !== r.id) {
+        toast.error(conflict.message || 'Rate conflict detected with an existing active rate.');
+        return;
+      }
+    }
+
+    setIsSubmitting(true);
+    try {
+      const result = await addBulkFixedFareRates({
+        service_type: bulkRoute,
+        terminal: effectiveTerminal,
+        is_active: bulkIsActive,
+        rates: validRates,
+      });
+
+      if (result.success) {
+        setIsBulkModalOpen(false);
+      }
+    } catch {
+      toast.error('Failed to save rate entries.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // ── Delete Rate Handler with Safe Conflict Check ───────────────────────────
+  const handleDeleteRateClick = (rate: FixedFareRate) => {
+    setRateDeleteConflict(null);
+    setDeletingRate(rate);
+  };
+
+  const handleDeleteRateConfirm = async () => {
+    if (!deletingRate) return;
+    setIsSubmitting(true);
+    try {
+      const ok = await deleteFixedFareRate(deletingRate.id);
+      if (ok) {
+        setDeletingRate(null);
+        setRateDeleteConflict(null);
+      }
+    } catch {
+      toast.error('Failed to delete rate.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeactivateRateInstead = async () => {
+    if (!deletingRate) return;
+    setIsSubmitting(true);
+    try {
+      await updateFixedFareRate(deletingRate.id, { is_active: false });
+      toast.success('Rate deactivated successfully. Historical booking fares remain preserved.');
+      setDeletingRate(null);
+      setRateDeleteConflict(null);
+    } catch {
+      toast.error('Failed to deactivate rate.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // ── Vehicle CRUD Handlers ──────────────────────────────────────────────────
+  const handleOpenAddVehicle = () => {
+    setEditingVehicle(null);
+    setVehicleForm({
+      name: '',
+      category: '',
+      seating_capacity: 4,
+      luggage_capacity: 3,
+      description: '',
+      is_active: true,
+    });
+    setIsVehicleModalOpen(true);
+  };
+
+  const handleOpenEditVehicle = (v: RateVehicleType) => {
+    setEditingVehicle(v);
+    setVehicleForm({
+      name: v.name,
+      category: v.category,
+      seating_capacity: v.seating_capacity,
+      luggage_capacity: v.luggage_capacity,
+      description: v.description || '',
+      is_active: v.is_active,
+    });
+    setIsVehicleModalOpen(true);
+  };
+
+  const handleVehicleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!vehicleForm.name.trim() || !vehicleForm.category.trim()) {
+      toast.error('Vehicle name and category slug are required.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      if (editingVehicle) {
+        const res = await updateRateVehicle(editingVehicle.id, {
+          name: vehicleForm.name.trim(),
+          category: vehicleForm.category.trim().toLowerCase(),
+          seating_capacity: vehicleForm.seating_capacity,
+          luggage_capacity: vehicleForm.luggage_capacity,
+          description: vehicleForm.description.trim() || null,
+          is_active: vehicleForm.is_active,
+        });
+        if (res.success) setIsVehicleModalOpen(false);
+      } else {
+        const vehicleId = vehicleForm.category.trim().toLowerCase();
+        const res = await addRateVehicle({
+          id: vehicleId,
+          name: vehicleForm.name.trim(),
+          category: vehicleId,
+          seating_capacity: vehicleForm.seating_capacity,
+          luggage_capacity: vehicleForm.luggage_capacity,
+          description: vehicleForm.description.trim() || null,
+          is_active: vehicleForm.is_active,
+          display_order: activeVehiclesList.length + 1,
+        });
+        if (res.success) setIsVehicleModalOpen(false);
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteVehicleClick = (v: RateVehicleType) => {
+    setVehicleDeleteConflict(null);
+    setDeletingVehicle(v);
+  };
+
+  const handleDeleteVehicleConfirm = async () => {
+    if (!deletingVehicle) return;
+    setIsSubmitting(true);
+    try {
+      const res = await deleteRateVehicle(deletingVehicle.id);
+      if (res.success) {
+        setDeletingVehicle(null);
+        setVehicleDeleteConflict(null);
+      } else if (res.canDeactivate) {
+        setVehicleDeleteConflict({
+          linkedBookings: res.linkedBookings,
+          error: res.error || 'Vehicle is linked to active records. Please deactivate instead.',
+        });
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeactivateVehicleInstead = async () => {
+    if (!deletingVehicle) return;
+    setIsSubmitting(true);
+    try {
+      await updateRateVehicle(deletingVehicle.id, { is_active: false });
+      toast.success(`Vehicle "${deletingVehicle.name}" deactivated.`);
+      setDeletingVehicle(null);
+      setVehicleDeleteConflict(null);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // ── Route CRUD Handlers ────────────────────────────────────────────────────
+  const handleOpenAddRoute = () => {
+    setEditingRoute(null);
+    setRouteForm({
+      route_name: '',
+      origin_name: '',
+      destination_name: '',
+      service_id: 'intercity',
+      is_airport: false,
+      is_active: true,
+    });
+    setIsRouteModalOpen(true);
+  };
+
+  const handleOpenEditRoute = (r: RateRoute) => {
+    setEditingRoute(r);
+    setRouteForm({
+      route_name: r.route_name,
+      origin_name: r.origin_name,
+      destination_name: r.destination_name,
+      service_id: r.service_id || 'intercity',
+      is_airport: Boolean(r.is_airport),
+      is_active: r.is_active,
+    });
+    setIsRouteModalOpen(true);
+  };
+
+  const handleRouteFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!routeForm.route_name.trim() || !routeForm.origin_name.trim() || !routeForm.destination_name.trim()) {
+      toast.error('Route name, pickup origin, and destination are required.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      if (editingRoute) {
+        const res = await updateRateRoute(editingRoute.id, {
+          route_name: routeForm.route_name.trim(),
+          origin_name: routeForm.origin_name.trim(),
+          destination_name: routeForm.destination_name.trim(),
+          service_id: routeForm.service_id,
+          is_airport: routeForm.is_airport,
+          is_active: routeForm.is_active,
+        });
+        if (res.success) setIsRouteModalOpen(false);
+      } else {
+        const routeId = routeForm.route_name
+          .toLowerCase()
+          .replace(/[→\s-]+/g, '_')
+          .replace(/[^a-z0-9_]/g, '');
+        const res = await addRateRoute({
+          id: routeId,
+          route_name: routeForm.route_name.trim(),
+          origin_name: routeForm.origin_name.trim(),
+          destination_name: routeForm.destination_name.trim(),
+          service_id: routeForm.service_id,
+          is_airport: routeForm.is_airport,
+          is_active: routeForm.is_active,
+          display_order: activeRoutesList.length + 1,
+        });
+        if (res.success) setIsRouteModalOpen(false);
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteRouteClick = (r: RateRoute) => {
+    setRouteDeleteConflict(null);
+    setDeletingRoute(r);
+  };
+
+  const handleDeleteRouteConfirm = async () => {
+    if (!deletingRoute) return;
+    setIsSubmitting(true);
+    try {
+      const res = await deleteRateRoute(deletingRoute.id);
+      if (res.success) {
+        setDeletingRoute(null);
+        setRouteDeleteConflict(null);
+      } else if (res.canDeactivate) {
+        setRouteDeleteConflict({
+          linkedBookings: res.linkedBookings,
+          error: res.error || 'Route is linked to existing bookings. Please deactivate instead.',
+        });
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeactivateRouteInstead = async () => {
+    if (!deletingRoute) return;
+    setIsSubmitting(true);
+    try {
+      await updateRateRoute(deletingRoute.id, { is_active: false });
+      toast.success(`Route "${deletingRoute.route_name}" deactivated.`);
+      setDeletingRoute(null);
+      setRouteDeleteConflict(null);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // ── Terminal CRUD Handlers ─────────────────────────────────────────────────
+  const handleOpenAddTerminal = () => {
+    setEditingTerminal(null);
+    setTerminalForm({
+      name: '',
+      code: '',
+      route_id: activeRoutesList[0]?.id || 'intercity_jeddah_makkah',
+      description: '',
+      is_active: true,
+    });
+    setIsTerminalModalOpen(true);
+  };
+
+  const handleOpenEditTerminal = (t: RateTerminal) => {
+    setEditingTerminal(t);
+    setTerminalForm({
+      name: t.name,
+      code: t.code,
+      route_id: t.route_id || activeRoutesList[0]?.id || '',
+      description: t.description || '',
+      is_active: t.is_active,
+    });
+    setIsTerminalModalOpen(true);
+  };
+
+  const handleTerminalFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!terminalForm.name.trim() || !terminalForm.code.trim()) {
+      toast.error('Terminal name and code are required.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      if (editingTerminal) {
+        const res = await updateRateTerminal(editingTerminal.id, {
+          name: terminalForm.name.trim(),
+          code: terminalForm.code.trim().toLowerCase(),
+          route_id: terminalForm.route_id || null,
+          description: terminalForm.description.trim() || null,
+          is_active: terminalForm.is_active,
+        });
+        if (res.success) setIsTerminalModalOpen(false);
+      } else {
+        const terminalId = terminalForm.code.trim().toLowerCase();
+        const res = await addRateTerminal({
+          id: terminalId,
+          name: terminalForm.name.trim(),
+          code: terminalId,
+          route_id: terminalForm.route_id || null,
+          description: terminalForm.description.trim() || null,
+          is_active: terminalForm.is_active,
+          display_order: rateTerminals.length + 1,
+        });
+        if (res.success) setIsTerminalModalOpen(false);
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteTerminalClick = (t: RateTerminal) => {
+    setTerminalDeleteConflict(null);
+    setDeletingTerminal(t);
+  };
+
+  const handleDeleteTerminalConfirm = async () => {
+    if (!deletingTerminal) return;
+    setIsSubmitting(true);
+    try {
+      const res = await deleteRateTerminal(deletingTerminal.id);
+      if (res.success) {
+        setDeletingTerminal(null);
+        setTerminalDeleteConflict(null);
+      } else if (res.canDeactivate) {
+        setTerminalDeleteConflict({
+          linkedBookings: res.linkedBookings,
+          error: res.error || 'Terminal is linked to existing bookings. Please deactivate instead.',
+        });
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeactivateTerminalInstead = async () => {
+    if (!deletingTerminal) return;
+    setIsSubmitting(true);
+    try {
+      await updateRateTerminal(deletingTerminal.id, { is_active: false });
+      toast.success(`Terminal "${deletingTerminal.name}" deactivated.`);
+      setDeletingTerminal(null);
+      setTerminalDeleteConflict(null);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // ── Service Category CRUD Handlers ─────────────────────────────────────────
+  const handleOpenAddService = () => {
+    setEditingService(null);
+    setServiceForm({
+      name: '',
+      description: '',
+      is_active: true,
+    });
+    setIsServiceModalOpen(true);
+  };
+
+  const handleOpenEditService = (s: RateServiceType) => {
+    setEditingService(s);
+    setServiceForm({
+      name: s.name,
+      description: s.description || '',
+      is_active: s.is_active,
+    });
+    setIsServiceModalOpen(true);
+  };
+
+  const handleServiceFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!serviceForm.name.trim()) {
+      toast.error('Service category name is required.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      if (editingService) {
+        const res = await updateRateService(editingService.id, {
+          name: serviceForm.name.trim(),
+          description: serviceForm.description.trim() || null,
+          is_active: serviceForm.is_active,
+        });
+        if (res.success) setIsServiceModalOpen(false);
+      } else {
+        const slug = serviceForm.name
+          .toLowerCase()
+          .replace(/\s+/g, '_')
+          .replace(/[^a-z0-9_]/g, '');
+        const res = await addRateService({
+          id: slug,
+          name: serviceForm.name.trim(),
+          description: serviceForm.description.trim() || null,
+          is_active: serviceForm.is_active,
+          display_order: activeServicesList.length + 1,
+        });
+        if (res.success) setIsServiceModalOpen(false);
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteServiceClick = (s: RateServiceType) => {
+    setDeletingService(s);
+  };
+
+  const handleDeleteServiceConfirm = async () => {
+    if (!deletingService) return;
+    setIsSubmitting(true);
+    try {
+      const res = await deleteRateService(deletingService.id);
+      if (res.success) setDeletingService(null);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const hasActiveFilters =
+    filterVehicle !== 'all' || filterService !== 'all' || filterStatus !== 'all' || Boolean(searchQuery);
+
   return (
-    <div className="page-shell space-y-8">
-      {/* Header */}
-      <div className="bg-card border border-base p-6 sm:p-8 rounded-3xl shadow-xl">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 text-xs font-bold mb-2">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-              Admin · Rate Management
-            </span>
-            <h1 className="type-section-title text-primary">Fixed-Fare Rate Table</h1>
-            <p className="text-sm text-muted mt-1">
-              {FIXED_RATE_TABLE.length} approved rates · All prices in SAR · Source of truth for all customer bookings
+    <div className="page-shell space-y-7 pb-20 animate-fade-in text-slate-800 dark:text-slate-100">
+      {/* ── TOP EXECUTIVE HEADER ──────────────────────────────────────────────── */}
+      <header className="bg-card border border-base rounded-3xl p-6 sm:p-7 shadow-sm transition-all">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+          <div className="space-y-1.5 max-w-2xl">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/20">
+                <ShieldCheck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                <span>Admin Console / Rate Master</span>
+              </span>
+
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/25">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Live Supabase Master</span>
+              </span>
+            </div>
+
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">
+              Fixed Rates &amp; Tariffs Master
+            </h1>
+
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
+              Standardized route pricing, vehicle capacities, and KAIA airport terminal surcharges. Fares directly power customer bookings without arbitrary distance estimation.
             </p>
           </div>
-          <div className="flex items-center gap-2 self-start sm:self-center">
+
+          {/* Action Toolbar */}
+          <div className="flex flex-wrap items-center gap-2.5 pt-2 lg:pt-0">
             <button
-              type="button"
-              onClick={() => setShowMatrix(!showMatrix)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-elevated hover:bg-surface border border-base hover:border-strong transition-all cursor-pointer"
+              onClick={handleRefresh}
+              disabled={isRefreshing || isDataLoading}
+              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600 transition-all cursor-pointer disabled:opacity-50"
+              title="Synchronize live state with database"
             >
-              <Filter className="w-3.5 h-3.5" />
-              {showMatrix ? 'List View' : 'Matrix View'}
+              <RefreshCw className={`w-3.5 h-3.5 text-slate-500 dark:text-slate-400 ${isRefreshing ? 'animate-spin text-blue-600 dark:text-blue-400' : ''}`} />
+              <span>{isRefreshing ? 'Syncing…' : 'Sync Live'}</span>
             </button>
-            <button
-              type="button"
-              onClick={handleExportCSV}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all cursor-pointer shadow-md"
-            >
-              <Download className="w-3.5 h-3.5" />
-              Export CSV
-            </button>
+
+            {activeTab === 'rates' && (
+              <>
+                <button
+                  onClick={handleExportCSV}
+                  className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600 transition-all cursor-pointer"
+                  title="Export rate card as CSV"
+                >
+                  <Download className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+                  <span>Export CSV</span>
+                </button>
+
+                <button
+                  onClick={() => setShowMatrix(!showMatrix)}
+                  className={`inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                    showMatrix
+                      ? 'bg-blue-600 text-white border-blue-600 dark:bg-blue-600 dark:border-blue-500'
+                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                  }`}
+                  title="Toggle table versus matrix view"
+                >
+                  <TableProperties className="w-3.5 h-3.5" />
+                  <span>{showMatrix ? 'Table View' : 'Fleet Matrix'}</span>
+                </button>
+
+                <button
+                  onClick={() => handleOpenBulkModal()}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer active:scale-95"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+ Set Bulk Pricing</span>
+                </button>
+              </>
+            )}
+
+            {activeTab === 'vehicles' && (
+              <button
+                onClick={handleOpenAddVehicle}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer active:scale-95"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Add Vehicle Type</span>
+              </button>
+            )}
+
+            {activeTab === 'routes_terminals' && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleOpenAddRoute}
+                  className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer active:scale-95"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ Add Route</span>
+                </button>
+                <button
+                  onClick={handleOpenAddTerminal}
+                  className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-300 text-xs font-bold hover:bg-purple-500/20 transition-all cursor-pointer active:scale-95"
+                >
+                  <Plane className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                  <span>+ Add Terminal</span>
+                </button>
+              </div>
+            )}
+
+            {activeTab === 'services' && (
+              <button
+                onClick={handleOpenAddService}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer active:scale-95"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Add Service Category</span>
+              </button>
+            )}
           </div>
+        </div>
+      </header>
+
+      {/* ── METRIC STAT CARDS ────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 sm:gap-4">
+        {/* Total Rates Card */}
+        <div className="p-4 sm:p-5 rounded-2xl bg-card border border-base shadow-sm hover:border-blue-500/30 transition-colors flex flex-col justify-between">
+          <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+            <span>Configured Fares</span>
+            <div className="w-7 h-7 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-600 dark:text-blue-400">
+              <Tag className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <div className="mt-2.5 text-2xl font-bold text-slate-900 dark:text-white tabular-nums">
+            {stats.total}
+          </div>
+          <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+            Total fixed tariffs
+          </span>
+        </div>
+
+        {/* Active Rates Card */}
+        <div className="p-4 sm:p-5 rounded-2xl bg-card border border-base shadow-sm hover:border-emerald-500/30 transition-colors flex flex-col justify-between">
+          <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+            <span>Active Tariffs</span>
+            <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <div className="mt-2.5 text-2xl font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">
+            {stats.active}
+          </div>
+          <span className="text-[11px] text-emerald-700/80 dark:text-emerald-400/80 font-medium mt-1">
+            🟢 Bookable for travelers
+          </span>
+        </div>
+
+        {/* Vehicles Card */}
+        <div className="p-4 sm:p-5 rounded-2xl bg-card border border-base shadow-sm hover:border-blue-500/30 transition-colors flex flex-col justify-between">
+          <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+            <span>Fleet Categories</span>
+            <div className="w-7 h-7 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-600 dark:text-blue-400">
+              <Car className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <div className="mt-2.5 text-2xl font-bold text-slate-900 dark:text-white tabular-nums">
+            {stats.vehiclesCount}
+          </div>
+          <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+            Passenger vehicle types
+          </span>
+        </div>
+
+        {/* Service Corridors Card */}
+        <div className="p-4 sm:p-5 rounded-2xl bg-card border border-base shadow-sm hover:border-indigo-500/30 transition-colors flex flex-col justify-between">
+          <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+            <span>Service Corridors</span>
+            <div className="w-7 h-7 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+              <Route className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <div className="mt-2.5 text-2xl font-bold text-slate-900 dark:text-white tabular-nums">
+            {stats.routesCount}
+          </div>
+          <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+            Intercity &amp; sacred routes
+          </span>
+        </div>
+
+        {/* KAIA Terminals Card */}
+        <div className="col-span-2 sm:col-span-3 lg:col-span-1 p-4 sm:p-5 rounded-2xl bg-card border border-base shadow-sm hover:border-purple-500/30 transition-colors flex flex-col justify-between">
+          <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+            <span>KAIA Terminals</span>
+            <div className="w-7 h-7 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-600 dark:text-purple-400">
+              <Plane className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <div className="mt-2.5 text-2xl font-bold text-slate-900 dark:text-white tabular-nums">
+            {rateTerminals.length}
+          </div>
+          <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+            Airport flight gates
+          </span>
         </div>
       </div>
 
-      {/* Stats summary */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {VEHICLE_CATEGORIES.map((cat) => {
-          const catRates = FIXED_RATE_TABLE.filter((r) => r.vehicle_category === cat);
-          const minFare = Math.min(...catRates.map((r) => r.fare_amount));
-          const maxFare = Math.max(...catRates.map((r) => r.fare_amount));
-          const cap = VEHICLE_CAPACITY[cat];
-          return (
-            <div key={cat} className="bg-card border border-base rounded-2xl p-4 sm:p-5 shadow-sm hover:border-emerald-500/30 transition-all">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-                  <Car className="w-4 h-4" />
-                </div>
-                <span className="text-xs font-bold text-primary capitalize truncate">{VEHICLE_LABELS[cat].split(' ')[0]}</span>
+      {/* ── TAB NAVIGATION BUTTONS ───────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-slate-100/90 dark:bg-slate-900/80 border border-base rounded-2xl">
+        <button
+          type="button"
+          onClick={() => setActiveTab('rates')}
+          className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2 transition-all cursor-pointer ${
+            activeTab === 'rates'
+              ? 'bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-300 shadow-sm border border-slate-200 dark:border-slate-700'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+          }`}
+        >
+          <Tag className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+          <span>Fixed Rates &amp; Matrix</span>
+          <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${activeTab === 'rates' ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800' : 'bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>
+            {fixedFareRates.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('vehicles')}
+          className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2 transition-all cursor-pointer ${
+            activeTab === 'vehicles'
+              ? 'bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-300 shadow-sm border border-slate-200 dark:border-slate-700'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+          }`}
+        >
+          <Car className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+          <span>Vehicles &amp; Capacity</span>
+          <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${activeTab === 'vehicles' ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800' : 'bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>
+            {activeVehiclesList.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('routes_terminals')}
+          className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2 transition-all cursor-pointer ${
+            activeTab === 'routes_terminals'
+              ? 'bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 shadow-sm border border-slate-200 dark:border-slate-700'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+          }`}
+        >
+          <Route className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+          <span>Routes &amp; Terminals</span>
+          <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${activeTab === 'routes_terminals' ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800' : 'bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>
+            {activeRoutesList.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('services')}
+          className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2 transition-all cursor-pointer ${
+            activeTab === 'services'
+              ? 'bg-white dark:bg-slate-800 text-purple-700 dark:text-purple-300 shadow-sm border border-slate-200 dark:border-slate-700'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+          }`}
+        >
+          <Layers className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+          <span>Service Categories</span>
+          <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${activeTab === 'services' ? 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800' : 'bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>
+            {activeServicesList.length}
+          </span>
+        </button>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          TAB 1: FIXED RATES & BULK PRICING
+         ═══════════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'rates' && (
+        <div className="space-y-6">
+          {/* Neutral / Slate Search & Filters Bar */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-card border border-base space-y-3.5 shadow-sm">
+            <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
+              {/* Search */}
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search rates by vehicle, route, or terminal..."
+                  className="w-full pl-10 pr-9 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 font-medium transition-all"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
-              <div className="text-[10px] text-muted font-medium">{VEHICLE_LABELS[cat]}</div>
-              <div className="mt-2 text-xs text-secondary flex items-center gap-2">
-                <span className="flex items-center gap-1"><Users className="w-3 h-3" />{cap.passengers}</span>
-                <span className="flex items-center gap-1"><Luggage className="w-3 h-3" />{cap.luggage}</span>
+
+              {/* Vehicle Filter (Blue Theme) */}
+              <div className="w-full md:w-52">
+                <select
+                  value={filterVehicle}
+                  onChange={(e) => setFilterVehicle(e.target.value)}
+                  className="w-full py-2 px-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs sm:text-sm font-medium focus:outline-none focus:border-blue-500 transition-all"
+                >
+                  <option value="all">All Vehicles ({activeVehiclesList.length})</option>
+                  {activeVehiclesList.map((v) => (
+                    <option key={v.id} value={v.category || v.id}>
+                      {v.name}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <div className="mt-3 pt-3 border-t border-base text-xs">
-                <span className="text-muted text-[10px]">Fare range</span>
-                <div className="font-black text-emerald-600 dark:text-emerald-400 text-sm">{formatFareSAR(minFare)} – {formatFareSAR(maxFare)}</div>
-                <div className="text-[10px] text-muted mt-0.5">{catRates.length} rates</div>
+
+              {/* Service Corridor Filter (Indigo Theme) */}
+              <div className="w-full md:w-60">
+                <select
+                  value={filterService}
+                  onChange={(e) => setFilterService(e.target.value)}
+                  className="w-full py-2 px-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs sm:text-sm font-medium focus:outline-none focus:border-indigo-500 transition-all"
+                >
+                  <option value="all">All Corridors ({activeRoutesList.length})</option>
+                  {activeRoutesList.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.route_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Status Filter (Semantic Status Theme) */}
+              <div className="w-full md:w-36">
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value as 'all' | 'active' | 'inactive')}
+                  className="w-full py-2 px-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs sm:text-sm font-medium focus:outline-none focus:border-blue-500 transition-all"
+                >
+                  <option value="all">All Status</option>
+                  <option value="active">🟢 Active Only</option>
+                  <option value="inactive">🔴 Inactive Only</option>
+                </select>
               </div>
             </div>
-          );
-        })}
-      </div>
 
-      {/* Integrity check */}
-      <div className="bg-card border border-emerald-500/20 rounded-2xl p-4 sm:p-5 flex items-start gap-3">
-        <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
-        <div>
-          <div className="text-sm font-bold text-primary mb-1">Rate Table Integrity — VERIFIED</div>
-          <p className="text-xs text-secondary">
-            All {FIXED_RATE_TABLE.length} rates compile without error (7 Sedan + 8 Staria + 8 GMC + 8 HiRoof). No rate is derived from distance, duration, GPS coordinates, or per-km pricing.
-            Every combination has exactly one canonical entry. Standard and same-day Makkah → Madinah round trips are tracked as separate entries.
-          </p>
-        </div>
-      </div>
-
-      {/* Filters (list view) */}
-      {!showMatrix && (
-        <div className="bg-card border border-base rounded-2xl p-4 flex flex-wrap gap-3 items-center">
-          <span className="text-xs font-bold text-muted uppercase tracking-widest flex items-center gap-1.5">
-            <Filter className="w-3 h-3" />
-            Filter:
-          </span>
-          <div className="flex flex-wrap gap-1.5">
-            <button
-              type="button"
-              onClick={() => setFilterVehicle('all')}
-              className={`px-3 py-1 rounded-full text-[11px] font-bold border transition-all cursor-pointer ${filterVehicle === 'all' ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-700 dark:text-emerald-300' : 'bg-surface border-base text-muted hover:text-primary'}`}
-            >
-              All Vehicles
-            </button>
-            {VEHICLE_CATEGORIES.map((cat) => (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => setFilterVehicle(cat)}
-                className={`px-3 py-1 rounded-full text-[11px] font-bold border transition-all cursor-pointer ${filterVehicle === cat ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-700 dark:text-emerald-300' : 'bg-surface border-base text-muted hover:text-primary'}`}
-              >
-                {VEHICLE_LABELS[cat].split(' ')[0]}
-              </button>
-            ))}
+            {hasActiveFilters && (
+              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+                <span>
+                  Showing <strong className="text-slate-900 dark:text-white">{filteredRates.length}</strong> of{' '}
+                  <strong className="text-slate-900 dark:text-white">{fixedFareRates.length}</strong> configured rates
+                </span>
+                <button
+                  onClick={() => {
+                    setFilterVehicle('all');
+                    setFilterService('all');
+                    setFilterStatus('all');
+                    setSearchQuery('');
+                  }}
+                  className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer font-semibold"
+                >
+                  Reset all filters
+                </button>
+              </div>
+            )}
           </div>
-          <div className="flex flex-wrap gap-1.5 border-l border-base pl-3">
-            <button
-              type="button"
-              onClick={() => setFilterService('all')}
-              className={`px-3 py-1 rounded-full text-[11px] font-bold border transition-all cursor-pointer ${filterService === 'all' ? 'bg-amber-500/20 border-amber-500/40 text-amber-700 dark:text-amber-300' : 'bg-surface border-base text-muted hover:text-primary'}`}
-            >
-              All Services
-            </button>
-            {SERVICE_TYPES.map((svc) => (
-              <button
-                key={svc}
-                type="button"
-                onClick={() => setFilterService(svc)}
-                className={`px-3 py-1 rounded-full text-[11px] font-bold border transition-all cursor-pointer ${filterService === svc ? 'bg-amber-500/20 border-amber-500/40 text-amber-700 dark:text-amber-300' : 'bg-surface border-base text-muted hover:text-primary'}`}
-              >
-                {SERVICE_LABELS[svc].split('→')[0].trim()}
-              </button>
-            ))}
-          </div>
-          <span className="text-[11px] text-muted ml-auto">{filteredRates.length} of {FIXED_RATE_TABLE.length} rates</span>
-        </div>
-      )}
 
-      {/* List View */}
-      {!showMatrix && (
-        <div className="bg-card border border-base rounded-3xl shadow-xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs min-w-[700px]">
-              <thead className="bg-surface border-b border-base">
-                <tr>
-                  <th className="text-left px-4 sm:px-5 py-3.5 text-muted font-bold uppercase tracking-wider text-[10px]">Vehicle</th>
-                  <th className="text-left px-4 sm:px-5 py-3.5 text-muted font-bold uppercase tracking-wider text-[10px]">Service Route</th>
-                  <th className="text-left px-4 sm:px-5 py-3.5 text-muted font-bold uppercase tracking-wider text-[10px]">Terminal</th>
-                  <th className="text-left px-4 sm:px-5 py-3.5 text-muted font-bold uppercase tracking-wider text-[10px]">Capacity</th>
-                  <th className="text-right px-4 sm:px-5 py-3.5 text-muted font-bold uppercase tracking-wider text-[10px]">Fixed Fare</th>
-                  <th className="text-center px-4 sm:px-5 py-3.5 text-muted font-bold uppercase tracking-wider text-[10px]">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-base">
-                {filteredRates.map((rate, idx) => {
-                  const cap = VEHICLE_CAPACITY[rate.vehicle_category];
-                  return (
-                    <tr
-                      key={rate.id}
-                      className={`transition-colors hover:bg-surface/50 ${idx % 2 === 0 ? '' : 'bg-surface/20'}`}
-                    >
-                      <td className="px-4 sm:px-5 py-3.5">
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-                            <Car className="w-3.5 h-3.5" />
-                          </div>
-                          <div>
-                            <div className="font-bold text-primary">{VEHICLE_LABELS[rate.vehicle_category]}</div>
-                            <div className="text-[10px] text-muted capitalize">{rate.vehicle_category}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 sm:px-5 py-3.5">
-                        <div className="flex items-center gap-1.5">
-                          <Route className="w-3 h-3 text-amber-500 shrink-0" />
-                          <span className="font-medium text-secondary">{SERVICE_LABELS[rate.service_type]}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 sm:px-5 py-3.5">
-                        {rate.terminal ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 text-[10px] font-bold">
-                            <Plane className="w-2.5 h-2.5" />
-                            {TERMINAL_LABELS[rate.terminal]}
-                          </span>
-                        ) : (
-                          <span className="text-muted text-[10px]">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 sm:px-5 py-3.5">
-                        <div className="text-[11px] text-secondary flex items-center gap-2">
-                          <span className="flex items-center gap-1"><Users className="w-3 h-3 text-muted" />{cap.passengers}</span>
-                          <span className="flex items-center gap-1"><Luggage className="w-3 h-3 text-muted" />{cap.luggage}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 sm:px-5 py-3.5 text-right">
-                        <span className="font-black text-sm text-emerald-600 dark:text-emerald-400">{formatFareSAR(rate.fare_amount)}</span>
-                        <div className="text-[9px] text-muted font-bold uppercase tracking-widest mt-0.5">fixed · no surge</div>
-                      </td>
-                      <td className="px-4 sm:px-5 py-3.5 text-center">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 text-[10px] font-bold">
-                          <CheckCircle2 className="w-3 h-3" />
-                          Active
-                        </span>
-                      </td>
+          {/* Matrix View vs Table View */}
+          {showMatrix ? (
+            <div className="p-5 sm:p-6 rounded-2xl bg-card border border-base shadow-sm space-y-4 overflow-hidden">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1 border-b border-base">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <TableProperties className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    <span>Cross-Fleet Tariff Matrix</span>
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Comprehensive cross-reference of fixed prices per vehicle category and corridor.
+                  </p>
+                </div>
+                <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                  <span>All fares in Saudi Riyal (SAR)</span>
+                </div>
+              </div>
+
+              <div className="border border-base rounded-xl overflow-x-auto min-w-[700px]">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-50 dark:bg-slate-900/90 border-b border-base text-slate-500 dark:text-slate-400 uppercase text-[10px] tracking-wider font-semibold">
+                    <tr>
+                      <th className="py-3 px-4 font-bold text-blue-700 dark:text-blue-400">Vehicle Class</th>
+                      <th className="py-3 px-4 font-bold text-center text-teal-700 dark:text-teal-400">Capacity</th>
+                      {matrixCols.map((c, i) => (
+                        <th key={i} className="py-3 px-3 font-bold text-center text-indigo-700 dark:text-indigo-400">
+                          {c.label}
+                        </th>
+                      ))}
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Matrix View */}
-      {showMatrix && (
-        <div className="bg-card border border-base rounded-3xl shadow-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-base bg-surface">
-            <h2 className="text-sm font-bold text-primary">Fare Matrix — All Vehicles × All Routes</h2>
-            <p className="text-[11px] text-muted mt-0.5">Cross-reference view. Empty cells = no configured rate.</p>
-          </div>
-          <div className="overflow-x-auto p-4">
-            <table className="text-xs border-collapse w-full min-w-[900px]">
-              <thead>
-                <tr>
-                  <th className="text-left p-3 rounded-tl-lg bg-surface border border-base text-muted text-[10px] font-bold uppercase">Vehicle</th>
-                  {matrixCols.map((col, i) => (
-                    <th key={i} className="p-2.5 bg-surface border border-base text-muted text-[10px] font-bold text-center max-w-[100px] leading-tight">
-                      <div className="truncate">{col.label}</div>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {VEHICLE_CATEGORIES.map((cat) => (
-                  <tr key={cat}>
-                    <td className="p-3 border border-base bg-surface sticky left-0 z-10">
-                      <div className="flex items-center gap-2">
-                        <Car className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                        <div>
-                          <div className="font-bold text-primary text-[11px]">{VEHICLE_LABELS[cat].split(' — ')[0]}</div>
-                          <div className="text-[9px] text-muted">{VEHICLE_CAPACITY[cat].passengers} pax</div>
-                        </div>
-                      </div>
-                    </td>
-                    {matrixCols.map((col, i) => {
-                      // For sedan on Jeddah→Makkah with terminal in col definition (non-null): skip
-                      if (cat === 'sedan' && col.serviceType === 'intercity_jeddah_makkah' && col.terminal !== null) {
-                        return <td key={i} className="p-2.5 border border-base text-center bg-surface/30"><span className="text-[9px] text-muted/40">—</span></td>;
-                      }
-                      // For sedan on Jeddah→Makkah with null terminal in col: show rate
-                      const result = resolveFixedFare(cat, col.serviceType, col.terminal);
+                  </thead>
+                  <tbody className="divide-y divide-base">
+                    {activeVehiclesList.map((v) => {
+                      const cat = v.category || v.id;
                       return (
-                        <td key={i} className={`p-2.5 border border-base text-center transition-colors ${result.found ? 'hover:bg-emerald-500/5' : 'bg-surface/30'}`}>
-                          {result.found ? (
-                            <div>
-                              <div className="font-black text-emerald-600 dark:text-emerald-400 text-sm leading-none">{result.fare.toLocaleString()}</div>
-                              <div className="text-[9px] text-muted mt-0.5 font-semibold">SAR</div>
+                        <tr key={v.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                          <td className="py-3 px-4 font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                              <Car className="w-3.5 h-3.5" />
                             </div>
-                          ) : (
-                            <span className="text-[9px] text-muted/40">—</span>
-                          )}
-                        </td>
+                            <span>{v.name}</span>
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-teal-500/10 text-teal-700 dark:text-teal-300 border border-teal-500/20">
+                              <Users className="w-3 h-3 text-teal-600 dark:text-teal-400" />
+                              <span>{v.seating_capacity} Seats</span>
+                            </span>
+                          </td>
+                          {matrixCols.map((c, i) => {
+                            const res = resolveFixedFare(cat, c.serviceType, c.terminal, fixedFareRates);
+                            return (
+                              <td key={i} className="py-3 px-3 text-center">
+                                {res.found ? (
+                                  <span className="font-extrabold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                                    {formatFareSAR(res.fare)}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400 dark:text-slate-600 font-mono text-[11px]">—</span>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
                       );
                     })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            /* Table View */
+            <div className="rounded-2xl bg-card border border-base shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-50 dark:bg-slate-900/90 border-b border-base text-slate-500 dark:text-slate-400 uppercase text-[10px] tracking-wider font-semibold">
+                    <tr>
+                      <th className="py-3.5 px-4 font-bold text-blue-700 dark:text-blue-400">Vehicle Class</th>
+                      <th className="py-3.5 px-4 font-bold text-indigo-700 dark:text-indigo-400">Service Corridor</th>
+                      <th className="py-3.5 px-4 font-bold text-purple-700 dark:text-purple-400">Airport / Gate</th>
+                      <th className="py-3.5 px-4 font-bold text-center text-teal-700 dark:text-teal-400">Capacity</th>
+                      <th className="py-3.5 px-4 font-semibold text-right text-slate-700 dark:text-slate-300">Fixed Tariff (SAR)</th>
+                      <th className="py-3.5 px-4 font-bold text-center">Status</th>
+                      <th className="py-3.5 px-4 font-bold text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-base">
+                    {isDataLoading ? (
+                      <TableSkeletonRows rows={6} cols={7} />
+                    ) : filteredRates.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-12 text-center text-slate-500 dark:text-slate-400 space-y-2">
+                          <Info className="w-7 h-7 text-slate-400 mx-auto" />
+                          <p className="font-semibold text-sm text-slate-800 dark:text-slate-200">
+                            No fixed rates match your search criteria
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            Clear your filter selections or use &ldquo;Set Bulk Pricing&rdquo; to add new corridor rates.
+                          </p>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredRates.map((r) => {
+                        const cap = getVehicleCapacity(r.vehicle_category, rateVehicles);
+                        const vLabel = getVehicleLabel(r.vehicle_category, rateVehicles);
+                        const sLabel = getServiceLabel(r.service_type, rateRoutes);
+                        const isAirport = isAirportRoute(r.service_type, rateRoutes);
+                        const tLabel = r.terminal
+                          ? TERMINAL_LABELS[r.terminal as NonNullable<TerminalCode>] ||
+                            rateTerminals.find((t) => t.code === r.terminal)?.name ||
+                            r.terminal
+                          : isAirport
+                          ? 'All KAIA Terminals'
+                          : 'Standard Corridor';
+
+                        return (
+                          <tr key={r.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                            {/* Vehicle (Blue Theme) */}
+                            <td className="py-3.5 px-4">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
+                                  <Car className="w-4 h-4" />
+                                </div>
+                                <div>
+                                  <div className="font-bold text-slate-900 dark:text-white">{vLabel}</div>
+                                  <div className="text-[10px] font-mono text-blue-600 dark:text-blue-400 uppercase tracking-wider">
+                                    {r.vehicle_category}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Service Route (Indigo Theme) */}
+                            <td className="py-3.5 px-4">
+                              <div className="flex items-center gap-1.5 font-medium text-slate-800 dark:text-slate-200">
+                                <Route className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0" />
+                                <span>{sLabel}</span>
+                              </div>
+                            </td>
+
+                            {/* Terminal (Purple Theme) */}
+                            <td className="py-3.5 px-4">
+                              {r.terminal ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-500/25">
+                                  <Plane className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                                  <span>{tLabel}</span>
+                                </span>
+                              ) : isAirport ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-500/25">
+                                  <Plane className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                                  <span>All Terminals</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400">
+                                  <MapPin className="w-3 h-3 text-slate-400" />
+                                  <span>Standard City Corridor</span>
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Capacity (Teal Theme) */}
+                            <td className="py-3.5 px-4 text-center">
+                              <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-teal-500/10 border border-teal-500/20 text-teal-800 dark:text-teal-300 text-[11px] font-semibold">
+                                <span className="flex items-center gap-1">
+                                  <Users className="w-3 h-3 text-teal-600 dark:text-teal-400" />
+                                  <span>{cap.passengers}</span>
+                                </span>
+                                <span className="text-teal-400/50">•</span>
+                                <span className="flex items-center gap-1">
+                                  <Luggage className="w-3 h-3 text-teal-600 dark:text-teal-400" />
+                                  <span>{cap.luggage}</span>
+                                </span>
+                              </div>
+                            </td>
+
+                            {/* Fixed Tariff (SAR) — Primary Visual Hierarchy */}
+                            <td className="py-3.5 px-4 text-right">
+                              <div className="flex flex-col items-end justify-center">
+                                <div className="mt-0.5 inline-flex items-baseline gap-1.5 tabular-nums">
+                                  <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                                    SAR
+                                  </span>
+                                  <span className="text-base sm:text-lg font-black text-slate-950 dark:text-white tracking-tight">
+                                    {r.fare_amount.toLocaleString('en-SA')}
+                                  </span>
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Status Toggle (🟢 Green Active / 🔴 Red Inactive) */}
+                            <td className="py-3.5 px-4 text-center">
+                              <button
+                                type="button"
+                                onClick={() => toggleFixedFareRateStatus(r.id)}
+                                title={r.is_active ? 'Active: Click to deactivate' : 'Inactive: Click to activate'}
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border cursor-pointer transition-all ${
+                                  r.is_active
+                                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20'
+                                    : 'bg-rose-500/10 border-rose-500/30 text-rose-700 dark:text-rose-400 hover:bg-rose-500/20'
+                                }`}
+                              >
+                                {r.is_active ? (
+                                  <>
+                                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                                    <span>Active</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="w-2 h-2 rounded-full bg-rose-500" />
+                                    <span>Inactive</span>
+                                  </>
+                                )}
+                              </button>
+                            </td>
+
+                            {/* Actions (Blue Edit / Red Delete) */}
+                            <td className="py-3.5 px-4 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenBulkModal(r.service_type, r.terminal)}
+                                  className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 hover:bg-blue-500/10 border border-transparent hover:border-blue-500/20 transition-all cursor-pointer"
+                                  title="Edit rates for this route corridor"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteRateClick(r)}
+                                  className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all cursor-pointer"
+                                  title="Delete this rate"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          TAB 2: VEHICLES & PASSENGER CAPACITY (BLUE & TEAL THEME)
+         ═══════════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'vehicles' && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 sm:p-5 rounded-2xl bg-card border border-base shadow-sm">
+            <div>
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Car className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <span>Fleet Vehicle Specifications &amp; Capacity</span>
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Define fleet categories, maximum passenger seats, and baggage allowances. Used for customer booking validations.
+              </p>
+            </div>
+            <button
+              onClick={handleOpenAddVehicle}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer self-start sm:self-auto"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ Add Vehicle Type</span>
+            </button>
+          </div>
+
+          <div className="rounded-2xl bg-card border border-base shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-slate-50 dark:bg-slate-900/90 border-b border-base text-slate-500 dark:text-slate-400 uppercase text-[10px] tracking-wider font-semibold">
+                  <tr>
+                    <th className="py-3.5 px-4 font-bold text-blue-700 dark:text-blue-400">Vehicle Fleet Model</th>
+                    <th className="py-3.5 px-4 font-bold text-blue-700 dark:text-blue-400">Internal Category Code</th>
+                    <th className="py-3.5 px-4 font-bold text-center text-teal-700 dark:text-teal-400">Max Passengers</th>
+                    <th className="py-3.5 px-4 font-bold text-center text-teal-700 dark:text-teal-400">Max Luggage</th>
+                    <th className="py-3.5 px-4 font-bold">Description / Notes</th>
+                    <th className="py-3.5 px-4 font-bold text-center">Status</th>
+                    <th className="py-3.5 px-4 font-bold text-right">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-base">
+                  {activeVehiclesList.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-10 text-center text-slate-500">
+                        No vehicle models found in database.
+                      </td>
+                    </tr>
+                  ) : (
+                    activeVehiclesList.map((v) => (
+                      <tr key={v.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                        <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-600 dark:text-blue-400">
+                              <Car className="w-4 h-4" />
+                            </div>
+                            <span>{v.name}</span>
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4 font-mono text-[11px] text-blue-600 dark:text-blue-400">
+                          {v.category || v.id}
+                        </td>
+                        <td className="py-3.5 px-4 text-center">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-teal-500/10 border border-teal-500/20 text-teal-800 dark:text-teal-300 font-bold text-xs">
+                            <Users className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
+                            <span>{v.seating_capacity} Seats</span>
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 text-center">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-teal-500/10 border border-teal-500/20 text-teal-800 dark:text-teal-300 font-bold text-xs">
+                            <Luggage className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
+                            <span>{v.luggage_capacity} Bags</span>
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 text-slate-500 dark:text-slate-400 max-w-xs truncate">
+                          {v.description || '—'}
+                        </td>
+                        <td className="py-3.5 px-4 text-center">
+                          <button
+                            type="button"
+                            onClick={() => updateRateVehicle(v.id, { is_active: !v.is_active })}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border cursor-pointer transition-all ${
+                              v.is_active
+                                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20'
+                                : 'bg-rose-500/10 border-rose-500/30 text-rose-700 dark:text-rose-400 hover:bg-rose-500/20'
+                            }`}
+                          >
+                            <span className={`w-2 h-2 rounded-full ${v.is_active ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                            <span>{v.is_active ? 'Active' : 'Inactive'}</span>
+                          </button>
+                        </td>
+                        <td className="py-3.5 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditVehicle(v)}
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 hover:bg-blue-500/10 border border-transparent hover:border-blue-500/20 transition-all cursor-pointer"
+                              title="Edit vehicle and capacity"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteVehicleClick(v)}
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all cursor-pointer"
+                              title="Delete vehicle type"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Warning about rate changes */}
-      <div className="bg-card border border-amber-500/20 rounded-2xl p-4 sm:p-5 flex items-start gap-3">
-        <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-        <div>
-          <div className="text-sm font-bold text-primary mb-1">Rate Change Policy</div>
-          <p className="text-xs text-secondary">
-            Fixed fares are managed directly in code (<code className="bg-surface px-1.5 py-0.5 rounded text-amber-600 dark:text-amber-400 font-mono">src/lib/fixed-fare.ts</code>) and mirrored in the database via migration <code className="bg-surface px-1.5 py-0.5 rounded font-mono">20260928000001_fixed_fare_rates.sql</code>.
-            Rate changes require a code deployment and database migration to prevent unauthorized modifications.
-            Contact the system administrator to update any fare.
-          </p>
+      {/* ═══════════════════════════════════════════════════════════════════════
+          TAB 3: SERVICE ROUTES (INDIGO) & AIRPORT TERMINALS (PURPLE)
+         ═══════════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'routes_terminals' && (
+        <div className="space-y-7">
+          {/* Sub-section A: Service Routes (Indigo) */}
+          <div className="space-y-3.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 sm:p-5 rounded-2xl bg-card border border-base shadow-sm">
+              <div>
+                <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Route className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                  <span>Service Corridors &amp; Travel Routes</span>
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Origins and destinations supporting fixed tariffs and airport flight connections.
+                </p>
+              </div>
+              <button
+                onClick={handleOpenAddRoute}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer self-start sm:self-auto"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Add Route</span>
+              </button>
+            </div>
+
+            <div className="rounded-2xl bg-card border border-base shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-50 dark:bg-slate-900/90 border-b border-base text-slate-500 dark:text-slate-400 uppercase text-[10px] tracking-wider font-semibold">
+                    <tr>
+                      <th className="py-3.5 px-4 font-bold text-indigo-700 dark:text-indigo-400">Corridor Name</th>
+                      <th className="py-3.5 px-4 font-bold">Origin Pickup Point</th>
+                      <th className="py-3.5 px-4 font-bold">Destination Drop-off</th>
+                      <th className="py-3.5 px-4 font-bold text-center text-purple-700 dark:text-purple-400">KAIA Airport</th>
+                      <th className="py-3.5 px-4 font-bold text-center">Status</th>
+                      <th className="py-3.5 px-4 font-bold text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-base">
+                    {activeRoutesList.map((r) => (
+                      <tr key={r.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                        <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white">
+                          <div className="flex items-center gap-2">
+                            <Route className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                            <span>{r.route_name}</span>
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300">{r.origin_name}</td>
+                        <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300">{r.destination_name}</td>
+                        <td className="py-3.5 px-4 text-center">
+                          {r.is_airport ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-500/25">
+                              <Plane className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                              <span>Airport Connected</span>
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-slate-400">Intercity Standard</span>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-4 text-center">
+                          <button
+                            type="button"
+                            onClick={() => updateRateRoute(r.id, { is_active: !r.is_active })}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border cursor-pointer transition-all ${
+                              r.is_active
+                                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20'
+                                : 'bg-rose-500/10 border-rose-500/30 text-rose-700 dark:text-rose-400 hover:bg-rose-500/20'
+                            }`}
+                          >
+                            <span className={`w-2 h-2 rounded-full ${r.is_active ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                            <span>{r.is_active ? 'Active' : 'Inactive'}</span>
+                          </button>
+                        </td>
+                        <td className="py-3.5 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditRoute(r)}
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 hover:bg-blue-500/10 border border-transparent hover:border-blue-500/20 transition-all cursor-pointer"
+                              title="Edit Route"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteRouteClick(r)}
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all cursor-pointer"
+                              title="Delete Route"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          {/* Sub-section B: Airport Terminals (Purple) */}
+          <div className="space-y-3.5 pt-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 sm:p-5 rounded-2xl bg-card border border-base shadow-sm">
+              <div>
+                <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Plane className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                  <span>Jeddah KAIA Airport Terminals</span>
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Designated airport terminals (Terminal 1, Hajj Terminal H, North Terminal N) for flight-specific fixed rates.
+                </p>
+              </div>
+              <button
+                onClick={handleOpenAddTerminal}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer self-start sm:self-auto"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Add Terminal</span>
+              </button>
+            </div>
+
+            <div className="rounded-2xl bg-card border border-base shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-50 dark:bg-slate-900/90 border-b border-base text-slate-500 dark:text-slate-400 uppercase text-[10px] tracking-wider font-semibold">
+                    <tr>
+                      <th className="py-3.5 px-4 font-bold text-purple-700 dark:text-purple-400">Terminal Name</th>
+                      <th className="py-3.5 px-4 font-bold text-purple-700 dark:text-purple-400">Internal Terminal Code</th>
+                      <th className="py-3.5 px-4 font-bold text-indigo-700 dark:text-indigo-400">Linked Service Corridor</th>
+                      <th className="py-3.5 px-4 font-bold">Description</th>
+                      <th className="py-3.5 px-4 font-bold text-center">Status</th>
+                      <th className="py-3.5 px-4 font-bold text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-base">
+                    {rateTerminals.map((t) => (
+                      <tr key={t.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                        <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white">
+                          <div className="flex items-center gap-2">
+                            <Plane className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                            <span>{t.name}</span>
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4 font-mono text-[11px] text-purple-600 dark:text-purple-400">
+                          {t.code}
+                        </td>
+                        <td className="py-3.5 px-4 text-slate-800 dark:text-slate-200 font-medium">
+                          {t.route_id ? getServiceLabel(t.route_id, rateRoutes) : 'All Airport Routes'}
+                        </td>
+                        <td className="py-3.5 px-4 text-slate-500 dark:text-slate-400 max-w-xs truncate">
+                          {t.description || '—'}
+                        </td>
+                        <td className="py-3.5 px-4 text-center">
+                          <button
+                            type="button"
+                            onClick={() => updateRateTerminal(t.id, { is_active: !t.is_active })}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border cursor-pointer transition-all ${
+                              t.is_active
+                                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20'
+                                : 'bg-rose-500/10 border-rose-500/30 text-rose-700 dark:text-rose-400 hover:bg-rose-500/20'
+                            }`}
+                          >
+                            <span className={`w-2 h-2 rounded-full ${t.is_active ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                            <span>{t.is_active ? 'Active' : 'Inactive'}</span>
+                          </button>
+                        </td>
+                        <td className="py-3.5 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditTerminal(t)}
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 hover:bg-blue-500/10 border border-transparent hover:border-blue-500/20 transition-all cursor-pointer"
+                              title="Edit Terminal"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteTerminalClick(t)}
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all cursor-pointer"
+                              title="Delete Terminal"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          TAB 4: SERVICE CATEGORIES (PURPLE / CATEGORY THEME)
+         ═══════════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'services' && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 sm:p-5 rounded-2xl bg-card border border-base shadow-sm">
+            <div>
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Layers className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                <span>Service Package Categories</span>
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Top-level operational categories organizing transportation corridors (e.g. VIP Intercity, Sacred Ziyarat, Airport Pickups).
+              </p>
+            </div>
+            <button
+              onClick={handleOpenAddService}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer self-start sm:self-auto"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ Add Service Category</span>
+            </button>
+          </div>
+
+          <div className="rounded-2xl bg-card border border-base shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-slate-50 dark:bg-slate-900/90 border-b border-base text-slate-500 dark:text-slate-400 uppercase text-[10px] tracking-wider font-semibold">
+                  <tr>
+                    <th className="py-3.5 px-4 font-bold text-purple-700 dark:text-purple-400">Category Title</th>
+                    <th className="py-3.5 px-4 font-bold text-purple-700 dark:text-purple-400">Slug Identifier</th>
+                    <th className="py-3.5 px-4 font-bold">Description</th>
+                    <th className="py-3.5 px-4 font-bold text-center">Status</th>
+                    <th className="py-3.5 px-4 font-bold text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-base">
+                  {activeServicesList.map((s) => (
+                    <tr key={s.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                      <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <Layers className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                        <span>{s.name}</span>
+                      </td>
+                      <td className="py-3.5 px-4 font-mono text-[11px] text-purple-600 dark:text-purple-400">{s.id}</td>
+                      <td className="py-3.5 px-4 text-slate-500 dark:text-slate-400 max-w-sm truncate">
+                        {s.description || '—'}
+                      </td>
+                      <td className="py-3.5 px-4 text-center">
+                        <button
+                          type="button"
+                          onClick={() => updateRateService(s.id, { is_active: !s.is_active })}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border cursor-pointer transition-all ${
+                            s.is_active
+                              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20'
+                              : 'bg-rose-500/10 border-rose-500/30 text-rose-700 dark:text-rose-400 hover:bg-rose-500/20'
+                          }`}
+                        >
+                          <span className={`w-2 h-2 rounded-full ${s.is_active ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                          <span>{s.is_active ? 'Active' : 'Inactive'}</span>
+                        </button>
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditService(s)}
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 hover:bg-blue-500/10 border border-transparent hover:border-blue-500/20 transition-all cursor-pointer"
+                            title="Edit Service Category"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteServiceClick(s)}
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all cursor-pointer"
+                            title="Delete Service Category"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          MODAL 1: BULK VEHICLE PRICING
+         ═══════════════════════════════════════════════════════════════════════ */}
+      {isBulkModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-sm animate-fade-in">
+          <div className="bg-card border border-base rounded-3xl shadow-2xl max-w-2xl w-full overflow-hidden max-h-[92vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="p-5 sm:p-6 border-b border-base bg-slate-50/60 dark:bg-slate-900/60 flex items-center justify-between">
+              <div>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/20 mb-1">
+                  <Tag className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+                  <span>Bulk Tariff Setup</span>
+                </div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Configure Corridor Vehicle Fares</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Define fixed Saudi Riyal tariffs for multiple fleet classes simultaneously.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsBulkModalOpen(false)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={handleBulkSubmit} className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5">
+              {/* Route Selection */}
+              <div>
+                <label className="type-label block mb-1.5 text-xs text-slate-700 dark:text-slate-300 font-semibold flex items-center gap-1.5">
+                  <Route className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                  <span>Service Corridor <span className="text-rose-500">*</span></span>
+                </label>
+                <select
+                  value={bulkRoute}
+                  onChange={(e) => {
+                    const nextRoute = e.target.value;
+                    setBulkRoute(nextRoute);
+                    const isAirport = isAirportRoute(nextRoute, rateRoutes);
+                    setBulkTerminal(isAirport ? 'all_terminals' : 'none');
+                    // Refresh pre-filled values
+                    const nextFares: Record<string, string> = {};
+                    activeVehiclesList.forEach((v) => {
+                      const cat = v.category || v.id;
+                      const ex = fixedFareRates.find(
+                        (r) =>
+                          r.vehicle_category === cat &&
+                          r.service_type === nextRoute &&
+                          (isAirport ? r.terminal === 'all_terminals' : !r.terminal)
+                      );
+                      nextFares[cat] = ex ? String(ex.fare_amount) : '';
+                    });
+                    setBulkFares(nextFares);
+                  }}
+                  className="w-full py-2.5 px-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm font-semibold focus:outline-none focus:border-blue-500"
+                >
+                  {activeRoutesList.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.route_name} ({r.origin_name} → {r.destination_name})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Dynamic Terminal Selection (if Airport) */}
+              {isAirportRoute(bulkRoute, rateRoutes) && (
+                <div className="p-4 rounded-2xl bg-purple-500/10 border border-purple-500/20 space-y-2.5">
+                  <div className="flex items-center gap-2">
+                    <Plane className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                    <label className="text-xs font-bold text-purple-900 dark:text-purple-300">
+                      KAIA Airport Terminal Selection
+                    </label>
+                  </div>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                    Select &ldquo;All Terminals&rdquo; to apply the tariff across all gates, or specify an individual flight terminal.
+                  </p>
+                  <select
+                    value={bulkTerminal}
+                    onChange={(e) => {
+                      const term = e.target.value;
+                      setBulkTerminal(term);
+                      const normTerminal = term !== 'none' ? term : null;
+                      const nextFares: Record<string, string> = {};
+                      activeVehiclesList.forEach((v) => {
+                        const cat = v.category || v.id;
+                        const ex = fixedFareRates.find(
+                          (r) =>
+                            r.vehicle_category === cat &&
+                            r.service_type === bulkRoute &&
+                            (r.terminal === normTerminal || (!r.terminal && !normTerminal))
+                        );
+                        nextFares[cat] = ex ? String(ex.fare_amount) : '';
+                      });
+                      setBulkFares(nextFares);
+                    }}
+                    className="w-full py-2 px-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs font-semibold focus:outline-none focus:border-purple-500"
+                  >
+                    {currentBulkTerminals.map((t) => (
+                      <option key={t.code} value={t.code}>
+                        {t.label} — {t.desc}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Vehicle Fares Entry */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                    <Coins className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span>Fleet Fixed Tariffs (SAR)</span>
+                  </span>
+                  <span className="text-[11px] text-slate-400">Empty vehicle rows are skipped</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {activeVehiclesList.map((v) => {
+                    const cat = v.category || v.id;
+                    const val = bulkFares[cat] ?? '';
+                    const hasValue = String(val).trim() !== '';
+
+                    return (
+                      <div
+                        key={v.id}
+                        className={`p-3.5 rounded-2xl border transition-all ${
+                          hasValue
+                            ? 'bg-slate-50 dark:bg-slate-800/60 border-emerald-500/40 shadow-sm'
+                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="font-bold text-xs text-slate-900 dark:text-white flex items-center gap-1.5">
+                            <Car className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                            <span>{v.name}</span>
+                          </div>
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-teal-500/10 text-teal-800 dark:text-teal-300 border border-teal-500/20">
+                            {v.seating_capacity} Seats
+                          </span>
+                        </div>
+
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-emerald-600 dark:text-emerald-400 pointer-events-none">
+                            SAR
+                          </span>
+                          <input
+                            type="number"
+                            min={1}
+                            step={1}
+                            placeholder="e.g. 200"
+                            value={val}
+                            onChange={(e) => setBulkFares((prev) => ({ ...prev, [cat]: e.target.value }))}
+                            className="w-full pl-12 pr-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-emerald-700 dark:text-emerald-300 font-extrabold text-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 tabular-nums"
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Status Toggle (Green Active / Red Inactive) */}
+              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                <div>
+                  <div className="text-xs font-bold text-slate-900 dark:text-white">Activate Tariffs Immediately</div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Active rates are immediately made bookable for customers.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setBulkIsActive(!bulkIsActive)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
+                    bulkIsActive
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400'
+                      : 'bg-rose-500/10 border-rose-500/30 text-rose-700 dark:text-rose-400'
+                  }`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${bulkIsActive ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                  <span>{bulkIsActive ? 'Active (Live)' : 'Inactive'}</span>
+                </button>
+              </div>
+
+              {/* Submit Buttons */}
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-base">
+                <button
+                  type="button"
+                  onClick={() => setIsBulkModalOpen(false)}
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <span className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                      <span>Saving Tariffs…</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>Save Vehicle Tariffs</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          MODAL 2: VEHICLE TYPE CRUD MODAL (BLUE THEME)
+         ═══════════════════════════════════════════════════════════════════════ */}
+      {isVehicleModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-sm animate-fade-in">
+          <div className="bg-card border border-base rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col">
+            <div className="p-5 border-b border-base bg-slate-50/60 dark:bg-slate-900/60 flex items-center justify-between">
+              <div>
+                <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Car className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  <span>{editingVehicle ? 'Edit Vehicle Type & Capacity' : 'Add New Vehicle Type'}</span>
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Configure vehicle fleet details and passenger/luggage seating capacity.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsVehicleModalOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleVehicleFormSubmit} className="p-5 space-y-4">
+              <div>
+                <label className="type-label block mb-1 text-xs text-slate-700 dark:text-slate-300 font-semibold">
+                  Vehicle Name <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Toyota Camry VIP, Hyundai Sonata, GMC Yukon XL"
+                  value={vehicleForm.name}
+                  onChange={(e) => setVehicleForm((p) => ({ ...p, name: e.target.value }))}
+                  className="w-full py-2 px-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="type-label block mb-1 text-xs text-slate-700 dark:text-slate-300 font-semibold">
+                  Category Code Slug <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  disabled={Boolean(editingVehicle)}
+                  placeholder="e.g. sedan, camry, sonata, staria, gmc"
+                  value={vehicleForm.category}
+                  onChange={(e) => setVehicleForm((p) => ({ ...p, category: e.target.value.toLowerCase().replace(/\s+/g, '_') }))}
+                  className="w-full py-2 px-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:border-blue-500 disabled:opacity-60"
+                />
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  Unique internal key matching rate entries (e.g. &ldquo;camry&rdquo;, &ldquo;sonata&rdquo;)
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="type-label block mb-1 text-xs text-teal-800 dark:text-teal-300 font-semibold flex items-center gap-1">
+                    <Users className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
+                    <span>Seats (Max) <span className="text-rose-500">*</span></span>
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    required
+                    value={vehicleForm.seating_capacity}
+                    onChange={(e) => setVehicleForm((p) => ({ ...p, seating_capacity: parseInt(e.target.value) || 1 }))}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold text-xs focus:outline-none focus:border-teal-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="type-label block mb-1 text-xs text-teal-800 dark:text-teal-300 font-semibold flex items-center gap-1">
+                    <Luggage className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
+                    <span>Bags (Max)</span>
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={60}
+                    required
+                    value={vehicleForm.luggage_capacity}
+                    onChange={(e) => setVehicleForm((p) => ({ ...p, luggage_capacity: parseInt(e.target.value) || 0 }))}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold text-xs focus:outline-none focus:border-teal-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="type-label block mb-1 text-xs text-slate-700 dark:text-slate-300 font-semibold">
+                  Description (Optional)
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. VIP executive sedan with comfortable leather interior"
+                  value={vehicleForm.description}
+                  onChange={(e) => setVehicleForm((p) => ({ ...p, description: e.target.value }))}
+                  className="w-full py-2 px-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">Active for bookings</span>
+                <button
+                  type="button"
+                  onClick={() => setVehicleForm((p) => ({ ...p, is_active: !p.is_active }))}
+                  className={`px-3 py-1 rounded-full text-xs font-bold border transition-all flex items-center gap-1.5 ${
+                    vehicleForm.is_active
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400'
+                      : 'bg-rose-500/10 border-rose-500/30 text-rose-700 dark:text-rose-400'
+                  }`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${vehicleForm.is_active ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                  <span>{vehicleForm.is_active ? 'Active' : 'Inactive'}</span>
+                </button>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-base">
+                <button
+                  type="button"
+                  onClick={() => setIsVehicleModalOpen(false)}
+                  className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all cursor-pointer"
+                >
+                  {isSubmitting ? 'Saving…' : editingVehicle ? 'Update Vehicle' : 'Create Vehicle'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          MODAL 3: ROUTE CRUD MODAL (INDIGO THEME)
+         ═══════════════════════════════════════════════════════════════════════ */}
+      {isRouteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-sm animate-fade-in">
+          <div className="bg-card border border-base rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col">
+            <div className="p-5 border-b border-base bg-slate-50/60 dark:bg-slate-900/60 flex items-center justify-between">
+              <div>
+                <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Route className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                  <span>{editingRoute ? 'Edit Service Route' : 'Add New Service Route'}</span>
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Configure corridor pickup, destination, and airport terminal linking.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsRouteModalOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleRouteFormSubmit} className="p-5 space-y-4">
+              <div>
+                <label className="type-label block mb-1 text-xs text-slate-700 dark:text-slate-300 font-semibold">
+                  Route Display Name <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Jeddah → Makkah, Taif Sacred Ziyarat"
+                  value={routeForm.route_name}
+                  onChange={(e) => setRouteForm((p) => ({ ...p, route_name: e.target.value }))}
+                  className="w-full py-2 px-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="type-label block mb-1 text-xs text-slate-700 dark:text-slate-300 font-semibold">
+                    Origin Pickup Area <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Jeddah KAIA Airport"
+                    value={routeForm.origin_name}
+                    onChange={(e) => setRouteForm((p) => ({ ...p, origin_name: e.target.value }))}
+                    className="w-full py-2 px-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="type-label block mb-1 text-xs text-slate-700 dark:text-slate-300 font-semibold">
+                    Destination Drop-off <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Makkah Al-Mukarramah"
+                    value={routeForm.destination_name}
+                    onChange={(e) => setRouteForm((p) => ({ ...p, destination_name: e.target.value }))}
+                    className="w-full py-2 px-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="type-label block mb-1 text-xs text-slate-700 dark:text-slate-300 font-semibold">
+                  Service Category
+                </label>
+                <select
+                  value={routeForm.service_id}
+                  onChange={(e) => setRouteForm((p) => ({ ...p, service_id: e.target.value }))}
+                  className="w-full py-2 px-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs font-semibold focus:outline-none focus:border-indigo-500"
+                >
+                  {activeServicesList.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-purple-900 dark:text-purple-300 flex items-center gap-1.5">
+                    <Plane className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                    <span>Involves Airport KAIA</span>
+                  </span>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 block mt-0.5">
+                    Enables terminal selection (Terminal 1, H, N) for customer bookings
+                  </span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={routeForm.is_airport}
+                  onChange={(e) => setRouteForm((p) => ({ ...p, is_airport: e.target.checked }))}
+                  className="w-4 h-4 rounded text-purple-600 cursor-pointer"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-base">
+                <button
+                  type="button"
+                  onClick={() => setIsRouteModalOpen(false)}
+                  className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all cursor-pointer"
+                >
+                  {isSubmitting ? 'Saving…' : editingRoute ? 'Update Route' : 'Create Route'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          MODAL 4: TERMINAL CRUD MODAL (PURPLE THEME)
+         ═══════════════════════════════════════════════════════════════════════ */}
+      {isTerminalModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-sm animate-fade-in">
+          <div className="bg-card border border-base rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col">
+            <div className="p-5 border-b border-base bg-slate-50/60 dark:bg-slate-900/60 flex items-center justify-between">
+              <div>
+                <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Plane className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                  <span>{editingTerminal ? 'Edit Airport Terminal' : 'Add Airport Terminal'}</span>
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Configure terminal designation, slug code, and linked corridor.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsTerminalModalOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleTerminalFormSubmit} className="p-5 space-y-4">
+              <div>
+                <label className="type-label block mb-1 text-xs text-slate-700 dark:text-slate-300 font-semibold">
+                  Terminal Name <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Terminal 1, Terminal H (Hajj), Terminal N"
+                  value={terminalForm.name}
+                  onChange={(e) => setTerminalForm((p) => ({ ...p, name: e.target.value }))}
+                  className="w-full py-2 px-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="type-label block mb-1 text-xs text-slate-700 dark:text-slate-300 font-semibold">
+                  Terminal Code Slug <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. terminal_1, terminal_h, terminal_n"
+                  value={terminalForm.code}
+                  onChange={(e) => setTerminalForm((p) => ({ ...p, code: e.target.value.toLowerCase().replace(/\s+/g, '_') }))}
+                  className="w-full py-2 px-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-xs focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="type-label block mb-1 text-xs text-slate-700 dark:text-slate-300 font-semibold">
+                  Linked Service Corridor
+                </label>
+                <select
+                  value={terminalForm.route_id}
+                  onChange={(e) => setTerminalForm((p) => ({ ...p, route_id: e.target.value }))}
+                  className="w-full py-2 px-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs font-semibold focus:outline-none focus:border-purple-500"
+                >
+                  {activeRoutesList.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.route_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="type-label block mb-1 text-xs text-slate-700 dark:text-slate-300 font-semibold">
+                  Description (Optional)
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. New main international & Saudia terminal"
+                  value={terminalForm.description}
+                  onChange={(e) => setTerminalForm((p) => ({ ...p, description: e.target.value }))}
+                  className="w-full py-2 px-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-base">
+                <button
+                  type="button"
+                  onClick={() => setIsTerminalModalOpen(false)}
+                  className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all cursor-pointer"
+                >
+                  {isSubmitting ? 'Saving…' : editingTerminal ? 'Update Terminal' : 'Create Terminal'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          MODAL 5: SERVICE CATEGORY CRUD MODAL (PURPLE THEME)
+         ═══════════════════════════════════════════════════════════════════════ */}
+      {isServiceModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-sm animate-fade-in">
+          <div className="bg-card border border-base rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col">
+            <div className="p-5 border-b border-base bg-slate-50/60 dark:bg-slate-900/60 flex items-center justify-between">
+              <div>
+                <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                  <span>{editingService ? 'Edit Service Category' : 'Add Service Category'}</span>
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  High-level category grouping transportation corridors.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsServiceModalOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleServiceFormSubmit} className="p-5 space-y-4">
+              <div>
+                <label className="type-label block mb-1 text-xs text-slate-700 dark:text-slate-300 font-semibold">
+                  Category Name <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. VIP Intercity Transfer, Sacred Ziyarat Tours"
+                  value={serviceForm.name}
+                  onChange={(e) => setServiceForm((p) => ({ ...p, name: e.target.value }))}
+                  className="w-full py-2 px-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="type-label block mb-1 text-xs text-slate-700 dark:text-slate-300 font-semibold">
+                  Description
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. Luxury direct highway transfers with meet & greet"
+                  value={serviceForm.description}
+                  onChange={(e) => setServiceForm((p) => ({ ...p, description: e.target.value }))}
+                  className="w-full py-2 px-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-base">
+                <button
+                  type="button"
+                  onClick={() => setIsServiceModalOpen(false)}
+                  className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all cursor-pointer"
+                >
+                  {isSubmitting ? 'Saving…' : editingService ? 'Update Category' : 'Create Category'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          SAFE DELETION MODALS (WITH BOOKING CONFLICT & DEACTIVATE OPTION)
+         ═══════════════════════════════════════════════════════════════════════ */}
+      {/* Rate Deletion Modal */}
+      {deletingRate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-fade-in">
+          <div className="bg-card border border-base rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-600 dark:text-rose-400 mx-auto">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1.5">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">Delete Fixed Rate Tariff?</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                This will remove the standard tariff for{' '}
+                <strong className="text-blue-700 dark:text-blue-400">{getVehicleLabel(deletingRate.vehicle_category, rateVehicles)}</strong>{' '}
+                on route{' '}
+                <strong className="text-indigo-700 dark:text-indigo-400">{getServiceLabel(deletingRate.service_type, rateRoutes)}</strong> (
+                <span className="font-bold text-emerald-600 dark:text-emerald-400">{formatFareSAR(deletingRate.fare_amount)}</span>).
+              </p>
+            </div>
+
+            {rateDeleteConflict && (
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-800 dark:text-amber-300 text-xs space-y-2">
+                <div className="font-bold flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <span>Linked Historical Bookings Detected</span>
+                </div>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                  {rateDeleteConflict.message}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleDeactivateRateInstead}
+                  className="w-full py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs transition-colors cursor-pointer"
+                >
+                  Deactivate Rate Instead (Safe)
+                </button>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletingRate(null)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteRateConfirm}
+                disabled={isSubmitting}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-colors cursor-pointer"
+              >
+                {isSubmitting ? 'Deleting…' : 'Delete Rate'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Vehicle Deletion Modal */}
+      {deletingVehicle && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-fade-in">
+          <div className="bg-card border border-base rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-600 dark:text-rose-400 mx-auto">
+              <Car className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1.5">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">Delete Vehicle Type?</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Are you sure you want to delete vehicle type{' '}
+                <strong className="text-blue-700 dark:text-blue-400">&ldquo;{deletingVehicle.name}&rdquo;</strong>?
+              </p>
+            </div>
+
+            {vehicleDeleteConflict && (
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-800 dark:text-amber-300 text-xs space-y-2">
+                <div className="font-bold flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <span>Cannot Delete: Record in Active Use</span>
+                </div>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                  {vehicleDeleteConflict.error}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleDeactivateVehicleInstead}
+                  className="w-full py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs transition-colors cursor-pointer"
+                >
+                  Deactivate Vehicle Instead (Recommended)
+                </button>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletingVehicle(null)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteVehicleConfirm}
+                disabled={isSubmitting}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-colors cursor-pointer"
+              >
+                {isSubmitting ? 'Deleting…' : 'Delete Vehicle'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Route Deletion Modal */}
+      {deletingRoute && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-fade-in">
+          <div className="bg-card border border-base rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-600 dark:text-rose-400 mx-auto">
+              <Route className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1.5">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">Delete Service Route?</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Are you sure you want to delete route{' '}
+                <strong className="text-indigo-700 dark:text-indigo-400">&ldquo;{deletingRoute.route_name}&rdquo;</strong>?
+              </p>
+            </div>
+
+            {routeDeleteConflict && (
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-800 dark:text-amber-300 text-xs space-y-2">
+                <div className="font-bold flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <span>Linked Booking Records Detected</span>
+                </div>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                  {routeDeleteConflict.error}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleDeactivateRouteInstead}
+                  className="w-full py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs transition-colors cursor-pointer"
+                >
+                  Deactivate Route Instead
+                </button>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletingRoute(null)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteRouteConfirm}
+                disabled={isSubmitting}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-colors cursor-pointer"
+              >
+                {isSubmitting ? 'Deleting…' : 'Delete Route'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Terminal Deletion Modal */}
+      {deletingTerminal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-fade-in">
+          <div className="bg-card border border-base rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-600 dark:text-rose-400 mx-auto">
+              <Plane className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1.5">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">Delete Airport Terminal?</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Are you sure you want to delete terminal{' '}
+                <strong className="text-purple-700 dark:text-purple-400">&ldquo;{deletingTerminal.name}&rdquo;</strong>?
+              </p>
+            </div>
+
+            {terminalDeleteConflict && (
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-800 dark:text-amber-300 text-xs space-y-2">
+                <div className="font-bold flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <span>Linked Booking Records Detected</span>
+                </div>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                  {terminalDeleteConflict.error}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleDeactivateTerminalInstead}
+                  className="w-full py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs transition-colors cursor-pointer"
+                >
+                  Deactivate Terminal Instead
+                </button>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletingTerminal(null)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteTerminalConfirm}
+                disabled={isSubmitting}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-colors cursor-pointer"
+              >
+                {isSubmitting ? 'Deleting…' : 'Delete Terminal'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Service Category Deletion Modal */}
+      {deletingService && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-fade-in">
+          <div className="bg-card border border-base rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-600 dark:text-rose-400 mx-auto">
+              <Layers className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1.5">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">Delete Service Category?</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Are you sure you want to delete service category{' '}
+                <strong className="text-purple-700 dark:text-purple-400">&ldquo;{deletingService.name}&rdquo;</strong>?
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletingService(null)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteServiceConfirm}
+                disabled={isSubmitting}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-colors cursor-pointer"
+              >
+                {isSubmitting ? 'Deleting…' : 'Delete Category'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

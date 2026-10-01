@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase/client';
 import { CheckCircle2, Loader2, AlertCircle, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { type EmailOtpType } from '@supabase/supabase-js';
+import AuthShell from '@/components/auth/AuthShell';
 
 function AuthCallbackContent() {
   const router = useRouter();
@@ -30,6 +31,14 @@ function AuthCallbackContent() {
           return;
         }
 
+        // 1b. Check if this is a password recovery attempt
+        const typeParam = searchParams.get('type') as EmailOtpType | null;
+        const nextParam = searchParams.get('next');
+        const isRecovery =
+          typeParam === 'recovery' ||
+          nextParam === '/reset-password' ||
+          (typeof window !== 'undefined' && window.location.hash.includes('type=recovery'));
+
         // 2. Check for PKCE exchange code (?code=...)
         const code = searchParams.get('code');
         if (code) {
@@ -43,6 +52,10 @@ function AuthCallbackContent() {
             return;
           }
           if (codeData.session) {
+            if (isRecovery) {
+              router.replace('/reset-password');
+              return;
+            }
             await handleSuccessfulVerification(codeData.session.user.id, codeData.session.user.email);
             return;
           }
@@ -50,7 +63,6 @@ function AuthCallbackContent() {
 
         // 3. Check for Token Hash verification (?token_hash=...&type=...)
         const tokenHash = searchParams.get('token_hash');
-        const typeParam = searchParams.get('type') as EmailOtpType | null;
         if (tokenHash) {
           const { data: otpData, error: otpErr } = await supabase.auth.verifyOtp({
             token_hash: tokenHash,
@@ -65,6 +77,10 @@ function AuthCallbackContent() {
             return;
           }
           if (otpData.session) {
+            if (isRecovery || typeParam === 'recovery') {
+              router.replace('/reset-password');
+              return;
+            }
             await handleSuccessfulVerification(otpData.session.user.id, otpData.session.user.email);
             return;
           }
@@ -81,6 +97,10 @@ function AuthCallbackContent() {
         }
 
         if (sessionData.session) {
+          if (isRecovery) {
+            router.replace('/reset-password');
+            return;
+          }
           await handleSuccessfulVerification(sessionData.session.user.id, sessionData.session.user.email);
           return;
         }
@@ -88,6 +108,10 @@ function AuthCallbackContent() {
         // 5. Listen for auth change (hash fragment or background token exchange)
         const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
           if (session && !isCancelled) {
+            if (event === 'PASSWORD_RECOVERY' || isRecovery) {
+              router.replace('/reset-password');
+              return;
+            }
             await handleSuccessfulVerification(session.user.id, session.user.email);
           }
         });
@@ -124,7 +148,6 @@ function AuthCallbackContent() {
       if (email) setUserEmail(email);
 
       try {
-        // Explicitly set email_verified = true in profiles table
         await supabase
           .from('profiles')
           .update({
@@ -178,78 +201,100 @@ function AuthCallbackContent() {
   }, [router, searchParams, status]);
 
   return (
-    <div className="min-h-[calc(100vh-64px)] bg-page text-primary flex items-center justify-center p-4">
-      <div className="surface-card max-w-md w-full p-8 text-center space-y-4 rounded-3xl shadow-xl animate-fade-in border border-base">
-        {status === 'loading' && (
-          <div className="space-y-3 py-4">
-            <Loader2 className="w-10 h-10 text-emerald-500 animate-spin mx-auto" />
-            <h3 className="text-lg font-bold text-primary">Verifying Email Confirmation…</h3>
-            <p className="text-xs text-muted">Securing your Al Harmain Travels account credentials.</p>
+    <AuthShell
+      title={
+        status === 'loading'
+          ? 'Verifying Confirmation'
+          : status === 'success'
+          ? 'Account Confirmed!'
+          : 'Verification Error'
+      }
+      subtitle={
+        status === 'loading'
+          ? 'Securing your Al Harmain Travels account credentials…'
+          : status === 'success'
+          ? 'Your email is confirmed. Redirecting you to your portal…'
+          : 'The verification link may have expired or was already used'
+      }
+    >
+      {status === 'loading' && (
+        <div className="py-8 text-center space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500 mx-auto shadow-sm">
+            <Loader2 className="w-8 h-8 animate-spin" />
           </div>
-        )}
+          <p className="text-xs text-muted">Establishing secure session…</p>
+        </div>
+      )}
 
-        {status === 'success' && (
-          <div className="space-y-4 py-3">
-            <div className="w-14 h-14 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto">
-              <CheckCircle2 className="w-8 h-8" />
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-primary">Email Confirmed Successfully!</h3>
-              {userEmail && (
-                <p className="text-xs text-emerald-600 dark:text-emerald-400 font-mono mt-0.5">
-                  {userEmail}
-                </p>
-              )}
-              <p className="text-xs text-muted mt-2">
-                Your account is now verified. Redirecting you to your portal…
-              </p>
-            </div>
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={() => router.replace(destUrl)}
-                className="btn-brand text-xs py-2.5 px-5 inline-flex items-center gap-1.5 cursor-pointer"
-              >
-                <span>Continue to Dashboard</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
+      {status === 'success' && (
+        <div className="py-4 text-center space-y-4 animate-fade-in">
+          <div className="w-14 h-14 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto shadow-md">
+            <CheckCircle2 className="w-8 h-8" />
           </div>
-        )}
+          <div>
+            <h3 className="text-base font-bold text-primary font-display">Email Verified Successfully</h3>
+            {userEmail && (
+              <p className="text-xs text-emerald-600 dark:text-emerald-400 font-mono mt-1">
+                {userEmail}
+              </p>
+            )}
+            <p className="text-xs text-muted mt-2">
+              Redirecting you to your authorized dashboard in a moment…
+            </p>
+          </div>
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={() => router.replace(destUrl)}
+              className="btn-brand text-xs py-3 px-6 inline-flex items-center gap-2 cursor-pointer shadow-lg shadow-emerald-950/25"
+            >
+              <span>Continue to Dashboard</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
-        {status === 'error' && (
-          <div className="space-y-4 py-2">
-            <div className="w-14 h-14 rounded-2xl bg-rose-50 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-700/50 text-rose-500 flex items-center justify-center mx-auto">
-              <AlertCircle className="w-8 h-8" />
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-primary">Confirmation Error</h3>
-              <p className="text-xs text-secondary mt-1 max-w-sm mx-auto">
-                {errorMsg || 'The verification link may have expired or was already used.'}
-              </p>
-            </div>
-            <div className="pt-2 flex flex-col sm:flex-row justify-center gap-2">
-              <Link href="/verify-email" className="btn-brand text-xs py-2.5 px-4 inline-flex items-center justify-center">
-                Resend Confirmation Email
-              </Link>
-              <Link href="/sign-in" className="btn-secondary text-xs py-2.5 px-4 inline-flex items-center justify-center">
-                Sign In
-              </Link>
-            </div>
+      {status === 'error' && (
+        <div className="py-2 text-center space-y-4 animate-fade-in">
+          <div className="w-14 h-14 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-500 flex items-center justify-center mx-auto shadow-sm">
+            <AlertCircle className="w-8 h-8" />
           </div>
-        )}
-      </div>
-    </div>
+          <div>
+            <h3 className="text-base font-bold text-primary font-display">Confirmation Unsuccessful</h3>
+            <p className="text-xs text-secondary mt-1.5 max-w-sm mx-auto leading-relaxed">
+              {errorMsg || 'The verification link may have expired or was already used.'}
+            </p>
+          </div>
+          <div className="pt-3 flex flex-col sm:flex-row justify-center gap-2.5">
+            <Link
+              href="/verify-email"
+              className="btn-brand text-xs py-2.5 px-4 inline-flex items-center justify-center shadow-lg shadow-emerald-950/25"
+            >
+              Resend Confirmation
+            </Link>
+            <Link
+              href="/sign-in"
+              className="btn-secondary text-xs py-2.5 px-4 inline-flex items-center justify-center"
+            >
+              Back to Sign In
+            </Link>
+          </div>
+        </div>
+      )}
+    </AuthShell>
   );
 }
 
 export default function AuthCallbackPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-[calc(100vh-64px)] flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-emerald-500 animate-spin" />
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-page text-primary">
+          <Loader2 className="w-8 h-8 text-emerald-500 animate-spin" />
+        </div>
+      }
+    >
       <AuthCallbackContent />
     </Suspense>
   );

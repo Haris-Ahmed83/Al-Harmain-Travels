@@ -19,6 +19,7 @@ import {
   TripType,
 } from '@/types';
 import CustomRouteBookingPanel from '@/components/customer/CustomRouteBookingPanel';
+import FixedFareBookingPanel from '@/components/customer/FixedFareBookingPanel';
 import { usePickupLocation } from '@/hooks/usePickupLocation';
 import {
   getCurrentLocation,
@@ -41,6 +42,7 @@ import {
   TERMINAL_LABELS,
   TERMINAL_REQUIRED_SERVICES,
   ZIYARAT_SERVICES,
+  isAirportRoute,
 } from '@/lib/fixed-fare';
 import { formatCurrency } from '@/lib/utils';
 import {
@@ -169,6 +171,10 @@ export default function CustomerHomePage() {
     createBooking,
     uploadPaymentScreenshot,
     settings,
+    fixedFareRates,
+    rateVehicles,
+    rateRoutes,
+    rateTerminals,
   } = useApp();
 
   // Location & Selection State
@@ -277,23 +283,33 @@ export default function CustomerHomePage() {
   const [placeLat, setPlaceLat] = useState<number>(0);
   const [placeLng, setPlaceLng] = useState<number>(0);
 
+  // ─── Active Rates Configured by Admin ──────────────────────────────────
+  // Only active rates are available for customer booking
+  const activeRates = useMemo(() => {
+    return fixedFareRates.filter((r) => r.is_active);
+  }, [fixedFareRates]);
+
   // ─── Derived fare resolution (client-side preview) ─────────────────────
   // This is purely for display. The server re-validates on booking submission.
   const farePreview = useMemo(() => {
     if (!selectedService || !selectedVehicle) return null;
-    return resolveFixedFare(selectedVehicle, selectedService, selectedTerminal);
-  }, [selectedService, selectedVehicle, selectedTerminal]);
+    return resolveFixedFare(selectedVehicle, selectedService, selectedTerminal, activeRates);
+  }, [selectedService, selectedVehicle, selectedTerminal, activeRates]);
 
   // Vehicles available for the current service + terminal selection
   const availableVehicles = useMemo(() => {
-    if (!selectedService) return VEHICLE_CATEGORIES;
-    return getAvailableVehicles(selectedService, selectedTerminal ?? undefined);
-  }, [selectedService, selectedTerminal]);
+    if (!selectedService) {
+      return (rateVehicles && rateVehicles.length > 0)
+        ? rateVehicles.filter((v) => v.is_active).map((v) => v.category as VehicleCategory)
+        : VEHICLE_CATEGORIES;
+    }
+    return getAvailableVehicles(selectedService, selectedTerminal ?? undefined, activeRates, rateVehicles);
+  }, [selectedService, selectedTerminal, activeRates, rateVehicles]);
 
   // Whether the selected service requires a terminal
   const needsTerminal = useMemo(
-    () => selectedService ? TERMINAL_REQUIRED_SERVICES.includes(selectedService) : false,
-    [selectedService],
+    () => selectedService ? isAirportRoute(selectedService, rateRoutes) : false,
+    [selectedService, rateRoutes],
   );
 
   // Whether the selected service is a Ziyarat (no separate destination input)
@@ -1091,8 +1107,8 @@ export default function CustomerHomePage() {
       {/* ── Main Layout: Booking Panel + Map ──────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 
-        {/* ── Booking Panel (left) ──────────────────────────────────── */}
-        <div className="order-2 lg:order-1 lg:col-span-5 space-y-5">
+        {/* ── Booking Panel (left / top on mobile) ──────────────────── */}
+        <div className="order-1 lg:order-1 lg:col-span-6 xl:col-span-5 space-y-5">
           {bookingMethod === 'custom' ? (
             <CustomRouteBookingPanel
               pickup={customPickup}
@@ -1137,506 +1153,68 @@ export default function CustomerHomePage() {
               onResetCustomBooking={resetCustomBooking}
             />
           ) : (
-            <>
-          {/* ── Step Indicator ──────────────────────────────────────── */}
-          {bookingStep !== 'service' && bookingStep !== 'submitted' && (
-            <div className="flex items-center gap-1 text-[10px] font-bold text-muted uppercase tracking-widest">
-              {(['service', 'route', 'vehicle', 'details', 'summary_payment'] as const).map((step, i) => {
-                const stepIndex = ['service', 'route', 'vehicle', 'details', 'summary_payment'].indexOf(bookingStep);
-                const isActive = step === bookingStep;
-                const isDone = i < stepIndex;
-                return (
-                  <React.Fragment key={step}>
-                    <span className={`px-2 py-0.5 rounded-full border transition-all ${
-                      isActive ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-600 dark:text-emerald-400' :
-                      isDone ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500/70' :
-                      'border-base text-muted/50'
-                    }`}>
-                      {i + 1}. {step.replace(/_/g, ' ')}
-                    </span>
-                    {i < 4 && <span className="text-muted/30">›</span>}
-                  </React.Fragment>
-                );
-              })}
-            </div>
+            <FixedFareBookingPanel
+              bookingStep={bookingStep}
+              setBookingStep={setBookingStep}
+              onResetBooking={resetBooking}
+              selectedService={selectedService}
+              onSelectService={handleServiceSelect}
+              selectedTerminal={selectedTerminal}
+              onSelectTerminal={setSelectedTerminal}
+              needsTerminal={needsTerminal}
+              isZiyarat={isZiyarat}
+              pickup={pickup}
+              destination={destination}
+              onOpenSearch={(field) => {
+                setActiveSearchField(field);
+                setSearchQuery(field === 'pickup' ? pickup?.address || '' : destination?.address || '');
+              }}
+              onClearPickup={() => setPickup(null)}
+              onClearDestination={() => setDestination(null)}
+              onUseCurrentLocation={handleUseCurrentLocation}
+              interactiveMode={interactiveMode}
+              onToggleInteractiveMode={setInteractiveMode}
+              routeError={routeError}
+              savedPlaces={savedPlaces}
+              recentLocations={recentLocations}
+              onSelectPlace={handleSelectPlace}
+              onOpenAddPlaceModal={openAddPlaceModal}
+              onClearRecentLocations={clearRecentLocations}
+              onConfirmRoute={handleRouteConfirmed}
+              selectedVehicle={selectedVehicle}
+              onSelectVehicle={setSelectedVehicle}
+              availableVehicles={availableVehicles}
+              activeRates={activeRates}
+              farePreview={farePreview}
+              isFareValidating={isFareValidating}
+              onConfirmVehicle={handleVehicleConfirmed}
+              passengerName={passengerName}
+              setPassengerName={setPassengerName}
+              passengerPhone={passengerPhone}
+              setPassengerPhone={setPassengerPhone}
+              passengerCount={passengerCount}
+              setPassengerCount={setPassengerCount}
+              journeyDate={journeyDate}
+              setJourneyDate={setJourneyDate}
+              journeyTime={journeyTime}
+              setJourneyTime={setJourneyTime}
+              specialInstructions={specialInstructions}
+              setSpecialInstructions={setSpecialInstructions}
+              onDetailsSubmit={handleDetailsSubmit}
+              paymentFile={paymentFile}
+              paymentPreviewUrl={paymentPreviewUrl}
+              fileInputRef={fileInputRef}
+              onPaymentFileChange={handlePaymentFileChange}
+              onRemovePaymentFile={removePaymentFile}
+              onConfirmBooking={handleConfirmBooking}
+              isSubmitting={isSubmitting}
+              confirmedBookingRef={confirmedBookingRef}
+            />
           )}
-
-          {/* ════ STEP 1: SELECT SERVICE ════════════════════════════════ */}
-          {bookingStep === 'service' && (
-            <div className="bg-card border border-base rounded-3xl shadow-2xl overflow-hidden">
-              <div className="px-5 pt-5 pb-4 border-b border-base bg-gradient-to-r from-emerald-500/5 via-transparent to-amber-500/5">
-                <h2 className="text-sm font-bold text-primary flex items-center gap-2">
-                  <span className="w-7 h-7 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0">
-                    <Route className="w-3.5 h-3.5 text-emerald-500" />
-                  </span>
-                  Select Your Service
-                </h2>
-                <p className="text-[11px] text-muted mt-0.5 pl-9">All fares are fixed — no hidden charges</p>
-              </div>
-
-              <div className="p-4 space-y-2">
-                {SERVICE_OPTIONS.map((svc) => (
-                  <button
-                    key={svc.type}
-                    type="button"
-                    onClick={() => handleServiceSelect(svc.type)}
-                    className="w-full text-left p-4 rounded-2xl border border-base bg-surface hover:bg-emerald-500/5 hover:border-emerald-500/40 transition-all group cursor-pointer flex items-center gap-3"
-                  >
-                    <span className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0 group-hover:bg-emerald-500/20 transition-colors">
-                      {svc.icon}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-bold text-xs text-primary group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">{svc.label}</div>
-                      <div className="text-[11px] text-muted">{svc.desc}</div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-muted group-hover:text-emerald-500 transition-colors shrink-0" />
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ════ STEP 2: ROUTE / TERMINAL SELECTION ════════════════════ */}
-          {bookingStep === 'route' && selectedService && (
-            <div className="bg-card border border-base rounded-3xl shadow-2xl overflow-hidden">
-              <div className="px-5 pt-5 pb-4 border-b border-base bg-gradient-to-r from-emerald-500/5 via-transparent to-amber-500/5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-sm font-bold text-primary flex items-center gap-2">
-                      <span className="w-7 h-7 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center shrink-0">
-                        <MapPin className="w-3.5 h-3.5 text-amber-500" />
-                      </span>
-                      {SERVICE_LABELS[selectedService]}
-                    </h2>
-                    <p className="text-[11px] text-muted mt-0.5 pl-9">Enter pickup{!isZiyarat ? ' & destination' : ''}{needsTerminal ? ' and select terminal' : ''}</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setBookingStep('service')}
-                    className="text-[10px] font-semibold text-muted hover:text-primary px-2.5 py-1.5 rounded-xl bg-elevated border border-base hover:border-strong transition-all cursor-pointer"
-                  >
-                    ← Back
-                  </button>
-                </div>
-              </div>
-
-              <div className="px-5 pt-5 pb-4 space-y-4">
-
-                {/* Terminal Selection (for Jeddah→Makkah) */}
-                {needsTerminal && (
-                  <div>
-                    <label className="type-label mb-2 block flex items-center gap-1.5">
-                      <Plane className="w-3.5 h-3.5 text-amber-500" />
-                      Jeddah Airport Terminal *
-                    </label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {TERMINAL_OPTIONS.map((t) => (
-                        <button
-                          key={t.code}
-                          type="button"
-                          onClick={() => setSelectedTerminal(t.code)}
-                          className={`py-2.5 px-3 rounded-xl border font-bold text-xs flex flex-col items-center gap-0.5 transition-all cursor-pointer ${
-                            selectedTerminal === t.code
-                              ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-500 text-amber-700 dark:text-amber-300 ring-2 ring-amber-500/20'
-                              : 'bg-surface border-base text-secondary hover:border-amber-500/40'
-                          }`}
-                        >
-                          <Plane className="w-3.5 h-3.5 mb-0.5" />
-                          {t.label}
-                        </button>
-                      ))}
-                    </div>
-                    {!selectedTerminal && (
-                      <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1.5 flex items-center gap-1">
-                        <AlertCircle className="w-3 h-3" />
-                        Terminal selection is required for airport pricing
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {/* Pickup field */}
-                {!isZiyarat && (
-                  <div className="space-y-0">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                        Pickup Location
-                      </span>
-                      <button
-                        type="button"
-                        onClick={handleUseCurrentLocation}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-colors cursor-pointer"
-                      >
-                        <Crosshair className="w-3 h-3" />
-                        Use GPS
-                      </button>
-                    </div>
-                    <div className="relative group">
-                      <div className="absolute left-0 top-0 bottom-0 w-11 flex items-center justify-center z-10 pointer-events-none">
-                        <div className="w-7 h-7 rounded-xl bg-emerald-600 flex items-center justify-center shadow-md shadow-emerald-900/30">
-                          <MapPin className="w-3.5 h-3.5 text-white" />
-                        </div>
-                      </div>
-                      <input
-                        type="text"
-                        readOnly
-                        onClick={() => { setActiveSearchField('pickup'); setSearchQuery(pickup?.address || ''); }}
-                        value={pickup?.address || ''}
-                        placeholder="Search pickup: hotel, landmark, address…"
-                        className="w-full pl-11 pr-10 py-3.5 rounded-2xl bg-input border border-base text-primary font-medium text-xs focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/15 cursor-pointer transition-all shadow-sm placeholder:text-muted truncate group-hover:border-strong"
-                      />
-                      {pickup && (
-                        <button type="button" onClick={() => setPickup(null)} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-lg text-muted hover:text-rose-500 hover:bg-elevated transition-colors">
-                          <X className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Destination field */}
-                {!isZiyarat && (
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                        Destination
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setInteractiveMode(interactiveMode === 'destination' ? 'none' : 'destination')}
-                        className={`text-[10px] font-semibold flex items-center gap-1 px-2 py-1 rounded-lg border transition-all cursor-pointer ${interactiveMode === 'destination' ? 'bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400' : 'bg-elevated border-base text-muted hover:text-primary'}`}
-                      >
-                        <MapPin className="w-3 h-3" />
-                        Map Pin
-                      </button>
-                    </div>
-                    <div className="relative group">
-                      <div className="absolute left-0 top-0 bottom-0 w-11 flex items-center justify-center z-10 pointer-events-none">
-                        <div className="w-7 h-7 rounded-xl bg-amber-500 flex items-center justify-center shadow-md shadow-amber-900/20">
-                          <Navigation className="w-3.5 h-3.5 text-slate-950" />
-                        </div>
-                      </div>
-                      <input
-                        type="text"
-                        readOnly
-                        onClick={() => { setActiveSearchField('destination'); setSearchQuery(destination?.address || ''); }}
-                        value={destination?.address || ''}
-                        placeholder="Search destination: city, mosque, hotel…"
-                        className="w-full pl-11 pr-10 py-3.5 rounded-2xl bg-input border border-base text-primary font-medium text-xs focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/15 cursor-pointer transition-all shadow-sm placeholder:text-muted truncate group-hover:border-strong"
-                      />
-                      {destination && (
-                        <button type="button" onClick={() => setDestination(null)} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-lg text-muted hover:text-rose-500 hover:bg-elevated transition-colors">
-                          <X className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Ziyarat info banner */}
-                {isZiyarat && (
-                  <div className="p-4 rounded-2xl bg-emerald-500/5 border border-emerald-500/20 text-xs text-emerald-700 dark:text-emerald-300">
-                    <div className="font-bold flex items-center gap-1.5 mb-1">
-                      <Star className="w-3.5 h-3.5 text-amber-500" />
-                      Ziyarat Service — Pickup from Your Location
-                    </div>
-                    <p className="text-muted">Our driver will pick you up and take you on the full {SERVICE_LABELS[selectedService]} tour. No destination entry needed.</p>
-                    <div className="mt-3">
-                      <div className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-1.5">Your Pickup Location</div>
-                      <div className="relative group">
-                        <div className="absolute left-0 top-0 bottom-0 w-11 flex items-center justify-center z-10 pointer-events-none">
-                          <div className="w-7 h-7 rounded-xl bg-emerald-600 flex items-center justify-center">
-                            <MapPin className="w-3.5 h-3.5 text-white" />
-                          </div>
-                        </div>
-                        <input
-                          type="text"
-                          readOnly
-                          onClick={() => { setActiveSearchField('pickup'); setSearchQuery(pickup?.address || ''); }}
-                          value={pickup?.address || ''}
-                          placeholder="Enter your hotel or current location…"
-                          className="w-full pl-11 pr-10 py-3 rounded-2xl bg-input border border-base text-primary font-medium text-xs focus:outline-none focus:border-emerald-500 cursor-pointer transition-all shadow-sm placeholder:text-muted truncate"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleUseCurrentLocation}
-                        className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
-                      >
-                        <Crosshair className="w-3 h-3" />
-                        Use current GPS location
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Saved places quick-select */}
-                {(homePlace || workPlace || customPlaces.length > 0) && !isZiyarat && (
-                  <div className="pt-2 border-t border-base">
-                    <div className="text-[10px] font-bold text-muted uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                      <Bookmark className="w-3 h-3 text-amber-500" />
-                      Saved Places
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {homePlace && (
-                        <button type="button" onClick={() => handleSelectPlace(homePlace)} className="inline-flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-xl bg-elevated hover:bg-emerald-500/10 border border-base hover:border-emerald-500/30 text-primary text-[11px] font-semibold transition-all cursor-pointer">
-                          <Home className="w-3 h-3 text-emerald-500" />
-                          Home
-                        </button>
-                      )}
-                      {workPlace && (
-                        <button type="button" onClick={() => handleSelectPlace(workPlace)} className="inline-flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-xl bg-elevated hover:bg-amber-500/10 border border-base hover:border-amber-500/30 text-primary text-[11px] font-semibold transition-all cursor-pointer">
-                          <Briefcase className="w-3 h-3 text-amber-500" />
-                          Work
-                        </button>
-                      )}
-                      {customPlaces.slice(0, 2).map((cp) => (
-                        <button key={cp.id} type="button" onClick={() => handleSelectPlace(cp)} className="inline-flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-xl bg-elevated border border-base text-primary text-[11px] font-semibold transition-all cursor-pointer">
-                          <Bookmark className="w-3 h-3 text-emerald-500" />
-                          <span className="truncate max-w-[80px]">{cp.name}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {routeError && (
-                  <div className="p-3 rounded-2xl bg-rose-500/8 border border-rose-500/25 text-rose-600 dark:text-rose-400 text-[11px] flex items-start gap-2">
-                    <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                    <span>{routeError}</span>
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  disabled={
-                    (!isZiyarat && !pickup) ||
-                    (needsTerminal && !selectedTerminal)
-                  }
-                  onClick={handleRouteConfirmed}
-                  className="w-full py-4 rounded-2xl text-sm font-bold transition-all shadow-xl disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-600 text-white hover:from-emerald-500 hover:to-emerald-500 flex items-center justify-center gap-2"
-                >
-                  <span>Select Vehicle & View Fare</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* ════ STEP 3: VEHICLE SELECTION ═════════════════════════════ */}
-          {bookingStep === 'vehicle' && selectedService && (
-            <div className="bg-card border border-base rounded-3xl shadow-2xl overflow-hidden">
-              <div className="px-5 pt-5 pb-4 border-b border-base bg-gradient-to-r from-emerald-500/5 via-transparent to-amber-500/5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-sm font-bold text-primary flex items-center gap-2">
-                      <span className="w-7 h-7 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0">
-                        <Car className="w-3.5 h-3.5 text-emerald-500" />
-                      </span>
-                      Choose Your Vehicle
-                    </h2>
-                    <p className="text-[11px] text-muted mt-0.5 pl-9">Fixed fares — prices shown are exact totals</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setBookingStep('route')}
-                    className="text-[10px] font-semibold text-muted hover:text-primary px-2.5 py-1.5 rounded-xl bg-elevated border border-base hover:border-strong transition-all cursor-pointer"
-                  >
-                    ← Back
-                  </button>
-                </div>
-              </div>
-
-              {/* Service + terminal info bar */}
-              <div className="mx-5 mt-4 p-3 rounded-2xl bg-surface border border-base text-xs flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                  <span className="text-secondary font-medium">{SERVICE_LABELS[selectedService]}</span>
-                </div>
-                {selectedTerminal && (
-                  <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px] font-bold border border-amber-500/20">
-                    {TERMINAL_LABELS[selectedTerminal]}
-                  </span>
-                )}
-              </div>
-
-              <div className="p-4 space-y-2.5">
-                {VEHICLE_CATEGORIES.map((cat) => {
-                  const isAvailable = availableVehicles.includes(cat);
-                  const fare = isAvailable ? resolveFixedFare(cat, selectedService, selectedTerminal) : null;
-                  const isSelected = selectedVehicle === cat;
-                  const cap = VEHICLE_CAPACITY[cat];
-
-                  return (
-                    <button
-                      key={cat}
-                      type="button"
-                      disabled={!isAvailable}
-                      onClick={() => setSelectedVehicle(cat)}
-                      className={`w-full text-left p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden ${
-                        !isAvailable
-                          ? 'opacity-40 cursor-not-allowed bg-surface border-base'
-                          : isSelected
-                          ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-500 ring-2 ring-emerald-500/20 shadow-md shadow-emerald-900/10'
-                          : 'bg-card border-base hover:border-emerald-500/40 hover:bg-emerald-500/5'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          {/* Selection indicator */}
-                          <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
-                            isSelected ? 'border-emerald-500 bg-emerald-500' : 'border-muted bg-transparent'
-                          }`}>
-                            {isSelected && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
-                          </div>
-                          <div>
-                            <div className={`font-bold text-xs ${isSelected ? 'text-emerald-700 dark:text-emerald-300' : 'text-primary'}`}>
-                              {VEHICLE_LABELS[cat]}
-                            </div>
-                            <div className="text-[10px] text-muted flex items-center gap-2 mt-0.5">
-                              <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {cap.passengers} pax</span>
-                              <span>·</span>
-                              <span className="flex items-center gap-1"><Luggage className="w-3 h-3" /> {cap.luggage} bags</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Fare badge */}
-                        {fare?.found ? (
-                          <div className={`text-right shrink-0 ${isSelected ? 'text-emerald-600 dark:text-emerald-400' : 'text-secondary'}`}>
-                            <div className="font-black text-base leading-tight">{formatFareSAR(fare.fare)}</div>
-                            <div className="text-[9px] font-semibold text-muted uppercase tracking-widest">Fixed Fare</div>
-                          </div>
-                        ) : (
-                          <div className="text-[10px] text-muted text-right">Not available</div>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
-
-                {/* No vehicles available notice */}
-                {availableVehicles.length === 0 && (
-                  <div className="p-4 rounded-2xl bg-amber-500/5 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2">
-                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
-                    <div>
-                      <div className="font-bold mb-0.5">Fare not available</div>
-                      <p>No vehicles have a configured fare for this route and terminal. Please contact our team for a custom quote.</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Fare disclaimer */}
-              <div className="mx-5 mb-4 p-3 rounded-2xl bg-emerald-500/5 border border-emerald-500/20 text-[10px] text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                All fares are fixed and verified by Al Harmain management. No surge pricing or hidden fees.
-              </div>
-
-              <div className="px-5 pb-5">
-                <button
-                  type="button"
-                  disabled={!selectedVehicle || isFareValidating}
-                  onClick={handleVehicleConfirmed}
-                  className="w-full py-4 rounded-2xl text-sm font-bold transition-all shadow-xl disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-600 text-white hover:from-emerald-500 hover:to-emerald-500 flex items-center justify-center gap-2.5"
-                >
-                  {isFareValidating ? (
-                    <>
-                      <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                      <span>Verifying Fare…</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Continue Booking</span>
-                      {selectedVehicle && farePreview?.found && (
-                        <span className="bg-white/20 text-white px-2.5 py-0.5 rounded-xl text-xs font-extrabold">
-                          {formatFareSAR(farePreview.fare)}
-                        </span>
-                      )}
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Map + saved places section (visible in route/vehicle steps) */}
-          {(bookingStep === 'route' || bookingStep === 'vehicle') && (
-            <div className="bg-card border border-base rounded-3xl shadow-xl overflow-hidden">
-              <div className="px-5 pt-4 pb-3 border-b border-base">
-                <span className="text-[10px] font-bold text-muted uppercase tracking-widest flex items-center gap-1.5">
-                  <Bookmark className="w-3 h-3 text-amber-500" />
-                  Quick Shortcuts
-                </span>
-              </div>
-              <div className="p-4 flex flex-wrap gap-2">
-                {!homePlace ? (
-                  <button type="button" onClick={() => openAddPlaceModal('home')} className="inline-flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-xl bg-surface/50 hover:bg-emerald-500/8 border border-dashed border-base hover:border-emerald-500/30 text-muted hover:text-emerald-600 dark:hover:text-emerald-400 text-[11px] transition-all cursor-pointer">
-                    <Home className="w-3.5 h-3.5" />
-                    <span>Add Home</span>
-                  </button>
-                ) : (
-                  <button type="button" onClick={() => handleSelectPlace(homePlace)} className="inline-flex items-center gap-1.5 pl-2.5 pr-3 py-1.5 rounded-xl bg-elevated hover:bg-emerald-500/10 border border-base hover:border-emerald-500/30 text-primary text-[11px] font-semibold transition-all cursor-pointer">
-                    <Home className="w-3 h-3 text-emerald-500" />
-                    <span>Home</span>
-                  </button>
-                )}
-                {!workPlace ? (
-                  <button type="button" onClick={() => openAddPlaceModal('work')} className="inline-flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-xl bg-surface/50 hover:bg-amber-500/8 border border-dashed border-base hover:border-amber-500/30 text-muted hover:text-amber-600 dark:hover:text-amber-400 text-[11px] transition-all cursor-pointer">
-                    <Briefcase className="w-3.5 h-3.5" />
-                    <span>Add Work</span>
-                  </button>
-                ) : (
-                  <button type="button" onClick={() => handleSelectPlace(workPlace)} className="inline-flex items-center gap-1.5 pl-2.5 pr-3 py-1.5 rounded-xl bg-elevated hover:bg-amber-500/10 border border-base hover:border-amber-500/30 text-primary text-[11px] font-semibold transition-all cursor-pointer">
-                    <Briefcase className="w-3 h-3 text-amber-500" />
-                    <span>Work</span>
-                  </button>
-                )}
-                <button type="button" onClick={() => openAddPlaceModal('custom')} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-elevated border border-base text-muted hover:text-emerald-600 dark:hover:text-emerald-400 text-[11px] font-semibold transition-all cursor-pointer hover:border-emerald-500/30">
-                  <Plus className="w-3 h-3" />
-                  Add Place
-                </button>
-              </div>
-
-              {/* Recent Destinations */}
-              {recentLocations.length > 0 && (
-                <div className="border-t border-base px-4 pt-3 pb-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-bold text-muted uppercase tracking-widest flex items-center gap-1.5">
-                      <Clock className="w-3 h-3" /> Recent
-                    </span>
-                    <button type="button" onClick={clearRecentLocations} className="text-[10px] text-muted hover:text-rose-500 transition-colors px-2 py-0.5 rounded-lg hover:bg-rose-500/8 cursor-pointer">Clear all</button>
-                  </div>
-                  <div className="space-y-0.5">
-                    {recentLocations.slice(0, 3).map((rec) => (
-                      <button
-                        key={rec.id}
-                        type="button"
-                        onClick={() => handleSelectPlace(rec)}
-                        className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-surface border border-transparent hover:border-base text-[11px] flex items-center justify-between group transition-all cursor-pointer"
-                      >
-                        <div className="flex items-center gap-2.5 truncate">
-                          <Clock className="w-3 h-3 text-muted group-hover:text-amber-500 transition-colors shrink-0" />
-                          <span className="text-primary truncate font-medium">{rec.address}</span>
-                        </div>
-                        <ChevronRight className="w-3.5 h-3.5 text-muted shrink-0" />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-          </>
-          )}
-
         </div>
 
-        {/* ── Interactive Map (right / top on mobile) ───────────────── */}
-        <div className="order-1 lg:order-2 lg:col-span-7 h-[300px] sm:h-[380px] lg:h-[620px] relative lg:sticky lg:top-20 rounded-3xl overflow-hidden shadow-2xl border border-base">
+        {/* ── Interactive Map (right / bottom on mobile) ───────────────── */}
+        <div className="order-2 lg:order-2 lg:col-span-6 xl:col-span-7 h-[300px] sm:h-[380px] lg:h-[620px] relative lg:sticky lg:top-20 rounded-3xl overflow-hidden shadow-2xl border border-base">
           <BookingMap
             pickup={bookingMethod === 'custom' ? customPickup : pickup}
             destination={bookingMethod === 'custom' ? customDestination : destination}
@@ -1759,308 +1337,7 @@ export default function CustomerHomePage() {
         </div>
       )}
 
-      {/* ── Step 4: Passenger Details Modal ────────────────────────── */}
-      {bookingStep === 'details' && selectedService && selectedVehicle && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-fade-up">
-          <div className="bg-card border border-base rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden p-6 sm:p-8 space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">Step 4 of 5</span>
-                <h3 className="type-card-title text-xl mt-1">Passenger & Schedule</h3>
-              </div>
-              <button type="button" onClick={() => setBookingStep('vehicle')} className="p-1 rounded-xl text-muted hover:text-primary hover:bg-elevated">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            {/* Booking summary card */}
-            <div className="p-4 rounded-2xl bg-surface border border-base space-y-2 text-xs">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                <span className="font-bold text-secondary">{SERVICE_LABELS[selectedService]}</span>
-                {selectedTerminal && <span className="px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px] font-bold">{TERMINAL_LABELS[selectedTerminal]}</span>}
-              </div>
-              {pickup && <div className="text-secondary"><span className="text-muted text-[10px] mr-1">Pickup:</span><strong className="text-primary">{pickup.address}</strong></div>}
-              {destination && <div className="text-secondary"><span className="text-muted text-[10px] mr-1">To:</span><strong className="text-amber-500">{destination.address}</strong></div>}
-              <div className="flex items-center justify-between pt-2 border-t border-base/60">
-                <span className="text-muted">{VEHICLE_LABELS[selectedVehicle]}</span>
-                {farePreview?.found && (
-                  <span className="font-black text-emerald-600 dark:text-emerald-400 text-sm">{formatFareSAR(farePreview.fare)}</span>
-                )}
-              </div>
-            </div>
-
-            <form onSubmit={handleDetailsSubmit} className="space-y-4 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="type-label">Lead Passenger Name *</label>
-                  <input type="text" required value={passengerName} onChange={(e) => setPassengerName(e.target.value)} placeholder="Full Name" className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-emerald-500" />
-                </div>
-                <div>
-                  <label className="type-label">Phone (WhatsApp) *</label>
-                  <input type="tel" required value={passengerPhone} onChange={(e) => setPassengerPhone(e.target.value)} placeholder="+966 5x xxx xxxx" className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-emerald-500" />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="type-label">Journey Date</label>
-                  <input type="date" required value={journeyDate} onChange={(e) => setJourneyDate(e.target.value)} className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-emerald-500" />
-                </div>
-                <div>
-                  <label className="type-label">Pickup Time</label>
-                  <input type="time" required value={journeyTime} onChange={(e) => setJourneyTime(e.target.value)} className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-emerald-500" />
-                </div>
-                <div>
-                  <label className="type-label">Passengers</label>
-                  <input type="number" min={1} max={14} value={passengerCount} onChange={(e) => setPassengerCount(parseInt(e.target.value) || 1)} className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs text-center font-bold focus:outline-none focus:border-emerald-500" />
-                </div>
-              </div>
-
-              <div>
-                <label className="type-label">Flight Details / Special Requests</label>
-                <textarea rows={2} placeholder="e.g. Flight SV-124, baby seat required, extra luggage." value={specialInstructions} onChange={(e) => setSpecialInstructions(e.target.value)} className="w-full px-3.5 py-2 rounded-xl bg-input border border-base text-primary placeholder:text-muted text-xs focus:outline-none focus:border-emerald-500" />
-              </div>
-
-              <div className="flex items-center gap-3 pt-2">
-                <button type="button" onClick={() => setBookingStep('vehicle')} className="btn-secondary flex-1 py-3 text-xs">Back</button>
-                <button type="submit" className="btn-primary flex-[2] py-3 text-xs flex items-center justify-center gap-2 font-bold">
-                  <span>Proceed to Payment Proof</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ── Step 5: Final Summary & Payment Upload Modal ─────────────── */}
-      {bookingStep === 'summary_payment' && selectedService && selectedVehicle && (
-        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto animate-fade-up">
-          <div className="bg-card border border-base rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden p-6 sm:p-8 space-y-6 max-h-[92vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-base pb-3">
-              <div>
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20">Final Step 5 of 5</span>
-                <h3 className="type-card-title text-xl mt-1">Booking Summary & Payment Proof</h3>
-              </div>
-              <button type="button" onClick={() => setBookingStep('details')} className="p-1.5 rounded-xl text-muted hover:text-primary hover:bg-elevated">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Full summary card */}
-            <div className="rounded-2xl bg-surface/80 border border-base p-4 space-y-3 text-xs">
-              <div className="flex items-center justify-between text-muted text-[11px] border-b border-base/60 pb-2">
-                <span className="font-semibold text-secondary uppercase tracking-wider">Journey Summary</span>
-                <span>{journeyDate} at {journeyTime}</span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 text-[11px]">
-                <div>
-                  <span className="text-muted block text-[10px]">Service</span>
-                  <span className="font-semibold text-primary">{SERVICE_LABELS[selectedService]}</span>
-                </div>
-                {selectedTerminal && (
-                  <div>
-                    <span className="text-muted block text-[10px]">Terminal</span>
-                    <span className="font-semibold text-amber-500">{TERMINAL_LABELS[selectedTerminal]}</span>
-                  </div>
-                )}
-                <div>
-                  <span className="text-muted block text-[10px]">Vehicle</span>
-                  <span className="font-semibold text-primary">{VEHICLE_LABELS[selectedVehicle]}</span>
-                </div>
-                <div>
-                  <span className="text-muted block text-[10px]">Passengers</span>
-                  <span className="font-semibold text-primary">{passengerCount} Pax</span>
-                </div>
-              </div>
-
-              {pickup && (
-                <div className="flex items-start gap-2.5 pt-1">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 mt-1 shrink-0" />
-                  <div>
-                    <span className="text-muted text-[10px] uppercase font-bold">Pickup</span>
-                    <p className="font-semibold text-primary">{pickup.address}</p>
-                  </div>
-                </div>
-              )}
-              {destination && (
-                <div className="flex items-start gap-2.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 mt-1 shrink-0" />
-                  <div>
-                    <span className="text-muted text-[10px] uppercase font-bold">Destination</span>
-                    <p className="font-semibold text-amber-500">{destination.address}</p>
-                  </div>
-                </div>
-              )}
-
-              {specialInstructions && (
-                <div className="pt-2 border-t border-base/60 text-[11px]">
-                  <span className="text-muted">Special Requests: </span>
-                  <span className="text-secondary italic">{specialInstructions}</span>
-                </div>
-              )}
-
-              {/* Fixed Fare — prominent display */}
-              {farePreview?.found && (
-                <div className="flex items-center justify-between pt-3 border-t border-base bg-emerald-500/10 p-3 rounded-xl mt-2">
-                  <div>
-                    <span className="text-secondary text-xs font-bold">Total Fixed Fare</span>
-                    <div className="text-[10px] text-muted mt-0.5 flex items-center gap-1">
-                      <ShieldCheck className="w-3 h-3 text-emerald-500" />
-                      Server-verified · No hidden charges
-                    </div>
-                  </div>
-                  <span className="text-emerald-500 text-2xl font-black tracking-tight">
-                    {formatFareSAR(farePreview.fare)}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* Payment Instructions */}
-            <div className="rounded-2xl bg-amber-500/5 border border-amber-500/20 p-4 space-y-2 text-xs">
-              <div className="flex items-center gap-2 text-amber-500 font-bold">
-                <Building2 className="w-4 h-4" />
-                <span>Bank Transfer / Payment Instructions</span>
-              </div>
-              <p className="text-[11px] text-secondary">
-                Please transfer <strong>{farePreview?.found ? formatFareSAR(farePreview.fare) : 'the fare amount'}</strong> to complete your request.
-              </p>
-              <div className="bg-card p-3 rounded-xl border border-base font-mono text-xs space-y-1">
-                <div className="flex justify-between text-secondary"><span>Bank Name:</span><strong className="text-primary">Al Rajhi Bank / SNB</strong></div>
-                <div className="flex justify-between text-secondary"><span>Account Name:</span><strong className="text-primary">Al Harmain VIP Transport</strong></div>
-                <div className="flex justify-between text-secondary"><span>Corporate IBAN:</span><strong className="text-amber-500 select-all">SA44 8000 0456 6080 1012 3456</strong></div>
-                <div className="flex justify-between text-secondary"><span>STC Pay / Urpay:</span><strong className="text-emerald-500 select-all">+966 54 888 1234</strong></div>
-              </div>
-              <p className="text-[10px] text-muted italic">* Your booking will be held as "Pending Verification" until our operations desk confirms receipt.</p>
-            </div>
-
-            {/* Payment file upload */}
-            <form onSubmit={handleConfirmBooking} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-primary mb-1.5 flex items-center justify-between">
-                  <span className="flex items-center gap-1.5">
-                    <Receipt className="w-4 h-4 text-emerald-500" />
-                    Upload Payment Screenshot / Transfer Receipt *
-                  </span>
-                  <span className="text-[10px] text-muted">Required</span>
-                </label>
-
-                <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/jpg,image/webp" onChange={handlePaymentFileChange} className="hidden" id="payment-receipt-upload" />
-
-                {!paymentPreviewUrl ? (
-                  <label htmlFor="payment-receipt-upload" className="cursor-pointer border-2 border-dashed border-base hover:border-emerald-500/60 rounded-2xl p-6 bg-surface/50 hover:bg-surface flex flex-col items-center justify-center text-center gap-2 transition-all group">
-                    <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <UploadCloud className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <span className="text-xs font-bold text-primary group-hover:text-emerald-400 transition-colors">Click or Drag & Drop Transfer Screenshot</span>
-                      <p className="text-[11px] text-muted mt-0.5">PNG, JPG, or WebP (up to 10MB)</p>
-                    </div>
-                  </label>
-                ) : (
-                  <div className="relative rounded-2xl bg-surface border border-emerald-500/40 p-3 space-y-3">
-                    <div className="flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-2 font-semibold text-primary truncate max-w-[80%]">
-                        <FileImage className="w-4 h-4 text-emerald-500 shrink-0" />
-                        <span className="truncate">{paymentFile?.name || 'Payment Receipt'}</span>
-                      </div>
-                      <button type="button" onClick={removePaymentFile} className="text-[11px] text-rose-500 hover:text-rose-400 font-bold hover:underline">Remove</button>
-                    </div>
-                    <div className="relative rounded-xl overflow-hidden max-h-48 border border-base bg-surface flex items-center justify-center p-2">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={paymentPreviewUrl} alt="Payment Screenshot Preview" className="max-h-48 object-contain w-full rounded-xl" />
-                    </div>
-                    <div className="flex items-center justify-between text-[10px] text-muted">
-                      <span>Size: {paymentFile ? (paymentFile.size / 1024).toFixed(1) + ' KB' : ''}</span>
-                      <label htmlFor="payment-receipt-upload" className="cursor-pointer text-emerald-500 hover:underline font-semibold">Replace Image</label>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex items-center gap-3 pt-2">
-                <button type="button" onClick={() => setBookingStep('details')} className="btn-secondary flex-1 py-3 text-xs">Back to Details</button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting || !paymentFile}
-                  className="btn-primary flex-[2] py-3 text-xs flex items-center justify-center gap-2 font-bold disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <span className="w-4 h-4 rounded-full border-2 border-slate-950/30 border-t-slate-950 animate-spin" />
-                      <span>Submitting Booking…</span>
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span>Submit Booking Request</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ── Step 6: Booking Submitted Success ────────────────────────── */}
-      {bookingStep === 'submitted' && confirmedBookingRef && (
-        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 animate-fade-up">
-          <div className="bg-card border border-emerald-500/40 rounded-3xl w-full max-w-md shadow-2xl p-6 sm:p-8 space-y-5 text-center">
-            <div className="w-16 h-16 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center mx-auto border-2 border-emerald-500/30 shadow-inner">
-              <CheckCircle2 className="w-9 h-9" />
-            </div>
-
-            <div className="space-y-1">
-              <h3 className="type-card-title text-xl">Booking Request Received!</h3>
-              <p className="text-xs text-secondary">Your reservation and payment receipt have been saved securely.</p>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-surface border border-base space-y-2 text-left">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted">Booking Reference:</span>
-                <span className="font-mono text-base font-black text-amber-600 dark:text-amber-400">{confirmedBookingRef}</span>
-              </div>
-              {selectedService && (
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted">Service:</span>
-                  <span className="font-semibold text-primary">{SERVICE_LABELS[selectedService]}</span>
-                </div>
-              )}
-              {selectedVehicle && farePreview?.found && (
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted">Fixed Fare:</span>
-                  <span className="font-black text-emerald-600 dark:text-emerald-400">{formatFareSAR(farePreview.fare)}</span>
-                </div>
-              )}
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted">Status:</span>
-                <span className="px-2.5 py-0.5 rounded-full text-[11px] uppercase font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30">Pending Verification</span>
-              </div>
-              <p className="text-[11px] text-muted pt-1 border-t border-base/60 leading-relaxed">
-                Our dispatch team will review your payment screenshot. Upon verification, the booking is confirmed and a captain will be assigned.
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-2 pt-2">
-              <Link href="/customer/bookings" className="btn-primary w-full py-3 text-xs flex items-center justify-center gap-2 font-bold">
-                <Clock className="w-4 h-4" />
-                <span>View Booking in My Rides</span>
-              </Link>
-              <button
-                type="button"
-                onClick={resetBooking}
-                className="text-xs text-muted hover:text-primary py-2"
-              >
-                + Book Another Journey
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── Manage Saved Places Modal ─────────────────────────────────── */}
       {isSavedPlacesModalOpen && (

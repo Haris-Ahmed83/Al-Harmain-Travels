@@ -4,8 +4,9 @@ import React, { useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
-import { Mail, Lock, ArrowRight, Eye, EyeOff, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Eye, EyeOff, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import AuthShell from '@/components/auth/AuthShell';
 
 function SignInForm() {
   const router = useRouter();
@@ -40,7 +41,7 @@ function SignInForm() {
       const res = await signIn(email, password);
       if (res.success) {
         toast.success("Welcome back — you're signed in.");
-        
+
         // Strict role validation for redirect: Only follow redirect if it belongs to the user's role
         const isValidRedirectForRole = (url: string | null, role?: string) => {
           if (!url || !url.startsWith('/') || url.startsWith('/auth')) return false;
@@ -86,167 +87,171 @@ function SignInForm() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-64px)] bg-page text-primary flex items-center justify-center py-10 px-4 relative overflow-hidden">
-      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[560px] h-[560px] bg-emerald-900/10 rounded-full blur-3xl pointer-events-none" />
-
-      <div className="w-full max-w-md relative z-10 space-y-5 animate-fade-up">
-        <div className="text-center space-y-2">
-          <Link href="/" className="inline-flex items-center gap-2.5 group mb-1">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-950 flex items-center justify-center text-amber-400 font-bold text-xl border border-emerald-500/30">
-              الح
+    <AuthShell
+      title="Welcome Back"
+      subtitle="Sign in to your account to reserve, track, or manage executive journeys"
+    >
+      {/* Verification notice for unverified accounts */}
+      {unverifiedEmail ? (
+        <div
+          role="alert"
+          className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs space-y-3 animate-fade-in shadow-sm"
+        >
+          <div className="flex items-start gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
+              <AlertCircle className="w-4 h-4" />
             </div>
-            <div className="text-left">
-              <div className="font-display text-xl font-semibold text-primary leading-tight">
-                Al Harmain <span className="text-amber-500">Travel</span>
-              </div>
-              <div className="text-2xs text-emerald-600 dark:text-emerald-400/80 tracking-label uppercase font-semibold mt-0.5">
-                Makkah · Madinah · Jeddah
-              </div>
-            </div>
-          </Link>
-          <h1 className="type-page-title">Welcome back</h1>
-          <p className="type-muted text-xs sm:text-sm">Sign in to book, track, or manage journeys</p>
-        </div>
-
-        <div className="surface-card overflow-hidden">
-          <div className="p-6 sm:p-7 space-y-5">
-            {unverifiedEmail ? (
-              <div
-                role="alert"
-                className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800/80 text-amber-800 dark:text-amber-200 text-xs space-y-2.5 animate-fade-in"
-              >
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
-                  <div>
-                    <span className="font-semibold block">Email Verification Required</span>
-                    <span>{errorMsg || 'Your email address has not been confirmed yet. Please verify your email before signing in.'}</span>
-                  </div>
-                </div>
-                <div className="pt-1 flex gap-2">
-                  <Link
-                    href={`/verify-email?email=${encodeURIComponent(unverifiedEmail)}`}
-                    className="btn-brand text-xs !py-2 !px-3 inline-flex items-center gap-1 cursor-pointer"
-                  >
-                    <span>Resend / Verify Email</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
-              </div>
-            ) : errorMsg ? (
-              <div
-                role="alert"
-                className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800/80 text-rose-700 dark:text-rose-300 text-xs font-medium flex items-start gap-2 animate-fade-in"
-              >
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
-                <span>{errorMsg}</span>
-              </div>
-            ) : null}
-
-            <form onSubmit={handleSignIn} className="space-y-4 text-xs">
-              <div>
-                <label htmlFor="email" className="type-label">
-                  Email address
-                </label>
-                <div className="relative">
-                  <Mail className="w-4 h-4 text-muted absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <input
-                    id="email"
-                    type="email"
-                    autoComplete="email"
-                    required
-                    placeholder="you@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="field-input pl-10"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label htmlFor="password" className="type-label !mb-0">
-                    Password
-                  </label>
-                  <Link
-                    href="/forgot-password"
-                    className="text-[11px] text-amber-500 dark:text-amber-400 hover:underline"
-                  >
-                    Forgot password?
-                  </Link>
-                </div>
-                <div className="relative">
-                  <Lock className="w-4 h-4 text-muted absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <input
-                    id="password"
-                    type={showPassword ? 'text' : 'password'}
-                    autoComplete="current-password"
-                    required
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="field-input pl-10 pr-11"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-muted hover:text-primary rounded-lg"
-                    aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-0.5">
-                <label className="flex items-center gap-2 cursor-pointer text-[11px] text-secondary">
-                  <input
-                    type="checkbox"
-                    checked={rememberMe}
-                    onChange={(e) => setRememberMe(e.target.checked)}
-                    className="w-4 h-4 rounded border-base text-emerald-600 focus:ring-emerald-500"
-                  />
-                  <span>Remember my session</span>
-                </label>
-              </div>
-
-              <button type="submit" disabled={isLoading} className="btn-brand w-full py-3.5">
-                {isLoading ? (
-                  <>
-                    <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                    <span>Signing in…</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Sign in</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-            </form>
-
-            <div className="flex items-start gap-2 text-[11px] text-muted bg-surface/80 rounded-xl p-3 border border-base">
-              <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-              <p>
-                Customers book rides securely. Staff, drivers, and admins are automatically routed to their authorized portals with strict boundary enforcement.
+            <div className="space-y-1">
+              <span className="font-bold text-primary block text-sm">Email Verification Required</span>
+              <p className="leading-relaxed text-secondary text-xs">
+                {errorMsg || 'Your email address has not been confirmed yet. Please verify your email before signing in.'}
               </p>
             </div>
           </div>
+          <div className="pt-1 flex items-center gap-2">
+            <Link
+              href={`/verify-email?email=${encodeURIComponent(unverifiedEmail)}`}
+              className="btn-brand text-xs !py-2 !px-4 inline-flex items-center gap-1.5 shadow-md shadow-emerald-950/20 hover:scale-[1.02] active:scale-95 transition-all"
+            >
+              <span>Resend / Verify Email</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+        </div>
+      ) : errorMsg ? (
+        <div
+          role="alert"
+          className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/80 text-rose-700 dark:text-rose-300 text-xs font-medium flex items-start gap-2.5 animate-shake shadow-sm"
+        >
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
+          <span className="leading-relaxed">{errorMsg}</span>
+        </div>
+      ) : null}
+
+      <form onSubmit={handleSignIn} className="space-y-4 text-xs">
+        {/* Email Address */}
+        <div>
+          <label htmlFor="email" className="type-label flex items-center justify-between">
+            <span>Email Address</span>
+            <span className="text-[10px] text-muted font-normal">Registered account</span>
+          </label>
+          <div className="relative group/field">
+            <Mail className="w-4 h-4 text-muted group-focus-within/field:text-emerald-500 group-focus-within/field:scale-110 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none transition-all duration-300" />
+            <input
+              id="email"
+              type="email"
+              autoComplete="email"
+              required
+              placeholder="name@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="field-input pl-10 h-11 text-xs sm:text-sm bg-input/70 group-hover/field:border-emerald-500/40 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/15 transition-all duration-300"
+            />
+          </div>
         </div>
 
-        <p className="text-center text-sm text-muted">
-          New pilgrim?{' '}
-          <Link href="/sign-up" className="text-amber-500 dark:text-amber-400 font-bold hover:underline">
-            Create a customer account
+        {/* Password */}
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label htmlFor="password" className="type-label !mb-0">
+              Password
+            </label>
+            <Link
+              href="/forgot-password"
+              className="text-[11px] text-amber-500 dark:text-amber-400 font-semibold hover:underline hover:text-amber-400 transition-colors focus-visible:outline-none"
+            >
+              Forgot password?
+            </Link>
+          </div>
+          <div className="relative group/field">
+            <Lock className="w-4 h-4 text-muted group-focus-within/field:text-emerald-500 group-focus-within/field:scale-110 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none transition-all duration-300" />
+            <input
+              id="password"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="current-password"
+              required
+              placeholder="••••••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="field-input pl-10 pr-11 h-11 text-xs sm:text-sm bg-input/70 group-hover/field:border-emerald-500/40 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/15 transition-all duration-300"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-muted hover:text-primary hover:scale-110 active:scale-95 rounded-lg transition-all duration-200 cursor-pointer focus-visible:outline-none"
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+            >
+              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+
+        {/* Remember Session */}
+        <div className="flex items-center justify-between pt-1">
+          <label className="flex items-center gap-2.5 cursor-pointer text-xs text-secondary select-none group/check">
+            <input
+              type="checkbox"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              className="w-4 h-4 rounded-md border-base text-emerald-600 focus:ring-emerald-500 focus:ring-offset-0 transition-all cursor-pointer group-hover/check:border-emerald-500"
+            />
+            <span className="group-hover/check:text-primary transition-colors">Remember session on this device</span>
+          </label>
+        </div>
+
+        {/* Action Buttons: Sign In (Primary) & Register (Secondary) stacked with smooth animations */}
+        <div className="space-y-3 pt-2">
+          {/* Primary Sign In Button */}
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="relative overflow-hidden w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-emerald-600 via-emerald-600 to-teal-700 hover:from-emerald-500 hover:via-emerald-500 hover:to-teal-600 text-white text-sm font-bold tracking-wide shadow-lg shadow-emerald-950/40 hover:shadow-xl hover:shadow-emerald-600/30 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-300 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed disabled:pointer-events-none group/btn before:absolute before:inset-0 before:-translate-x-full hover:before:animate-shimmer-sweep before:bg-gradient-to-r before:from-transparent before:via-white/20 before:to-transparent"
+          >
+            {isLoading ? (
+              <div className="flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin text-white" />
+                <span>Signing in…</span>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center gap-2">
+                <span>Sign In</span>
+              </div>
+            )}
+          </button>
+
+          {/* Secondary Register Button directly underneath */}
+          <Link
+            href="/sign-up"
+            className="relative overflow-hidden w-full py-3.5 px-6 rounded-xl border border-base/80 bg-elevated/40 hover:bg-elevated/90 hover:border-amber-400/60 text-primary hover:text-amber-500 dark:hover:text-amber-400 text-sm font-bold tracking-wide shadow-sm hover:shadow-lg hover:shadow-amber-500/10 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-300 inline-flex items-center justify-center gap-2 group/reg before:absolute before:inset-0 before:-translate-x-full hover:before:animate-shimmer-sweep before:bg-gradient-to-r before:from-transparent before:via-amber-400/15 before:to-transparent"
+          >
+            <span>Register</span>
           </Link>
+        </div>
+      </form>
+
+      {/* RBAC Notice */}
+      <div className="flex items-start gap-2.5 text-[11px] text-muted bg-surface/70 rounded-2xl p-3.5 border border-base/80">
+        <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+        <p className="leading-relaxed">
+          Pilgrims and travelers access booking history. Captains, dispatchers, and administrators are securely dispatched to their respective operational portals.
         </p>
       </div>
-    </div>
+    </AuthShell>
   );
 }
 
 export default function SignInPage() {
   return (
-    <Suspense fallback={<div className="min-h-[60vh] flex items-center justify-center">Loading…</div>}>
+    <Suspense
+      fallback={
+        <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-page text-primary">
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="w-8 h-8 text-emerald-500 animate-spin" />
+            <p className="text-xs text-muted">Securing session…</p>
+          </div>
+        </div>
+      }
+    >
       <SignInForm />
     </Suspense>
   );

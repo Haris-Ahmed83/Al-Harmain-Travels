@@ -7,9 +7,10 @@ export type VehicleCategory =
   | 'sedan'       // Toyota Camry / Hyundai Sonata
   | 'staria'      // Hyundai Staria
   | 'gmc'         // GMC — Nusuk
-  | 'hiroof';     // HiRoof — Nusuk
+  | 'hiroof'      // HiRoof — Nusuk
+  | string;
 
-/** Service types as stable string enums */
+/** Service types as stable string enums or dynamic route IDs */
 export type ServiceType =
   | 'intercity_jeddah_makkah'       // Jeddah → Makkah
   | 'intercity_makkah_jeddah'       // Makkah → Jeddah
@@ -17,10 +18,63 @@ export type ServiceType =
   | 'intercity_makkah_madinah_sameday' // Same-day round trip
   | 'ziyarat_taif'                  // Taif Ziyarat
   | 'ziyarat_taif_bani_saad'        // Taif Ziyarat + Bani Saad
-  | 'ziyarat_makkah';               // Makkah Ziyarat
+  | 'ziyarat_makkah'                // Makkah Ziyarat
+  | string;
 
-/** Airport terminals — only applicable to Jeddah → Makkah */
-export type TerminalCode = 'terminal_1' | 'terminal_h' | 'terminal_n' | null;
+/** Airport terminals — applicable to airport routes */
+export type TerminalCode = 'terminal_1' | 'terminal_h' | 'terminal_n' | 'all_terminals' | string | null;
+
+/** Dynamic Vehicle Type configured by Admin in Rate Master */
+export interface RateVehicleType {
+  id: string;
+  name: string;
+  category: string;
+  seating_capacity: number;
+  luggage_capacity: number;
+  description?: string | null;
+  is_active: boolean;
+  display_order?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Dynamic Service Type configured by Admin in Rate Master */
+export interface RateServiceType {
+  id: string;
+  name: string;
+  description?: string | null;
+  is_active: boolean;
+  display_order?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Dynamic Route configured by Admin in Rate Master */
+export interface RateRoute {
+  id: string;
+  service_id?: string | null;
+  route_name: string;
+  origin_name: string;
+  destination_name: string;
+  is_airport: boolean;
+  is_active: boolean;
+  display_order?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Dynamic Terminal configured by Admin in Rate Master */
+export interface RateTerminal {
+  id: string;
+  name: string;
+  code: string;
+  route_id?: string | null;
+  description?: string | null;
+  is_active: boolean;
+  display_order?: number;
+  created_at?: string;
+  updated_at?: string;
+}
 
 /** A single row from the fixed_fare_rates table */
 export interface FixedFareRate {

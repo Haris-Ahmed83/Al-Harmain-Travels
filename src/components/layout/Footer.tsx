@@ -16,7 +16,19 @@ export default function Footer() {
       pathname.startsWith('/dispatcher') ||
       pathname.startsWith('/admin'));
 
-  if (isDashboard) {
+  // Completely remove footer from all auth flows (sign-in, sign-up, forgot-password, reset-password, verify, callback, etc.)
+  const isAuthPage =
+    Boolean(pathname) &&
+    (pathname.startsWith('/sign-in') ||
+      pathname.startsWith('/sign-up') ||
+      pathname.startsWith('/forgot-password') ||
+      pathname.startsWith('/reset-password') ||
+      pathname.startsWith('/verify-email') ||
+      pathname.startsWith('/verify-phone') ||
+      pathname.startsWith('/callback') ||
+      pathname.startsWith('/auth'));
+
+  if (isDashboard || isAuthPage) {
     return null;
   }
   return (

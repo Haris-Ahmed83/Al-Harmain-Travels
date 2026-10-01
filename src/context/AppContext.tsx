@@ -17,11 +17,24 @@ import {
   EmergencyContact,
   SavedPlace,
   RecentLocation,
+  FixedFareRate,
+  TerminalCode,
+  RateVehicleType,
+  RateServiceType,
+  RateRoute,
+  RateTerminal,
 } from '@/types';
 import {
   INITIAL_SETTINGS,
   FALLBACK_GUEST_PROFILE,
 } from '@/lib/mock-data';
+import {
+  getAllRatesAsObjects,
+  CANONICAL_RATE_VEHICLES,
+  CANONICAL_RATE_SERVICES,
+  CANONICAL_RATE_ROUTES,
+  CANONICAL_RATE_TERMINALS,
+} from '@/lib/fixed-fare';
 import { generateBookingReference } from '@/lib/utils';
 import { calculateEstimatedFare } from '@/lib/fare-calculator';
 import { calculateDistanceKm, estimateDurationMinutes } from '@/lib/geo';
@@ -115,6 +128,41 @@ interface AppContextType {
   updateService: (id: string, service: Partial<ServiceItem>) => Promise<void>;
   deleteService: (id: string) => Promise<void>;
   toggleServiceActive: (id: string) => Promise<void>;
+
+  // Fixed Fare Rates Management (Admin & Live Customer Booking)
+  fixedFareRates: FixedFareRate[];
+  addFixedFareRate: (rate: Omit<FixedFareRate, 'id' | 'created_at' | 'updated_at'>) => Promise<FixedFareRate>;
+  addBulkFixedFareRates: (payload: {
+    service_type: string;
+    terminal?: TerminalCode | string | null;
+    is_active?: boolean;
+    rates: Array<{ vehicle_category: string; fare_amount: number; id?: string }>;
+  }) => Promise<{ success: boolean; rates?: FixedFareRate[]; error?: string }>;
+  updateFixedFareRate: (id: string, updates: Partial<FixedFareRate>) => Promise<boolean>;
+  deleteFixedFareRate: (id: string) => Promise<boolean>;
+  toggleFixedFareRateStatus: (id: string) => Promise<boolean>;
+
+  // Rate Master Configuration Models (Vehicles, Capacities, Services, Routes, Terminals)
+  rateVehicles: RateVehicleType[];
+  rateServices: RateServiceType[];
+  rateRoutes: RateRoute[];
+  rateTerminals: RateTerminal[];
+
+  addRateVehicle: (vehicle: Omit<RateVehicleType, 'created_at' | 'updated_at'>) => Promise<{ success: boolean; error?: string; vehicle?: RateVehicleType }>;
+  updateRateVehicle: (id: string, updates: Partial<RateVehicleType>) => Promise<{ success: boolean; error?: string; vehicle?: RateVehicleType }>;
+  deleteRateVehicle: (id: string) => Promise<{ success: boolean; error?: string; canDeactivate?: boolean; linkedBookings?: number }>;
+
+  addRateService: (service: Omit<RateServiceType, 'created_at' | 'updated_at'>) => Promise<{ success: boolean; error?: string; service?: RateServiceType }>;
+  updateRateService: (id: string, updates: Partial<RateServiceType>) => Promise<{ success: boolean; error?: string; service?: RateServiceType }>;
+  deleteRateService: (id: string) => Promise<{ success: boolean; error?: string }>;
+
+  addRateRoute: (route: Omit<RateRoute, 'created_at' | 'updated_at'>) => Promise<{ success: boolean; error?: string; route?: RateRoute }>;
+  updateRateRoute: (id: string, updates: Partial<RateRoute>) => Promise<{ success: boolean; error?: string; route?: RateRoute }>;
+  deleteRateRoute: (id: string) => Promise<{ success: boolean; error?: string; canDeactivate?: boolean; linkedBookings?: number }>;
+
+  addRateTerminal: (terminal: Omit<RateTerminal, 'created_at' | 'updated_at'>) => Promise<{ success: boolean; error?: string; terminal?: RateTerminal }>;
+  updateRateTerminal: (id: string, updates: Partial<RateTerminal>) => Promise<{ success: boolean; error?: string; terminal?: RateTerminal }>;
+  deleteRateTerminal: (id: string) => Promise<{ success: boolean; error?: string; canDeactivate?: boolean; linkedBookings?: number }>;
 
   // User Management (Admin)
   createStaffAccount: (data: { full_name: string; email: string; phone: string }) => Promise<Profile>;
@@ -231,6 +279,71 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [services, setServices] = useState<ServiceItem[]>([]);
+  const [fixedFareRates, setFixedFareRates] = useState<FixedFareRate[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('alharmain_fixed_fare_rates');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {}
+    }
+    return getAllRatesAsObjects();
+  });
+
+  const [rateVehicles, setRateVehicles] = useState<RateVehicleType[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('alharmain_rate_vehicles');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {}
+    }
+    return CANONICAL_RATE_VEHICLES;
+  });
+
+  const [rateServices, setRateServices] = useState<RateServiceType[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('alharmain_rate_services');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {}
+    }
+    return CANONICAL_RATE_SERVICES;
+  });
+
+  const [rateRoutes, setRateRoutes] = useState<RateRoute[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('alharmain_rate_routes');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {}
+    }
+    return CANONICAL_RATE_ROUTES;
+  });
+
+  const [rateTerminals, setRateTerminals] = useState<RateTerminal[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('alharmain_rate_terminals');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {}
+    }
+    return CANONICAL_RATE_TERMINALS;
+  });
+
   const [usersList, setUsersList] = useState<Profile[]>([]);
   const [settings, setSettings] = useState<SystemSettings>(INITIAL_SETTINGS);
   const [ratings, setRatings] = useState<RatingFeedback[]>([]);
@@ -256,6 +369,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         { data: dbRecents, error: errRecents },
         { data: dbDrivers, error: errDrivers },
         { data: dbBookings, error: errBookings },
+        { data: dbFixedRates, error: errFixedRates },
+        { data: dbRateVehicles },
+        { data: dbRateServices },
+        { data: dbRateRoutes },
+        { data: dbRateTerminals },
       ] = await Promise.all([
         supabase.from('services').select('*').order('display_order', { ascending: true }),
         supabase.from('profiles').select('*'),
@@ -274,7 +392,57 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           *,
           driver:drivers(*, profile:profiles(*), assigned_vehicle:vehicles(*), location:driver_locations(*))
         `).order('created_at', { ascending: false }),
+        supabase.from('fixed_fare_rates').select('*').order('created_at', { ascending: true }),
+        supabase.from('rate_vehicle_types').select('*').order('display_order', { ascending: true }),
+        supabase.from('rate_service_types').select('*').order('display_order', { ascending: true }),
+        supabase.from('rate_routes').select('*').order('display_order', { ascending: true }),
+        supabase.from('rate_terminals').select('*').order('display_order', { ascending: true }),
       ]);
+
+      if (dbFixedRates && dbFixedRates.length > 0) {
+        setFixedFareRates(dbFixedRates as FixedFareRate[]);
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('alharmain_fixed_fare_rates', JSON.stringify(dbFixedRates));
+          } catch {}
+        }
+      }
+
+      if (dbRateVehicles && dbRateVehicles.length > 0) {
+        setRateVehicles(dbRateVehicles as RateVehicleType[]);
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('alharmain_rate_vehicles', JSON.stringify(dbRateVehicles));
+          } catch {}
+        }
+      }
+
+      if (dbRateServices && dbRateServices.length > 0) {
+        setRateServices(dbRateServices as RateServiceType[]);
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('alharmain_rate_services', JSON.stringify(dbRateServices));
+          } catch {}
+        }
+      }
+
+      if (dbRateRoutes && dbRateRoutes.length > 0) {
+        setRateRoutes(dbRateRoutes as RateRoute[]);
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('alharmain_rate_routes', JSON.stringify(dbRateRoutes));
+          } catch {}
+        }
+      }
+
+      if (dbRateTerminals && dbRateTerminals.length > 0) {
+        setRateTerminals(dbRateTerminals as RateTerminal[]);
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('alharmain_rate_terminals', JSON.stringify(dbRateTerminals));
+          } catch {}
+        }
+      }
 
       if (dbServices) setServices(dbServices as ServiceItem[]);
       // Always replace usersList with the current Supabase result.
@@ -498,10 +666,31 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       })
       .subscribe();
 
+    // Listen to real-time fixed fare rates and rate configuration changes
+    const ratesChannel = supabase
+      .channel('public:rate_tables')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'fixed_fare_rates' }, () => {
+        fetchRemoteData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'rate_vehicle_types' }, () => {
+        fetchRemoteData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'rate_service_types' }, () => {
+        fetchRemoteData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'rate_routes' }, () => {
+        fetchRemoteData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'rate_terminals' }, () => {
+        fetchRemoteData();
+      })
+      .subscribe();
+
     return () => {
       supabase.removeChannel(locationChannel);
       supabase.removeChannel(bookingsChannel);
       supabase.removeChannel(profilesChannel);
+      supabase.removeChannel(ratesChannel);
     };
   }, []);
 
@@ -605,6 +794,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!isMounted) return;
+
+      if (event === 'PASSWORD_RECOVERY') {
+        if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/reset-password')) {
+          window.location.href = '/reset-password';
+        }
+        return;
+      }
 
       if (event === 'SIGNED_OUT' || !session?.user) {
         setIsAuthenticated(false);
@@ -1239,9 +1435,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
-      await supabase.auth.updateUser({ password: newPassword });
-    } catch {
-      // ignore
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) {
+        return { success: false, error: error.message };
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to update password.';
+      return { success: false, error: msg };
     }
 
     addNotification('Security Alert', 'Your account password was successfully updated.', 'success', currentUser.role);
@@ -1505,6 +1705,530 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (!target) return;
     const newActive = !target.is_active;
     await updateService(id, { is_active: newActive });
+  };
+
+  // Fixed Fare Rates Management (Admin & Customer Live Pricing)
+  const addFixedFareRate = async (
+    rate: Omit<FixedFareRate, 'id' | 'created_at' | 'updated_at'>
+  ): Promise<FixedFareRate> => {
+    const effectiveTerminal = rate.terminal && rate.terminal.trim() ? (rate.terminal.trim() as TerminalCode) : null;
+    const rateId = `${rate.vehicle_category}-${rate.service_type}${effectiveTerminal ? `-${effectiveTerminal}` : ''}-${Date.now()}`;
+    const now = new Date().toISOString();
+    const newRate: FixedFareRate = {
+      ...rate,
+      id: rateId,
+      terminal: effectiveTerminal,
+      fare_amount: Number(rate.fare_amount),
+      currency: 'SAR',
+      is_active: rate.is_active ?? true,
+      created_at: now,
+      updated_at: now,
+    };
+
+    setFixedFareRates((prev) => {
+      const updated = [...prev, newRate];
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('alharmain_fixed_fare_rates', JSON.stringify(updated));
+        } catch {}
+      }
+      return updated;
+    });
+
+    try {
+      await fetch('/api/admin/rates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newRate),
+      });
+      await supabase.from('fixed_fare_rates').upsert(newRate, { onConflict: 'id' });
+    } catch (err) {
+      console.warn('Syncing new rate error:', err);
+    }
+
+    addNotification(
+      'New Rate Published',
+      `Rate added for ${rate.vehicle_category} (${rate.service_type}): SAR ${rate.fare_amount}.`,
+      'success',
+      'admin'
+    );
+    toast.success('New rate successfully published');
+    return newRate;
+  };
+
+  const addBulkFixedFareRates = async (payload: {
+    service_type: string;
+    terminal?: TerminalCode | string | null;
+    is_active?: boolean;
+    rates: Array<{ vehicle_category: string; fare_amount: number; id?: string }>;
+  }): Promise<{ success: boolean; rates?: FixedFareRate[]; error?: string }> => {
+    try {
+      const res = await fetch('/api/admin/rates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Failed to save rates');
+      }
+
+      const savedRates: FixedFareRate[] = data.rates || [];
+
+      // Update local state atomically
+      setFixedFareRates((prev) => {
+        const savedIds = new Set(savedRates.map((r) => r.id));
+        const filtered = prev.filter((r) => !savedIds.has(r.id));
+        const updated = [...filtered, ...savedRates];
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('alharmain_fixed_fare_rates', JSON.stringify(updated));
+          } catch {}
+        }
+        return updated;
+      });
+
+      addNotification(
+        'Fixed Fares Saved',
+        `Configured ${savedRates.length} vehicle rate(s) for ${payload.service_type}.`,
+        'success',
+        'admin'
+      );
+      toast.success(`Successfully saved ${savedRates.length} vehicle rate(s)`);
+      return { success: true, rates: savedRates };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to save rates';
+      toast.error(msg);
+      return { success: false, error: msg };
+    }
+  };
+
+  const updateFixedFareRate = async (
+    id: string,
+    updates: Partial<FixedFareRate>
+  ): Promise<boolean> => {
+    const now = new Date().toISOString();
+    setFixedFareRates((prev) => {
+      const updated = prev.map((r) => (r.id === id ? { ...r, ...updates, updated_at: now } : r));
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('alharmain_fixed_fare_rates', JSON.stringify(updated));
+        } catch {}
+      }
+      return updated;
+    });
+
+    try {
+      await fetch('/api/admin/rates', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, ...updates }),
+      });
+      await supabase.from('fixed_fare_rates').update({ ...updates, updated_at: now }).eq('id', id);
+    } catch (err) {
+      console.warn('Syncing rate update error:', err);
+    }
+
+    toast.success('Rate updated successfully');
+    return true;
+  };
+
+  const deleteFixedFareRate = async (id: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/admin/rates?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to delete rate');
+        return false;
+      }
+      setFixedFareRates((prev) => {
+        const updated = prev.filter((r) => r.id !== id);
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('alharmain_fixed_fare_rates', JSON.stringify(updated));
+          } catch {}
+        }
+        return updated;
+      });
+
+      addNotification('Rate Removed', 'A rate entry was deleted from the rate list.', 'info', 'admin');
+      toast.success('Rate entry deleted');
+      return true;
+    } catch (err: unknown) {
+      console.warn('Syncing rate deletion error:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to delete rate';
+      toast.error(msg);
+      return false;
+    }
+  };
+
+  const toggleFixedFareRateStatus = async (id: string): Promise<boolean> => {
+    const target = fixedFareRates.find((r) => r.id === id);
+    if (!target) return false;
+    const newStatus = !target.is_active;
+    await updateFixedFareRate(id, { is_active: newStatus });
+    toast.info(`Rate is now ${newStatus ? 'Active' : 'Inactive'}`);
+    return true;
+  };
+
+  // ─── Rate Master Entities (Vehicles, Capacities, Services, Routes, Terminals) ───
+
+  const addRateVehicle = async (vehicle: Omit<RateVehicleType, 'created_at' | 'updated_at'>) => {
+    try {
+      const res = await fetch('/api/admin/rates/vehicles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(vehicle),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to add vehicle type');
+        return { success: false, error: data.error };
+      }
+      const newV: RateVehicleType = data.vehicle;
+      setRateVehicles((prev) => {
+        const filtered = prev.filter((v) => v.id !== newV.id);
+        const updated = [...filtered, newV];
+        if (typeof window !== 'undefined') {
+          try { localStorage.setItem('alharmain_rate_vehicles', JSON.stringify(updated)); } catch {}
+        }
+        return updated;
+      });
+      toast.success(`Vehicle "${newV.name}" created with ${newV.seating_capacity} seats capacity.`);
+      return { success: true, vehicle: newV };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error adding vehicle';
+      toast.error(msg);
+      return { success: false, error: msg };
+    }
+  };
+
+  const updateRateVehicle = async (id: string, updates: Partial<RateVehicleType>) => {
+    try {
+      const res = await fetch('/api/admin/rates/vehicles', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, ...updates }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to update vehicle type');
+        return { success: false, error: data.error };
+      }
+      const updatedV: RateVehicleType = data.vehicle;
+      setRateVehicles((prev) => {
+        const updated = prev.map((v) => (v.id === id ? { ...v, ...updatedV } : v));
+        if (typeof window !== 'undefined') {
+          try { localStorage.setItem('alharmain_rate_vehicles', JSON.stringify(updated)); } catch {}
+        }
+        return updated;
+      });
+      toast.success(`Vehicle "${updatedV.name || id}" updated.`);
+      return { success: true, vehicle: updatedV };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error updating vehicle';
+      toast.error(msg);
+      return { success: false, error: msg };
+    }
+  };
+
+  const deleteRateVehicle = async (id: string) => {
+    try {
+      const res = await fetch(`/api/admin/rates/vehicles?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to delete vehicle type');
+        return {
+          success: false,
+          error: data.error,
+          canDeactivate: Boolean(data.canDeactivate),
+          linkedBookings: data.linkedBookings,
+        };
+      }
+      setRateVehicles((prev) => {
+        const updated = prev.filter((v) => v.id !== id);
+        if (typeof window !== 'undefined') {
+          try { localStorage.setItem('alharmain_rate_vehicles', JSON.stringify(updated)); } catch {}
+        }
+        return updated;
+      });
+      toast.success('Vehicle type deleted successfully.');
+      return { success: true };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error deleting vehicle';
+      toast.error(msg);
+      return { success: false, error: msg };
+    }
+  };
+
+  const addRateService = async (service: Omit<RateServiceType, 'created_at' | 'updated_at'>) => {
+    try {
+      const res = await fetch('/api/admin/rates/services', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(service),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to add service type');
+        return { success: false, error: data.error };
+      }
+      const newS: RateServiceType = data.service;
+      setRateServices((prev) => {
+        const filtered = prev.filter((s) => s.id !== newS.id);
+        const updated = [...filtered, newS];
+        if (typeof window !== 'undefined') {
+          try { localStorage.setItem('alharmain_rate_services', JSON.stringify(updated)); } catch {}
+        }
+        return updated;
+      });
+      toast.success(`Service category "${newS.name}" added.`);
+      return { success: true, service: newS };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error adding service';
+      toast.error(msg);
+      return { success: false, error: msg };
+    }
+  };
+
+  const updateRateService = async (id: string, updates: Partial<RateServiceType>) => {
+    try {
+      const res = await fetch('/api/admin/rates/services', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, ...updates }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to update service type');
+        return { success: false, error: data.error };
+      }
+      const updatedS: RateServiceType = data.service;
+      setRateServices((prev) => {
+        const updated = prev.map((s) => (s.id === id ? { ...s, ...updatedS } : s));
+        if (typeof window !== 'undefined') {
+          try { localStorage.setItem('alharmain_rate_services', JSON.stringify(updated)); } catch {}
+        }
+        return updated;
+      });
+      toast.success(`Service "${updatedS.name || id}" updated.`);
+      return { success: true, service: updatedS };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error updating service';
+      toast.error(msg);
+      return { success: false, error: msg };
+    }
+  };
+
+  const deleteRateService = async (id: string) => {
+    try {
+      const res = await fetch(`/api/admin/rates/services?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to delete service type');
+        return { success: false, error: data.error };
+      }
+      setRateServices((prev) => {
+        const updated = prev.filter((s) => s.id !== id);
+        if (typeof window !== 'undefined') {
+          try { localStorage.setItem('alharmain_rate_services', JSON.stringify(updated)); } catch {}
+        }
+        return updated;
+      });
+      toast.success('Service type deleted.');
+      return { success: true };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error deleting service';
+      toast.error(msg);
+      return { success: false, error: msg };
+    }
+  };
+
+  const addRateRoute = async (route: Omit<RateRoute, 'created_at' | 'updated_at'>) => {
+    try {
+      const res = await fetch('/api/admin/rates/routes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(route),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to add route');
+        return { success: false, error: data.error };
+      }
+      const newR: RateRoute = data.route;
+      setRateRoutes((prev) => {
+        const filtered = prev.filter((r) => r.id !== newR.id);
+        const updated = [...filtered, newR];
+        if (typeof window !== 'undefined') {
+          try { localStorage.setItem('alharmain_rate_routes', JSON.stringify(updated)); } catch {}
+        }
+        return updated;
+      });
+      toast.success(`Route "${newR.route_name}" created.`);
+      return { success: true, route: newR };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error adding route';
+      toast.error(msg);
+      return { success: false, error: msg };
+    }
+  };
+
+  const updateRateRoute = async (id: string, updates: Partial<RateRoute>) => {
+    try {
+      const res = await fetch('/api/admin/rates/routes', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, ...updates }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to update route');
+        return { success: false, error: data.error };
+      }
+      const updatedR: RateRoute = data.route;
+      setRateRoutes((prev) => {
+        const updated = prev.map((r) => (r.id === id ? { ...r, ...updatedR } : r));
+        if (typeof window !== 'undefined') {
+          try { localStorage.setItem('alharmain_rate_routes', JSON.stringify(updated)); } catch {}
+        }
+        return updated;
+      });
+      toast.success(`Route "${updatedR.route_name || id}" updated.`);
+      return { success: true, route: updatedR };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error updating route';
+      toast.error(msg);
+      return { success: false, error: msg };
+    }
+  };
+
+  const deleteRateRoute = async (id: string) => {
+    try {
+      const res = await fetch(`/api/admin/rates/routes?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to delete route');
+        return {
+          success: false,
+          error: data.error,
+          canDeactivate: Boolean(data.canDeactivate),
+          linkedBookings: data.linkedBookings,
+        };
+      }
+      setRateRoutes((prev) => {
+        const updated = prev.filter((r) => r.id !== id);
+        if (typeof window !== 'undefined') {
+          try { localStorage.setItem('alharmain_rate_routes', JSON.stringify(updated)); } catch {}
+        }
+        return updated;
+      });
+      toast.success('Route deleted successfully.');
+      return { success: true };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error deleting route';
+      toast.error(msg);
+      return { success: false, error: msg };
+    }
+  };
+
+  const addRateTerminal = async (terminal: Omit<RateTerminal, 'created_at' | 'updated_at'>) => {
+    try {
+      const res = await fetch('/api/admin/rates/terminals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(terminal),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to add terminal');
+        return { success: false, error: data.error };
+      }
+      const newT: RateTerminal = data.terminal;
+      setRateTerminals((prev) => {
+        const filtered = prev.filter((t) => t.id !== newT.id);
+        const updated = [...filtered, newT];
+        if (typeof window !== 'undefined') {
+          try { localStorage.setItem('alharmain_rate_terminals', JSON.stringify(updated)); } catch {}
+        }
+        return updated;
+      });
+      toast.success(`Terminal "${newT.name}" added.`);
+      return { success: true, terminal: newT };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error adding terminal';
+      toast.error(msg);
+      return { success: false, error: msg };
+    }
+  };
+
+  const updateRateTerminal = async (id: string, updates: Partial<RateTerminal>) => {
+    try {
+      const res = await fetch('/api/admin/rates/terminals', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, ...updates }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to update terminal');
+        return { success: false, error: data.error };
+      }
+      const updatedT: RateTerminal = data.terminal;
+      setRateTerminals((prev) => {
+        const updated = prev.map((t) => (t.id === id ? { ...t, ...updatedT } : t));
+        if (typeof window !== 'undefined') {
+          try { localStorage.setItem('alharmain_rate_terminals', JSON.stringify(updated)); } catch {}
+        }
+        return updated;
+      });
+      toast.success(`Terminal "${updatedT.name || id}" updated.`);
+      return { success: true, terminal: updatedT };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error updating terminal';
+      toast.error(msg);
+      return { success: false, error: msg };
+    }
+  };
+
+  const deleteRateTerminal = async (id: string) => {
+    try {
+      const res = await fetch(`/api/admin/rates/terminals?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to delete terminal');
+        return {
+          success: false,
+          error: data.error,
+          canDeactivate: Boolean(data.canDeactivate),
+          linkedBookings: data.linkedBookings,
+        };
+      }
+      setRateTerminals((prev) => {
+        const updated = prev.filter((t) => t.id !== id);
+        if (typeof window !== 'undefined') {
+          try { localStorage.setItem('alharmain_rate_terminals', JSON.stringify(updated)); } catch {}
+        }
+        return updated;
+      });
+      toast.success('Terminal deleted.');
+      return { success: true };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error deleting terminal';
+      toast.error(msg);
+      return { success: false, error: msg };
+    }
   };
 
   // User Management (Admin creates Staff and Drivers)
@@ -3187,6 +3911,30 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         updateService,
         deleteService,
         toggleServiceActive,
+
+        fixedFareRates,
+        addFixedFareRate,
+        addBulkFixedFareRates,
+        updateFixedFareRate,
+        deleteFixedFareRate,
+        toggleFixedFareRateStatus,
+
+        rateVehicles,
+        rateServices,
+        rateRoutes,
+        rateTerminals,
+        addRateVehicle,
+        updateRateVehicle,
+        deleteRateVehicle,
+        addRateService,
+        updateRateService,
+        deleteRateService,
+        addRateRoute,
+        updateRateRoute,
+        deleteRateRoute,
+        addRateTerminal,
+        updateRateTerminal,
+        deleteRateTerminal,
 
         createStaffAccount,
         createDriverAccount,

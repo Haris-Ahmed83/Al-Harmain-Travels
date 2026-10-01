@@ -16,6 +16,10 @@ import type {
   TerminalCode,
   FixedFareRate,
   FareResolution,
+  RateVehicleType,
+  RateServiceType,
+  RateRoute,
+  RateTerminal,
 } from '@/types';
 
 // ─── Canonical Rate Table ──────────────────────────────────────────────────
@@ -94,6 +98,7 @@ export const TERMINAL_LABELS: Record<NonNullable<TerminalCode>, string> = {
   terminal_1: 'Terminal 1',
   terminal_h: 'Terminal H',
   terminal_n: 'Terminal N',
+  all_terminals: 'All Terminals',
 };
 
 export const VEHICLE_CAPACITY: Record<VehicleCategory, { passengers: number; luggage: number }> = {
@@ -102,6 +107,36 @@ export const VEHICLE_CAPACITY: Record<VehicleCategory, { passengers: number; lug
   gmc:    { passengers: 7,  luggage: 6 },
   hiroof: { passengers: 11, luggage: 10 },
 };
+
+export const CANONICAL_RATE_VEHICLES: RateVehicleType[] = [
+  { id: 'sedan', name: 'Sedan — Camry / Sonata', category: 'sedan', seating_capacity: 4, luggage_capacity: 3, description: 'VIP Toyota Camry / Hyundai Sonata', is_active: true, display_order: 1 },
+  { id: 'staria', name: 'Hyundai Staria VIP', category: 'staria', seating_capacity: 7, luggage_capacity: 6, description: 'Hyundai Staria VIP 7-seater luxury MPV', is_active: true, display_order: 2 },
+  { id: 'gmc', name: 'GMC Yukon XL — Nusuk', category: 'gmc', seating_capacity: 7, luggage_capacity: 6, description: 'VIP Luxury GMC Yukon XL with Nusuk permit', is_active: true, display_order: 3 },
+  { id: 'hiroof', name: 'Toyota HiRoof Minibus — Nusuk', category: 'hiroof', seating_capacity: 11, luggage_capacity: 10, description: 'Toyota HiRoof 11-seater minibus with Nusuk permit', is_active: true, display_order: 4 },
+];
+
+export const CANONICAL_RATE_SERVICES: RateServiceType[] = [
+  { id: 'intercity', name: 'Intercity VIP Transfer', description: 'Direct highway transfers between Jeddah, Makkah, and Madinah', is_active: true, display_order: 1 },
+  { id: 'ziyarat', name: 'Ziyarat Sacred Tour', description: 'Historical and religious sacred monument ziyarat tours', is_active: true, display_order: 2 },
+  { id: 'airport', name: 'Airport VIP Transfer', description: 'Direct terminal pickups and drop-offs at King Abdulaziz Airport', is_active: true, display_order: 3 },
+];
+
+export const CANONICAL_RATE_ROUTES: RateRoute[] = [
+  { id: 'intercity_jeddah_makkah', service_id: 'airport', route_name: 'Jeddah → Makkah', origin_name: 'Jeddah (KAIA Airport / Hotel)', destination_name: 'Makkah Al-Mukarramah', is_airport: true, is_active: true, display_order: 1 },
+  { id: 'intercity_makkah_jeddah', service_id: 'airport', route_name: 'Makkah → Jeddah', origin_name: 'Makkah Al-Mukarramah', destination_name: 'Jeddah (KAIA Airport / Hotel)', is_airport: true, is_active: true, display_order: 2 },
+  { id: 'intercity_makkah_madinah', service_id: 'intercity', route_name: 'Makkah → Madinah → Makkah', origin_name: 'Makkah Al-Mukarramah', destination_name: 'Madinah Al-Munawwarah', is_airport: false, is_active: true, display_order: 3 },
+  { id: 'intercity_makkah_madinah_sameday', service_id: 'intercity', route_name: 'Makkah → Madinah → Makkah (Same Day)', origin_name: 'Makkah Al-Mukarramah', destination_name: 'Madinah Al-Munawwarah (Same Day Return)', is_airport: false, is_active: true, display_order: 4 },
+  { id: 'ziyarat_taif', service_id: 'ziyarat', route_name: 'Taif Ziyarat', origin_name: 'Makkah Al-Mukarramah', destination_name: 'Taif Sacred Places', is_airport: false, is_active: true, display_order: 5 },
+  { id: 'ziyarat_taif_bani_saad', service_id: 'ziyarat', route_name: 'Taif Ziyarat + Bani Saad', origin_name: 'Makkah Al-Mukarramah', destination_name: 'Taif + Halimah As-Sa\'diyah Village', is_airport: false, is_active: true, display_order: 6 },
+  { id: 'ziyarat_makkah', service_id: 'ziyarat', route_name: 'Makkah Ziyarat', origin_name: 'Makkah Al-Mukarramah', destination_name: 'Jabal Al-Noor, Ghar Hira & Historical Places', is_airport: false, is_active: true, display_order: 7 },
+];
+
+export const CANONICAL_RATE_TERMINALS: RateTerminal[] = [
+  { id: 'terminal_1', name: 'Terminal 1', code: 'terminal_1', route_id: 'intercity_jeddah_makkah', description: 'Jeddah KAIA Terminal 1', is_active: true, display_order: 1 },
+  { id: 'terminal_h', name: 'Terminal H (Hajj)', code: 'terminal_h', route_id: 'intercity_jeddah_makkah', description: 'Jeddah KAIA Hajj Terminal', is_active: true, display_order: 2 },
+  { id: 'terminal_n', name: 'Terminal N (North)', code: 'terminal_n', route_id: 'intercity_jeddah_makkah', description: 'Jeddah KAIA North Terminal', is_active: true, display_order: 3 },
+  { id: 'all_terminals', name: 'All Terminals', code: 'all_terminals', route_id: 'intercity_jeddah_makkah', description: 'Uniform fare for all KAIA terminals', is_active: true, display_order: 4 },
+];
 
 /** Services that require an airport terminal selection */
 export const TERMINAL_REQUIRED_SERVICES: ServiceType[] = [
@@ -118,32 +153,223 @@ export const ZIYARAT_SERVICES: ServiceType[] = [
   'ziyarat_makkah', 'ziyarat_taif', 'ziyarat_taif_bani_saad',
 ];
 
+/**
+ * Determines whether a service route involves an airport (such as King Abdulaziz International Airport Jeddah)
+ * and therefore requires or supports terminal selection.
+ */
+export function isAirportRoute(serviceType: string, rateRoutes?: RateRoute[]): boolean {
+  if (!serviceType) return false;
+  if (rateRoutes && rateRoutes.length > 0) {
+    const matchedRoute = rateRoutes.find(r => r.id === serviceType);
+    if (matchedRoute) {
+      return Boolean(matchedRoute.is_airport);
+    }
+  }
+  const lower = serviceType.toLowerCase().trim();
+  if (lower === 'intercity_jeddah_makkah' || lower === 'intercity_makkah_jeddah') {
+    return true;
+  }
+  if (
+    lower.includes('airport') ||
+    lower.includes('terminal') ||
+    lower.includes('matar') ||
+    lower.includes('kaia') ||
+    lower.includes('jeddah_air')
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export interface RateConflictResult {
+  hasConflict: boolean;
+  message?: string;
+  conflictingRate?: FixedFareRate;
+}
+
+/**
+ * Checks whether an intended rate for a vehicle, route, and terminal conflicts with existing active rates.
+ * Rules:
+ * - Duplicate prevention: No duplicate active rate for the exact same (route, vehicle, terminal).
+ * - Overlap prevention: 'all_terminals' conflicts with individual terminal rates ('terminal_1', 'terminal_h', 'terminal_n')
+ *   and vice-versa.
+ */
+export function checkRateConflict(
+  vehicleCategory: string,
+  serviceType: string,
+  terminal: TerminalCode | string | null,
+  existingRates: FixedFareRate[],
+  excludeRateId?: string,
+): RateConflictResult {
+  const normTerminal = terminal && terminal !== 'none' ? terminal : null;
+  const activeExisting = existingRates.filter(
+    (r) =>
+      r.is_active &&
+      r.id !== excludeRateId &&
+      r.vehicle_category === vehicleCategory &&
+      r.service_type === serviceType
+  );
+
+  // 1. Exact duplicate active rate check
+  const exactDuplicate = activeExisting.find(
+    (r) => (r.terminal === normTerminal) || (!r.terminal && !normTerminal)
+  );
+  if (exactDuplicate) {
+    const termLabel = normTerminal
+      ? (TERMINAL_LABELS[normTerminal as NonNullable<TerminalCode>] || normTerminal)
+      : 'Non-Airport';
+    return {
+      hasConflict: true,
+      message: `An active rate for ${getVehicleLabel(vehicleCategory)} on route "${getServiceLabel(serviceType)}" with terminal "${termLabel}" already exists.`,
+      conflictingRate: exactDuplicate,
+    };
+  }
+
+  // 2. Overlap check: 'all_terminals' vs specific terminals
+  if (normTerminal === 'all_terminals') {
+    const specificConflict = activeExisting.find((r) =>
+      r.terminal && ['terminal_1', 'terminal_h', 'terminal_n'].includes(r.terminal)
+    );
+    if (specificConflict) {
+      const termLabel = TERMINAL_LABELS[specificConflict.terminal as NonNullable<TerminalCode>] || specificConflict.terminal;
+      return {
+        hasConflict: true,
+        message: `Conflict for ${getVehicleLabel(vehicleCategory)}: an active rate already exists for ${termLabel}. Please deactivate or remove the individual terminal rate before configuring a shared "All Terminals" rate.`,
+        conflictingRate: specificConflict,
+      };
+    }
+  } else if (normTerminal && ['terminal_1', 'terminal_h', 'terminal_n'].includes(normTerminal)) {
+    const allTerminalsConflict = activeExisting.find((r) => r.terminal === 'all_terminals');
+    if (allTerminalsConflict) {
+      return {
+        hasConflict: true,
+        message: `Conflict for ${getVehicleLabel(vehicleCategory)}: a shared "All Terminals" rate already exists for this route. Please deactivate or remove the "All Terminals" rate before configuring terminal-specific pricing.`,
+        conflictingRate: allTerminalsConflict,
+      };
+    }
+  }
+
+  return { hasConflict: false };
+}
+
 // ─── Core Fare Resolver ────────────────────────────────────────────────────
 
 /**
  * Resolves the exact fixed fare for a given combination.
  *
  * Rules:
- * - Terminal MUST be provided for Jeddah→Makkah routes (non-sedan vehicles).
- * - Sedan does NOT use terminal-specific pricing for Jeddah→Makkah.
- * - Standard and same-day Makkah→Madinah routes are distinct entries.
+ * - If customRates is provided, searches through active rates in customRates first.
+ * - If customRates is omitted, searches FIXED_RATE_TABLE.
+ * - Terminal MUST be provided for Jeddah→Makkah routes (non-sedan vehicles) unless 'all_terminals' is configured.
+ * - Sedan does NOT require terminal-specific pricing, but will match 'all_terminals' or null if set.
+ * - Exact matches take precedence; 'all_terminals' acts as the shared airport rate fallback.
  * - Returns `found: false` for any unsupported combination.
  * - NEVER falls back to a default fare or interpolates from another vehicle.
  */
 export function resolveFixedFare(
-  vehicleCategory: VehicleCategory,
-  serviceType: ServiceType,
-  terminal?: TerminalCode,
+  vehicleCategory: VehicleCategory | string,
+  serviceType: ServiceType | string,
+  terminal?: TerminalCode | string | null,
+  customRates?: FixedFareRate[],
 ): FareResolution {
-  // Normalise terminal: sedan never uses terminal pricing
+  // Normalise terminal
+  const rawTerminal = (terminal as TerminalCode) ?? null;
   const effectiveTerminal: TerminalCode =
-    vehicleCategory === 'sedan' ? null : (terminal ?? null);
+    vehicleCategory === 'sedan' && rawTerminal !== 'all_terminals' ? null : rawTerminal;
 
-  // For terminal-required services on non-sedan, terminal must be specified
+  // If a custom active rates list is provided (e.g. from Admin Rate List via AppContext),
+  // search it first. Only active rates (is_active !== false) are matched.
+  if (customRates && customRates.length > 0) {
+    // 1. Exact match
+    let match = customRates.find(
+      (r) =>
+        r.vehicle_category === vehicleCategory &&
+        r.service_type === serviceType &&
+        (r.terminal === effectiveTerminal || (!r.terminal && !effectiveTerminal)) &&
+        r.is_active !== false,
+    );
+
+    // 2. If no exact match and customer selected an airport terminal (terminal_1, terminal_h, terminal_n),
+    // fallback to 'all_terminals' shared rate
+    if (!match && effectiveTerminal && effectiveTerminal !== 'all_terminals') {
+      match = customRates.find(
+        (r) =>
+          r.vehicle_category === vehicleCategory &&
+          r.service_type === serviceType &&
+          r.terminal === 'all_terminals' &&
+          r.is_active !== false,
+      );
+    }
+
+    // 3. For vehicles with effectiveTerminal === null (e.g. sedan or general airport),
+    // check if an 'all_terminals' rate was configured for it
+    if (!match && !effectiveTerminal) {
+      match = customRates.find(
+        (r) =>
+          r.vehicle_category === vehicleCategory &&
+          r.service_type === serviceType &&
+          (r.terminal === 'all_terminals' || !r.terminal) &&
+          r.is_active !== false,
+      );
+    }
+
+    if (match) {
+      return {
+        found: true,
+        fare: Number(match.fare_amount),
+        currency: 'SAR',
+        fareType: 'fixed',
+        rateId: match.id,
+      };
+    }
+
+    // For terminal-required services on non-sedan, if no terminal was specified and no general/all_terminals rate
+    if (
+      TERMINAL_REQUIRED_SERVICES.includes(serviceType as ServiceType) &&
+      vehicleCategory !== 'sedan' &&
+      !effectiveTerminal
+    ) {
+      return {
+        found: false,
+        reason:
+          'Airport terminal is required for this vehicle and route. Please select Terminal 1, H, or N.',
+      };
+    }
+
+    // If customRates was explicitly supplied but no active match exists,
+    // this rate was either deactivated, deleted, or never configured.
+    return {
+      found: false,
+      reason:
+        'This vehicle and route combination is currently unavailable or inactive in the rate list. ' +
+        'Please contact our operations team for assistance.',
+    };
+  }
+
+  // Compile-time fallback lookup table
+  let match = FIXED_RATE_TABLE.find(
+    (r) =>
+      r.vehicle_category === vehicleCategory &&
+      r.service_type === serviceType &&
+      r.terminal === effectiveTerminal,
+  );
+
+  // If no exact match and effectiveTerminal is an airport terminal, check for all_terminals
+  if (!match && effectiveTerminal && effectiveTerminal !== 'all_terminals') {
+    match = FIXED_RATE_TABLE.find(
+      (r) =>
+        r.vehicle_category === vehicleCategory &&
+        r.service_type === serviceType &&
+        r.terminal === 'all_terminals',
+    );
+  }
+
+  // For terminal-required services on non-sedan without terminal
   if (
-    TERMINAL_REQUIRED_SERVICES.includes(serviceType) &&
+    TERMINAL_REQUIRED_SERVICES.includes(serviceType as ServiceType) &&
     vehicleCategory !== 'sedan' &&
-    !effectiveTerminal
+    !effectiveTerminal &&
+    !match
   ) {
     return {
       found: false,
@@ -151,13 +377,6 @@ export function resolveFixedFare(
         'Airport terminal is required for this vehicle and route. Please select Terminal 1, H, or N.',
     };
   }
-
-  const match = FIXED_RATE_TABLE.find(
-    (r) =>
-      r.vehicle_category === vehicleCategory &&
-      r.service_type === serviceType &&
-      r.terminal === effectiveTerminal,
-  );
 
   if (!match) {
     return {
@@ -183,14 +402,111 @@ export function resolveFixedFare(
  * selection cards so we never show unserviceable options.
  */
 export function getAvailableVehicles(
-  serviceType: ServiceType,
-  terminal?: TerminalCode,
+  serviceType: ServiceType | string,
+  terminal?: TerminalCode | string | null,
+  customRates?: FixedFareRate[],
+  rateVehicles?: RateVehicleType[],
 ): VehicleCategory[] {
-  const all: VehicleCategory[] = ['sedan', 'staria', 'gmc', 'hiroof'];
-  return all.filter((v) => {
-    const result = resolveFixedFare(v, serviceType, terminal);
+  const candidateVehicles: VehicleCategory[] = (rateVehicles && rateVehicles.length > 0)
+    ? rateVehicles.filter((v) => v.is_active).map((v) => v.category as VehicleCategory)
+    : ['sedan', 'staria', 'gmc', 'hiroof'];
+
+  return candidateVehicles.filter((v) => {
+    const result = resolveFixedFare(v, serviceType, terminal, customRates);
     return result.found;
   });
+}
+
+/**
+ * Returns all service types that currently have at least one active configured rate.
+ */
+export function getActiveServiceTypes(customRates?: FixedFareRate[], rateRoutes?: RateRoute[]): string[] {
+  if (customRates && customRates.length > 0) {
+    const active = customRates.filter((r) => r.is_active !== false);
+    return Array.from(new Set(active.map((r) => r.service_type)));
+  }
+  if (rateRoutes && rateRoutes.length > 0) {
+    return rateRoutes.filter((r) => r.is_active !== false).map((r) => r.id);
+  }
+  return Array.from(new Set(FIXED_RATE_TABLE.map((r) => r.service_type)));
+}
+
+/**
+ * Returns all terminal codes that have active configured rates for a specific service.
+ */
+export function getActiveTerminalsForService(
+  serviceType: string,
+  customRates?: FixedFareRate[],
+  rateTerminals?: RateTerminal[],
+): NonNullable<TerminalCode>[] {
+  const rates = customRates && customRates.length > 0 ? customRates : getAllRatesAsObjects();
+  const terminals = rates
+    .filter((r) => r.service_type === serviceType && r.is_active !== false && r.terminal)
+    .map((r) => r.terminal as NonNullable<TerminalCode>);
+
+  if (terminals.length > 0) {
+    return Array.from(new Set(terminals));
+  }
+
+  // Fallback to active terminals linked to this route if dynamic terminals provided
+  if (rateTerminals && rateTerminals.length > 0) {
+    const linked = rateTerminals
+      .filter((t) => t.is_active && (!t.route_id || t.route_id === serviceType))
+      .map((t) => (t.code || t.id) as NonNullable<TerminalCode>);
+    if (linked.length > 0) {
+      return Array.from(new Set(linked));
+    }
+  }
+
+  return [];
+}
+
+/**
+ * Helper to get a human-readable vehicle label even for newly configured or custom vehicle types.
+ */
+export function getVehicleLabel(category: string, rateVehicles?: RateVehicleType[]): string {
+  if (rateVehicles && rateVehicles.length > 0) {
+    const matched = rateVehicles.find((v) => v.id === category || v.category === category);
+    if (matched) return matched.name;
+  }
+  if (category in VEHICLE_LABELS) {
+    return VEHICLE_LABELS[category as VehicleCategory];
+  }
+  return category.charAt(0).toUpperCase() + category.slice(1).replace(/_/g, ' ');
+}
+
+/**
+ * Helper to get a human-readable service label even for custom or new route types.
+ */
+export function getServiceLabel(serviceType: string, rateRoutes?: RateRoute[]): string {
+  if (rateRoutes && rateRoutes.length > 0) {
+    const matched = rateRoutes.find((r) => r.id === serviceType);
+    if (matched) return matched.route_name;
+  }
+  if (serviceType in SERVICE_LABELS) {
+    return SERVICE_LABELS[serviceType as ServiceType];
+  }
+  return serviceType
+    .replace(/^intercity_/, '')
+    .replace(/^ziyarat_/, 'Ziyarat: ')
+    .replace(/_/g, ' → ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/**
+ * Helper to get passenger & luggage capacity for any vehicle category.
+ */
+export function getVehicleCapacity(category: string, rateVehicles?: RateVehicleType[]): { passengers: number; luggage: number } {
+  if (rateVehicles && rateVehicles.length > 0) {
+    const matched = rateVehicles.find((v) => v.id === category || v.category === category);
+    if (matched) {
+      return { passengers: matched.seating_capacity, luggage: matched.luggage_capacity };
+    }
+  }
+  if (category in VEHICLE_CAPACITY) {
+    return VEHICLE_CAPACITY[category as VehicleCategory];
+  }
+  return { passengers: 4, luggage: 4 };
 }
 
 /**
@@ -215,3 +531,4 @@ export function getAllRatesAsObjects(): FixedFareRate[] {
     updated_at: now,
   }));
 }
+
