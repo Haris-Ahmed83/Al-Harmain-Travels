@@ -64,20 +64,18 @@ export default function RootLayout({
   return (
     <html lang="en" className={`dark ${display.variable} ${body.variable}`}>
       <body suppressHydrationWarning className="min-h-screen flex flex-col antialiased selection:bg-emerald-500 selection:text-white bg-[var(--background)] text-[var(--foreground)] font-sans text-body">
-        <ThemeProvider>
-          <AppProvider>
-            <AuthRecoveryListener />
-            <a href="#main-content" className="skip-link">
-              Skip to main content
-            </a>
-            <Navbar />
-            <main id="main-content" className="flex-1 w-full">
-              {children}
-            </main>
-            <Footer />
-            <Toaster position="top-right" richColors theme="system" closeButton />
-          </AppProvider>
-        </ThemeProvider>
+        <AppProvider>
+          <AuthRecoveryListener />
+          <a href="#main-content" className="skip-link">
+            Skip to main content
+          </a>
+          <Navbar />
+          <main id="main-content" className="flex-1 w-full">
+            {children}
+          </main>
+          <Footer />
+          <Toaster position="top-right" richColors theme="system" closeButton />
+        </AppProvider>
       </body>
     </html>
   );
