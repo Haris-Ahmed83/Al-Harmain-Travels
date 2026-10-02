@@ -2,8 +2,10 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { Mail, ArrowRight, ArrowLeft, CheckCircle2, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Mail, ArrowRight, ArrowLeft, CheckCircle2, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';
+import { supabase } from '@/lib/supabase/client';
 import { toast } from 'sonner';
+import AuthShell from '@/components/auth/AuthShell';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -20,110 +22,134 @@ export default function ForgotPasswordPage() {
       return;
     }
 
-    setIsLoading(true);
-    // Simulate safe API dispatch
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    setIsLoading(false);
-    setIsSubmitted(true);
-    toast.success('Password reset instructions generated.');
+    try {
+      setIsLoading(true);
+      const redirectUrl =
+        typeof window !== 'undefined'
+          ? `${window.location.origin}/reset-password`
+          : 'http://localhost:3000/reset-password';
+
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: redirectUrl,
+      });
+
+      if (error) {
+        setErrorMsg(error.message);
+        toast.error(error.message);
+        return;
+      }
+
+      setIsSubmitted(true);
+      toast.success('Password reset instructions dispatched to your email.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to dispatch reset email.';
+      setErrorMsg(msg);
+      toast.error(msg);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
-    <div className="min-h-[calc(100vh-64px)] bg-page text-primary flex items-center justify-center py-10 px-4 sm:px-6 relative overflow-hidden">
-      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[520px] h-[520px] bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-
-      <div className="max-w-md w-full space-y-5 relative z-10 animate-fade-up">
-        <div className="text-center space-y-2">
-          <h1 className="type-page-title text-xl sm:text-2xl">Reset Your Password</h1>
-          <p className="text-xs text-muted">
-            Enter your registered email address to receive password recovery instructions.
-          </p>
+    <AuthShell
+      badge="Account Recovery · End-to-End Encrypted"
+      title="Reset Your Password"
+      subtitle="Enter your registered email address to receive secure password recovery instructions"
+      footer={
+        <div className="flex items-center justify-center">
+          <Link
+            href="/sign-in"
+            className="inline-flex items-center gap-1.5 text-xs text-muted hover:text-primary transition-colors font-medium group"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
+            <span>Return to Sign In</span>
+          </Link>
         </div>
+      }
+    >
+      {errorMsg && (
+        <div
+          role="alert"
+          className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/80 text-rose-700 dark:text-rose-300 text-xs font-medium flex items-start gap-2.5 animate-shake shadow-sm"
+        >
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
+          <span className="leading-relaxed">{errorMsg}</span>
+        </div>
+      )}
 
-        <div className="surface-card overflow-hidden">
-          <div className="p-6 sm:p-7 space-y-5">
-            {errorMsg && (
-              <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800/80 text-rose-700 dark:text-rose-300 text-xs font-medium flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
-                <span>{errorMsg}</span>
-              </div>
-            )}
-
-            {isSubmitted ? (
-              <div className="p-6 text-center space-y-4 bg-emerald-50/50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-700/50 rounded-2xl animate-fade-in">
-                <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 rounded-full flex items-center justify-center mx-auto">
-                  <CheckCircle2 className="w-6 h-6" />
-                </div>
-                <h4 className="text-base font-bold text-primary">Instructions Dispatched</h4>
-                <p className="text-xs text-secondary leading-relaxed">
-                  If an account exists for <strong className="text-emerald-600 dark:text-emerald-400 font-mono">{email}</strong>, you will receive password reset instructions within 2 minutes.
-                </p>
-                <div className="pt-2">
-                  <Link
-                    href={`/reset-password?email=${encodeURIComponent(email)}`}
-                    className="btn-brand inline-flex items-center gap-2 text-xs !py-2.5 !px-4"
-                  >
-                    <span>Proceed to Password Reset</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
-              </div>
-            ) : (
-              <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-                <div>
-                  <label className="type-label">Registered Email Address</label>
-                  <div className="relative">
-                    <Mail className="w-4 h-4 text-muted absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                    <input
-                      type="email"
-                      required
-                      placeholder="you@example.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="field-input pl-10"
-                    />
-                  </div>
-                </div>
-
-                <div className="p-3 rounded-xl bg-surface/80 border border-base text-[11px] text-muted flex items-start gap-2">
-                  <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                  <span>
-                    To protect account privacy, we never disclose whether a specific email address is registered.
-                  </span>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="btn-brand w-full py-3.5"
-                >
-                  {isLoading ? (
-                    <>
-                      <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                      <span>Sending Instructions…</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Send Reset Instructions</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
-                </button>
-              </form>
-            )}
-
-            <div className="pt-2 border-t border-base text-center">
-              <Link
-                href="/sign-in"
-                className="inline-flex items-center gap-1.5 text-xs text-muted hover:text-primary transition-colors font-medium"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Back to Sign In</span>
-              </Link>
-            </div>
+      {isSubmitted ? (
+        <div className="p-6 text-center space-y-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl animate-fade-in shadow-inner">
+          <div className="w-14 h-14 bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center mx-auto shadow-md">
+            <CheckCircle2 className="w-7 h-7" />
+          </div>
+          <div className="space-y-1">
+            <h4 className="text-base font-bold text-primary font-display">Instructions Dispatched</h4>
+            <p className="text-xs text-secondary leading-relaxed">
+              If an account exists for <strong className="text-emerald-600 dark:text-emerald-400 font-mono">{email}</strong>, you will receive password reset instructions within 2 minutes.
+            </p>
+          </div>
+          <div className="pt-2 flex flex-col gap-2">
+            <Link
+              href={`/reset-password?email=${encodeURIComponent(email)}`}
+              className="btn-brand inline-flex items-center justify-center gap-2 text-xs !py-3 !px-4 shadow-lg shadow-emerald-950/25"
+            >
+              <span>Proceed to Password Reset</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+            <button
+              type="button"
+              onClick={() => setIsSubmitted(false)}
+              className="text-xs text-muted hover:text-primary transition-colors py-1 underline font-medium"
+            >
+              Didn&apos;t receive it? Try another email
+            </button>
           </div>
         </div>
-      </div>
-    </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+          <div>
+            <label className="type-label flex items-center justify-between">
+              <span>Registered Email Address</span>
+              <span className="text-[10px] text-muted font-normal">Account identity</span>
+            </label>
+            <div className="relative group/field">
+              <Mail className="w-4 h-4 text-muted group-focus-within/field:text-emerald-500 group-focus-within/field:scale-110 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none transition-all duration-300" />
+              <input
+                type="email"
+                required
+                placeholder="name@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="field-input pl-10 h-11 text-xs sm:text-sm bg-input/70 group-hover/field:border-emerald-500/40 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/15 transition-all duration-300"
+              />
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-2xl bg-surface/70 border border-base/80 text-[11px] text-muted flex items-start gap-2.5">
+            <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+            <span className="leading-relaxed">
+              To protect account privacy and security, we never publicly disclose whether a specific email address is registered on Al Harmain Travels.
+            </span>
+          </div>
+
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="relative overflow-hidden w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-emerald-600 via-emerald-600 to-teal-700 hover:from-emerald-500 hover:via-emerald-500 hover:to-teal-600 text-white text-sm font-bold tracking-wide shadow-lg shadow-emerald-950/40 hover:shadow-xl hover:shadow-emerald-600/30 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-300 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed group/btn before:absolute before:inset-0 before:-translate-x-full hover:before:animate-shimmer-sweep before:bg-gradient-to-r before:from-transparent before:via-white/20 before:to-transparent"
+          >
+            {isLoading ? (
+              <div className="flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin text-white" />
+                <span>Sending Instructions…</span>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center gap-2">
+                <span>Send Reset Instructions</span>
+              </div>
+            )}
+          </button>
+        </form>
+      )}
+    </AuthShell>
   );
 }

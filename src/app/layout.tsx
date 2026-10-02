@@ -4,7 +4,7 @@ import './globals.css';
 import { AppProvider } from '@/context/AppContext';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
-import ScrollProgressBar from '@/components/layout/ScrollProgressBar';
+import AuthRecoveryListener from '@/components/auth/AuthRecoveryListener';
 import { Toaster } from 'sonner';
 
 /* Display: elegant serif for brand & marketing headings */
@@ -62,38 +62,22 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${display.variable} ${body.variable}`}>
-      <head>
-        <link rel="manifest" href="/manifest.json" />
-        <meta name="mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="theme-color" content="#faf8f4" />
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              try {
-                localStorage.removeItem('alharmain-theme');
-                document.documentElement.classList.remove('dark');
-                document.documentElement.classList.add('light');
-              } catch(e) {}
-            `,
-          }}
-        />
-      </head>
-      <body suppressHydrationWarning className="min-h-screen flex flex-col antialiased selection:bg-emerald-700 selection:text-white bg-[var(--background)] text-[var(--foreground)] font-sans text-body">
-        <ScrollProgressBar />
-        <AppProvider>
-          <a href="#main-content" className="skip-link">
-            Skip to main content
-          </a>
-          <Navbar />
-          <main id="main-content" className="flex-1 w-full">
-            {children}
-          </main>
-          <Footer />
-          <Toaster position="top-right" richColors theme="light" closeButton />
-        </AppProvider>
+    <html lang="en" className={`dark ${display.variable} ${body.variable}`}>
+      <body suppressHydrationWarning className="min-h-screen flex flex-col antialiased selection:bg-emerald-500 selection:text-white bg-[var(--background)] text-[var(--foreground)] font-sans text-body">
+        <ThemeProvider>
+          <AppProvider>
+            <AuthRecoveryListener />
+            <a href="#main-content" className="skip-link">
+              Skip to main content
+            </a>
+            <Navbar />
+            <main id="main-content" className="flex-1 w-full">
+              {children}
+            </main>
+            <Footer />
+            <Toaster position="top-right" richColors theme="system" closeButton />
+          </AppProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

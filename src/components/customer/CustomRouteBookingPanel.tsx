@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import {
   IntermediateStop,
@@ -10,25 +10,31 @@ import {
   VehicleType,
 } from '@/types';
 import {
+  Navigation,
   MapPin,
   Search,
   Crosshair,
   Plus,
   Trash2,
-  Navigation,
   Car,
   Users,
   Luggage,
   Calendar,
   Clock,
   ArrowRight,
+  ArrowLeft,
   ShieldCheck,
-  AlertCircle,
   CheckCircle2,
-  ChevronRight,
+  Check,
+  Copy,
   Sparkles,
   RotateCcw,
   Info,
+  Phone,
+  User,
+  MessageSquare,
+  CheckCheck,
+  Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -79,13 +85,14 @@ export interface CustomRouteBookingPanelProps {
   onResetCustomBooking: () => void;
 }
 
-const CUSTOM_VEHICLE_OPTIONS: {
+export const CUSTOM_VEHICLE_OPTIONS: {
   category: VehicleCategory;
   vehicleType: VehicleType;
   title: string;
   subtitle: string;
   capacityPax: number;
   capacityLuggage: number;
+  badge: string;
   perks: string[];
 }[] = [
   {
@@ -95,6 +102,7 @@ const CUSTOM_VEHICLE_OPTIONS: {
     subtitle: 'Toyota Camry / Hyundai Sonata / Lexus ES',
     capacityPax: 3,
     capacityLuggage: 2,
+    badge: 'Chauffeur Driven',
     perks: ['Ideal for individuals & small families', 'Bottled water & mobile chargers', 'Executive chauffeur'],
   },
   {
@@ -104,7 +112,8 @@ const CUSTOM_VEHICLE_OPTIONS: {
     subtitle: 'Hyundai Staria VIP / Executive Van',
     capacityPax: 6,
     capacityLuggage: 5,
-    perks: ['Spacious captain seats', 'Ample luggage room for Umrah groups', 'Privacy climate control'],
+    badge: 'Family & Umrah',
+    perks: ['Spacious captain seats', 'Ample luggage room for Umrah groups', 'Independent rear climate control'],
   },
   {
     category: 'gmc',
@@ -113,7 +122,8 @@ const CUSTOM_VEHICLE_OPTIONS: {
     subtitle: 'GMC Yukon / Chevrolet Suburban XL',
     capacityPax: 7,
     capacityLuggage: 6,
-    perks: ['VIP Royal class comfort', 'Maximum privacy & luxury tinted glass', 'Supreme long-haul comfort'],
+    badge: 'Royal VIP Class',
+    perks: ['VIP Royal class comfort & leather seating', 'Maximum privacy & luxury tinted glass', 'Supreme comfort for long-distance travel'],
   },
   {
     category: 'hiroof',
@@ -122,9 +132,19 @@ const CUSTOM_VEHICLE_OPTIONS: {
     subtitle: 'Toyota HiAce High Roof VIP',
     capacityPax: 12,
     capacityLuggage: 10,
+    badge: 'Delegation & Group',
     perks: ['Full delegation & large group capacity', 'High ceiling & wide walking aisle', 'Huge dedicated luggage hold'],
   },
 ];
+
+type CustomBookingStep = 'route' | 'vehicle' | 'details' | 'review';
+
+const STEPS_CONFIG = [
+  { id: 'route' as const, label: 'Route', fullTitle: 'Define Custom Route & Stops', icon: Navigation },
+  { id: 'vehicle' as const, label: 'Vehicle', fullTitle: 'Choose Preferred VIP Fleet', icon: Car },
+  { id: 'details' as const, label: 'Schedule', fullTitle: 'Schedule & Passenger Details', icon: Calendar },
+  { id: 'review' as const, label: 'Review', fullTitle: 'Review & Dispatcher Quote', icon: ShieldCheck },
+] as const;
 
 export default function CustomRouteBookingPanel({
   pickup,
@@ -168,8 +188,37 @@ export default function CustomRouteBookingPanel({
   confirmedBookingRef,
   onResetCustomBooking,
 }: CustomRouteBookingPanelProps) {
-  const [step, setStep] = useState<'route' | 'vehicle' | 'details' | 'review'>('route');
+  const [step, setStep] = useState<CustomBookingStep>('route');
+  const [isCopiedRef, setIsCopiedRef] = useState(false);
 
+  // Today's ISO date for datepicker min attribute
+  const todayDateString = useMemo(() => new Date().toISOString().split('T')[0], []);
+
+  // Current step index (0 to 3)
+  const currentStepIndex = useMemo(() => {
+    const idx = STEPS_CONFIG.findIndex((s) => s.id === step);
+    return idx >= 0 ? idx : 0;
+  }, [step]);
+
+  // Check if a step can be navigated to by clicking the stepper
+  const canJumpToStep = (index: number) => {
+    if (confirmedBookingRef) return false;
+    // Always permit backwards navigation
+    if (index < currentStepIndex) return true;
+    // Permit forward navigation only if prerequisites exist
+    if (index === 1 && pickup && destination) return true;
+    if (index === 2 && pickup && destination && selectedVehicle) return true;
+    if (index === 3 && pickup && destination && selectedVehicle && passengerName.trim() && passengerPhone.trim()) return true;
+    return false;
+  };
+
+  const handleStepJump = (index: number) => {
+    if (canJumpToStep(index)) {
+      setStep(STEPS_CONFIG[index].id);
+    }
+  };
+
+  // Step 1 -> 2: Route validation
   const handleProceedToVehicle = () => {
     if (!pickup) {
       toast.error('Please specify your pickup location.');
@@ -182,6 +231,7 @@ export default function CustomRouteBookingPanel({
     setStep('vehicle');
   };
 
+  // Step 2 -> 3: Vehicle validation
   const handleProceedToDetails = () => {
     if (!selectedVehicle) {
       toast.error('Please select a preferred vehicle category.');
@@ -190,757 +240,924 @@ export default function CustomRouteBookingPanel({
     setStep('details');
   };
 
+  // Step 3 -> 4: Details & Schedule validation
   const handleProceedToReview = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!passengerName.trim() || !passengerPhone.trim()) {
-      toast.error('Please provide your name and WhatsApp contact number.');
+    if (!passengerName.trim()) {
+      toast.error('Please provide the lead passenger name.');
       return;
     }
-    if (tripType === 'round_trip' && (!returnDate || !returnTime)) {
-      toast.error('Please select your return date and pickup time.');
+    if (!passengerPhone.trim()) {
+      toast.error('Please provide your WhatsApp contact number.');
       return;
+    }
+    if (!journeyDate || !journeyTime) {
+      toast.error('Please select your departure date and time.');
+      return;
+    }
+    if (tripType === 'round_trip') {
+      if (!returnDate || !returnTime) {
+        toast.error('Please select your return date and pickup time.');
+        return;
+      }
+      if (returnDate < journeyDate) {
+        toast.error('Return date cannot be earlier than departure date.');
+        return;
+      }
     }
     setStep('review');
   };
 
+  const handleCopyBookingRef = (ref: string) => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(ref);
+      setIsCopiedRef(true);
+      toast.success('Booking reference copied to clipboard!');
+      setTimeout(() => setIsCopiedRef(false), 2500);
+    } else {
+      toast.info(`Reference: ${ref}`);
+    }
+  };
+
+  const selectedVehicleObj = useMemo(
+    () => CUSTOM_VEHICLE_OPTIONS.find((v) => v.category === selectedVehicle),
+    [selectedVehicle]
+  );
+
   return (
-    <div className="space-y-5">
-      {/* ── Progress Indicator ────────────────────────────────────────── */}
-      <div className="flex items-center gap-1.5 text-[10px] font-bold text-muted uppercase tracking-wider overflow-x-auto pb-1">
-        {[
-          { key: 'route', label: '1. Route & Stops' },
-          { key: 'vehicle', label: '2. Vehicle' },
-          { key: 'details', label: '3. Schedule & Contact' },
-          { key: 'review', label: '4. Dispatch Review' },
-        ].map((item, idx) => {
-          const stepOrder = ['route', 'vehicle', 'details', 'review'];
-          const currentIndex = stepOrder.indexOf(step);
-          const isCurrent = step === item.key;
-          const isDone = idx < currentIndex;
-          return (
-            <React.Fragment key={item.key}>
-              <span
-                className={`px-2.5 py-1 rounded-full border transition-all whitespace-nowrap ${
-                  isCurrent
-                    ? 'bg-amber-500/20 border-amber-500/50 text-amber-600 dark:text-amber-400 font-bold'
-                    : isDone
-                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'
-                    : 'border-base text-muted/60'
-                }`}
-              >
-                {item.label}
-              </span>
-              {idx < 3 && <span className="text-muted/40">›</span>}
-            </React.Fragment>
-          );
-        })}
-      </div>
-
-      {/* ════ STEP 1: ROUTE & INTERMEDIATE STOPS ════════════════════════ */}
-      {step === 'route' && (
-        <div className="bg-card border border-base rounded-3xl shadow-xl overflow-hidden animate-fade-up">
-          <div className="px-5 pt-5 pb-4 border-b border-base bg-gradient-to-r from-amber-500/10 via-transparent to-emerald-500/5">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-bold text-primary flex items-center gap-2">
-                  <span className="w-7 h-7 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center shrink-0">
-                    <Navigation className="w-3.5 h-3.5 text-amber-500" />
-                  </span>
-                  Define Your Custom Route
-                </h2>
-                <p className="text-[11px] text-muted mt-0.5 pl-9">
-                  Choose any pickup & destination, and add optional stops along the way.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="p-5 space-y-4">
-            {/* Trip Type Toggle (One-Way vs Round Trip) */}
-            <div>
-              <label className="type-label mb-1.5 block">Trip Type</label>
-              <div className="grid grid-cols-2 gap-2 bg-surface p-1 rounded-2xl border border-base">
-                <button
-                  type="button"
-                  onClick={() => setTripType('one_way')}
-                  className={`py-2 px-3 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-2 ${
-                    tripType === 'one_way'
-                      ? 'bg-amber-500 text-slate-950 shadow-sm'
-                      : 'text-secondary hover:text-primary'
-                  }`}
-                >
-                  <ArrowRight className="w-3.5 h-3.5" />
-                  <span>One-Way</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTripType('round_trip')}
-                  className={`py-2 px-3 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-2 ${
-                    tripType === 'round_trip'
-                      ? 'bg-amber-500 text-slate-950 shadow-sm'
-                      : 'text-secondary hover:text-primary'
-                  }`}
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Round Trip</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Pickup Input Card */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="type-label flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-500/30" />
-                  Pickup Location *
-                </label>
-                <button
-                  type="button"
-                  onClick={onUseCurrentLocation}
-                  className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
-                >
-                  <Crosshair className="w-3 h-3" />
-                  Current GPS
-                </button>
-              </div>
-
+    <div className="bg-card border border-base rounded-2xl sm:rounded-3xl shadow-xl overflow-hidden flex flex-col w-full transition-all">
+      {/* ── TOP STEPPER HEADER (When not in confirmed submitted state) ─────── */}
+      {!confirmedBookingRef && (
+        <div className="border-b border-base bg-surface/50 backdrop-blur-md px-3 sm:px-5 pt-4 pb-3.5 space-y-3">
+          {/* Universal 4-Step Stepper Nodes with connecting track line */}
+          <div className="relative w-full">
+            {/* Background Connecting Track Line */}
+            <div className="absolute top-4 left-[12.5%] right-[12.5%] h-0.5 bg-base -translate-y-1/2 z-0">
               <div
-                onClick={() => onOpenSearch('pickup')}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => e.key === 'Enter' && onOpenSearch('pickup')}
-                className="w-full text-left p-3.5 rounded-2xl border border-base bg-surface hover:bg-elevated hover:border-emerald-500/50 transition-all cursor-pointer flex items-center justify-between gap-3 group"
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <MapPin className="w-4 h-4 text-emerald-500 shrink-0" />
-                  <span className={`text-xs truncate ${pickup ? 'font-semibold text-primary' : 'text-muted'}`}>
-                    {pickup?.address || 'Search pickup hotel, terminal, or address…'}
-                  </span>
-                </div>
-                <Search className="w-4 h-4 text-muted group-hover:text-emerald-500 transition-colors shrink-0" />
-              </div>
-            </div>
-
-            {/* Intermediate Stops Section */}
-            <div className="space-y-2 pt-1">
-              <div className="flex items-center justify-between">
-                <label className="type-label flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-cyan-500 ring-2 ring-cyan-500/30" />
-                  Intermediate Stops (Optional)
-                </label>
-                {stops.length < 5 && (
-                  <button
-                    type="button"
-                    onClick={onAddStop}
-                    className="text-[11px] font-bold text-amber-600 dark:text-amber-400 hover:text-amber-500 flex items-center gap-1 cursor-pointer hover:underline"
-                  >
-                    <Plus className="w-3 h-3" />
-                    + Add Stop
-                  </button>
-                )}
-              </div>
-
-              {stops.length === 0 ? (
-                <div className="p-3 rounded-2xl border border-dashed border-base/80 bg-surface/30 text-center">
-                  <p className="text-[11px] text-muted">
-                    No intermediate stops added yet. (e.g. Ziyarat sites, hotel stopovers, shopping).
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {stops.map((stop, idx) => (
-                    <div
-                      key={stop.id}
-                      className="p-3 rounded-2xl border border-base bg-surface flex items-center justify-between gap-2 transition-all hover:border-cyan-500/40"
-                    >
-                      <div
-                        onClick={() => onOpenSearch(`stop_${idx}` as any)}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => e.key === 'Enter' && onOpenSearch(`stop_${idx}` as any)}
-                        className="flex items-center gap-2.5 flex-1 min-w-0 cursor-pointer"
-                      >
-                        <span className="w-5 h-5 rounded-full bg-cyan-500/15 text-cyan-500 text-[10px] font-bold flex items-center justify-center shrink-0 border border-cyan-500/30">
-                          {idx + 1}
-                        </span>
-                        <div className="truncate">
-                          <span className="text-[10px] text-muted block uppercase font-bold">Stop #{idx + 1}</span>
-                          <span className={`text-xs truncate block ${stop.address ? 'font-semibold text-primary' : 'text-muted'}`}>
-                            {stop.address || 'Select stop location…'}
-                          </span>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => onRemoveStop(stop.id)}
-                        className="p-1.5 rounded-xl text-muted hover:text-rose-500 hover:bg-rose-500/10 transition-colors shrink-0 cursor-pointer"
-                        title="Remove Stop"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Destination Input Card */}
-            <div className="space-y-1.5 pt-1">
-              <div className="flex items-center justify-between">
-                <label className="type-label flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 ring-2 ring-amber-500/30" />
-                  Final Destination *
-                </label>
-                {pickup && destination && (
-                  <button
-                    type="button"
-                    onClick={onSwapPickupDestination}
-                    className="text-[11px] font-semibold text-muted hover:text-primary flex items-center gap-1 cursor-pointer"
-                    title="Swap Pickup and Destination"
-                  >
-                    Swap ⇄
-                  </button>
-                )}
-              </div>
-
-              <div
-                onClick={() => onOpenSearch('destination')}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => e.key === 'Enter' && onOpenSearch('destination')}
-                className="w-full text-left p-3.5 rounded-2xl border border-base bg-surface hover:bg-elevated hover:border-amber-500/50 transition-all cursor-pointer flex items-center justify-between gap-3 group"
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <MapPin className="w-4 h-4 text-amber-500 shrink-0" />
-                  <span className={`text-xs truncate ${destination ? 'font-semibold text-primary' : 'text-muted'}`}>
-                    {destination?.address || 'Search destination city, hotel, or landmark…'}
-                  </span>
-                </div>
-                <Search className="w-4 h-4 text-muted group-hover:text-amber-500 transition-colors shrink-0" />
-              </div>
-            </div>
-
-            {/* Navigation Metadata (Route distance only — strictly NO fare) */}
-            {distanceKm > 0 && (
-              <div className="p-3 rounded-2xl bg-surface/70 border border-base text-xs flex items-center justify-between">
-                <div className="flex items-center gap-2 text-secondary">
-                  <Clock className="w-4 h-4 text-emerald-500" />
-                  <span>Est. Journey Time: <strong className="text-primary">{durationMinutes} min</strong></span>
-                </div>
-                <div className="text-muted text-[11px]">
-                  Approx. <strong className="text-secondary">{distanceKm.toFixed(1)} km</strong>
-                </div>
-              </div>
-            )}
-
-            {routeError && (
-              <p className="text-xs text-rose-500 italic bg-rose-500/10 p-2.5 rounded-xl border border-rose-500/20">
-                {routeError}
-              </p>
-            )}
-
-            {/* Mandatory Dispatcher Confirmation Notice */}
-            <div className="rounded-2xl bg-amber-500/10 border border-amber-500/30 p-3.5 flex items-start gap-2.5 text-xs text-amber-800 dark:text-amber-200">
-              <Info className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-              <div>
-                <span className="font-bold text-amber-700 dark:text-amber-300 block">
-                  Fare will be confirmed by our dispatcher.
-                </span>
-                <span className="text-[11px] text-amber-700/80 dark:text-amber-200/80">
-                  Custom routes are priced manually based on stops and availability. You can submit without advance payment.
-                </span>
-              </div>
-            </div>
-
-            {/* Next Button */}
-            <button
-              type="button"
-              onClick={handleProceedToVehicle}
-              disabled={!pickup || !destination}
-              className="btn-primary w-full py-3.5 text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg cursor-pointer"
-            >
-              <span>Continue to Vehicle Selection</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ════ STEP 2: VEHICLE CATEGORY SELECTION ════════════════════════ */}
-      {step === 'vehicle' && (
-        <div className="bg-card border border-base rounded-3xl shadow-xl overflow-hidden animate-fade-up">
-          <div className="px-5 pt-5 pb-4 border-b border-base bg-gradient-to-r from-amber-500/10 via-transparent to-emerald-500/5">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-bold text-primary flex items-center gap-2">
-                  <span className="w-7 h-7 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center shrink-0">
-                    <Car className="w-3.5 h-3.5 text-amber-500" />
-                  </span>
-                  Select Preferred Vehicle
-                </h2>
-                <p className="text-[11px] text-muted mt-0.5 pl-9">
-                  Choose your VIP vehicle category for this custom journey
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setStep('route')}
-                className="text-[10px] font-semibold text-muted hover:text-primary px-2.5 py-1.5 rounded-xl bg-elevated border border-base cursor-pointer"
-              >
-                ← Route
-              </button>
-            </div>
-          </div>
-
-          <div className="p-5 space-y-3">
-            {CUSTOM_VEHICLE_OPTIONS.map((item) => {
-              const isSelected = selectedVehicle === item.category;
-              return (
-                <div
-                  key={item.category}
-                  onClick={() => setSelectedVehicle(item.category)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => e.key === 'Enter' && setSelectedVehicle(item.category)}
-                  className={`p-4 rounded-2xl border transition-all cursor-pointer text-left ${
-                    isSelected
-                      ? 'bg-amber-500/10 border-amber-500/60 shadow-md ring-1 ring-amber-500/30'
-                      : 'bg-surface border-base hover:border-amber-500/30 hover:bg-elevated'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-xs text-primary">{item.title}</span>
-                        {isSelected && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-slate-950">
-                            Selected
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-muted font-medium mt-0.5">{item.subtitle}</p>
-
-                      <div className="flex items-center gap-4 mt-2 text-[11px] text-secondary">
-                        <span className="flex items-center gap-1">
-                          <Users className="w-3.5 h-3.5 text-amber-500" />
-                          Up to {item.capacityPax} Pax
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Luggage className="w-3.5 h-3.5 text-amber-500" />
-                          Up to {item.capacityLuggage} Bags
-                        </span>
-                      </div>
-
-                      <div className="mt-2.5 space-y-1">
-                        {item.perks.map((p, i) => (
-                          <div key={i} className="text-[10px] text-muted flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                            <span>{p}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-
-            {/* Mandatory Dispatcher Fare Notice */}
-            <div className="rounded-2xl bg-amber-500/10 border border-amber-500/30 p-3.5 flex items-start gap-2.5 text-xs text-amber-800 dark:text-amber-200">
-              <Info className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-              <div>
-                <span className="font-bold text-amber-700 dark:text-amber-300 block">
-                  Fare will be confirmed by our dispatcher.
-                </span>
-                <span className="text-[11px] text-amber-700/80 dark:text-amber-200/80">
-                  No automated fare quotation is shown for custom routes. Our operations desk will review availability and contact you with the best direct rate.
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setStep('route')}
-                className="btn-secondary flex-1 py-3 text-xs cursor-pointer"
-              >
-                Back
-              </button>
-              <button
-                type="button"
-                onClick={handleProceedToDetails}
-                disabled={!selectedVehicle}
-                className="btn-primary flex-[2] py-3 text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg cursor-pointer"
-              >
-                <span>Continue to Passenger Details</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ════ STEP 3: PASSENGER & SCHEDULE DETAILS ═════════════════════ */}
-      {step === 'details' && (
-        <div className="bg-card border border-base rounded-3xl shadow-xl overflow-hidden animate-fade-up">
-          <div className="px-5 pt-5 pb-4 border-b border-base bg-gradient-to-r from-amber-500/10 via-transparent to-emerald-500/5">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-bold text-primary flex items-center gap-2">
-                  <span className="w-7 h-7 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center shrink-0">
-                    <Calendar className="w-3.5 h-3.5 text-amber-500" />
-                  </span>
-                  Schedule &amp; Passenger Information
-                </h2>
-                <p className="text-[11px] text-muted mt-0.5 pl-9">
-                  Provide your travel date, time, and contact info so our dispatcher can reach you
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setStep('vehicle')}
-                className="text-[10px] font-semibold text-muted hover:text-primary px-2.5 py-1.5 rounded-xl bg-elevated border border-base cursor-pointer"
-              >
-                ← Vehicle
-              </button>
-            </div>
-          </div>
-
-          <form onSubmit={handleProceedToReview} className="p-5 space-y-4 text-xs">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="type-label">Lead Passenger Name *</label>
-                <input
-                  type="text"
-                  required
-                  value={passengerName}
-                  onChange={(e) => setPassengerName(e.target.value)}
-                  placeholder="Full Name"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-amber-500"
-                />
-              </div>
-              <div>
-                <label className="type-label">WhatsApp Contact Phone *</label>
-                <input
-                  type="tel"
-                  required
-                  value={passengerPhone}
-                  onChange={(e) => setPassengerPhone(e.target.value)}
-                  placeholder="+966 5x xxx xxxx"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-amber-500"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="type-label">Pickup Date *</label>
-                <input
-                  type="date"
-                  required
-                  value={journeyDate}
-                  onChange={(e) => setJourneyDate(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-amber-500"
-                />
-              </div>
-              <div>
-                <label className="type-label">Pickup Time *</label>
-                <input
-                  type="time"
-                  required
-                  value={journeyTime}
-                  onChange={(e) => setJourneyTime(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-amber-500"
-                />
-              </div>
-              <div>
-                <label className="type-label">Passengers Count</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={14}
-                  value={passengerCount}
-                  onChange={(e) => setPassengerCount(parseInt(e.target.value) || 1)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs text-center font-bold focus:outline-none focus:border-amber-500"
-                />
-              </div>
-            </div>
-
-            {/* Round Trip Return Date & Time */}
-            {tripType === 'round_trip' && (
-              <div className="p-3.5 rounded-2xl bg-amber-500/5 border border-amber-500/20 space-y-3">
-                <div className="flex items-center gap-2 text-amber-500 font-bold text-xs">
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Return Journey Schedule</span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="type-label">Return Date *</label>
-                    <input
-                      type="date"
-                      required
-                      value={returnDate}
-                      onChange={(e) => setReturnDate(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-amber-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="type-label">Return Pickup Time *</label>
-                    <input
-                      type="time"
-                      required
-                      value={returnTime}
-                      onChange={(e) => setReturnTime(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-amber-500"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div>
-              <label className="type-label">Additional Instructions / Special Requests</label>
-              <textarea
-                rows={2}
-                placeholder="Flight number, waiting request at stops, baby seats, luggage dimensions, etc."
-                value={specialInstructions}
-                onChange={(e) => setSpecialInstructions(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-xl bg-input border border-base text-primary placeholder:text-muted text-xs focus:outline-none focus:border-amber-500"
+                className="h-full bg-amber-500 transition-all duration-500 rounded-full"
+                style={{
+                  width: `${(currentStepIndex / (STEPS_CONFIG.length - 1)) * 100}%`,
+                }}
               />
             </div>
 
-            <div className="flex items-center gap-3 pt-2">
+            {/* 4 Step Nodes in a 4-column grid: 100% width, exactly 25% each */}
+            <div className="grid grid-cols-4 relative z-10">
+              {STEPS_CONFIG.map((s, idx) => {
+                const isCompleted = idx < currentStepIndex;
+                const isActive = idx === currentStepIndex;
+                const canJump = canJumpToStep(idx);
+
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    disabled={!canJump}
+                    onClick={() => handleStepJump(idx)}
+                    className={`flex flex-col items-center group transition-all text-center px-0.5 ${
+                      canJump ? 'cursor-pointer' : 'cursor-default'
+                    }`}
+                  >
+                    {/* Circle Node */}
+                    <div
+                      className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center font-bold text-xs transition-all duration-300 relative ${
+                        isCompleted
+                          ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/25 group-hover:scale-110 ring-2 ring-amber-500/30'
+                          : isActive
+                          ? 'bg-amber-500 text-slate-950 ring-4 ring-amber-500/25 shadow-lg shadow-amber-900/40 scale-105'
+                          : 'bg-elevated border border-base text-muted/60'
+                      }`}
+                    >
+                      {isCompleted ? (
+                        <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[3]" />
+                      ) : (
+                        <span className="text-[11px] sm:text-xs font-black">{idx + 1}</span>
+                      )}
+                    </div>
+
+                    {/* Step Title Label */}
+                    <div className="mt-1.5 w-full">
+                      <span
+                        className={`block text-[10px] sm:text-[11px] font-bold tracking-tight truncate leading-tight transition-colors ${
+                          isActive
+                            ? 'text-amber-500 dark:text-amber-400 font-extrabold'
+                            : isCompleted
+                            ? 'text-primary group-hover:text-amber-500'
+                            : 'text-muted/60'
+                        }`}
+                      >
+                        {s.label}
+                      </span>
+                      <span className="hidden sm:block text-[9px] uppercase font-semibold text-muted/50 tracking-wider">
+                        Step {idx + 1}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Current Active Step Banner with percentage and back button */}
+          <div className="pt-2 border-t border-base/50 flex items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                Step {currentStepIndex + 1} of 4
+              </span>
+              <span className="font-bold text-primary truncate text-xs">
+                {STEPS_CONFIG[currentStepIndex].fullTitle}
+              </span>
+            </div>
+
+            {currentStepIndex > 0 && (
               <button
                 type="button"
-                onClick={() => setStep('vehicle')}
-                className="btn-secondary flex-1 py-3 text-xs cursor-pointer"
+                onClick={() => handleStepJump(currentStepIndex - 1)}
+                className="text-[11px] font-semibold text-muted hover:text-primary px-2.5 py-1 rounded-xl bg-elevated hover:bg-surface border border-base hover:border-strong transition-all flex items-center gap-1 shrink-0 active:scale-95 cursor-pointer"
               >
-                Back
+                <ArrowLeft className="w-3 h-3" />
+                <span>Back</span>
               </button>
-              <button
-                type="submit"
-                className="btn-primary flex-[2] py-3 text-xs font-bold flex items-center justify-center gap-2 shadow-lg cursor-pointer"
-              >
-                <span>Review Journey Details</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          </form>
+            )}
+          </div>
         </div>
       )}
 
-      {/* ════ STEP 4: REVIEW & DISPATCHER SUBMISSION ════════════════════ */}
-      {step === 'review' && (
-        <div className="bg-card border border-base rounded-3xl shadow-xl overflow-hidden animate-fade-up">
-          <div className="px-5 pt-5 pb-4 border-b border-base bg-gradient-to-r from-amber-500/10 via-transparent to-emerald-500/5">
-            <div className="flex items-center justify-between">
+      {/* ══════════════════════════════════════════════════════════════════════
+          SUBMISSION CELEBRATION (Rendered in-card when confirmedBookingRef exists)
+          ══════════════════════════════════════════════════════════════════════ */}
+      {confirmedBookingRef ? (
+        <div className="p-5 sm:p-8 space-y-6 text-center animate-fade-in">
+          {/* Animated Status Icon */}
+          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-amber-500/10 text-amber-500 flex items-center justify-center mx-auto border-2 border-amber-500/30 shadow-inner">
+            <CheckCircle2 className="w-9 h-9 sm:w-11 sm:h-11" />
+          </div>
+
+          {/* Heading */}
+          <div className="space-y-1.5">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Request Dispatched
+            </span>
+            <h2 className="text-xl sm:text-2xl font-black text-primary">Custom Booking Submitted!</h2>
+            <p className="text-xs sm:text-sm text-secondary max-w-md mx-auto">
+              Your customized itinerary has reached our 24/7 Operations Desk for manual review and competitive quote calculation.
+            </p>
+          </div>
+
+          {/* Booking Card Details */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-base space-y-3.5 text-left text-xs max-w-lg mx-auto">
+            {/* Booking Reference Box */}
+            <div className="flex items-center justify-between p-3 rounded-xl bg-elevated border border-base">
               <div>
-                <h2 className="text-sm font-bold text-primary flex items-center gap-2">
-                  <span className="w-7 h-7 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center shrink-0">
-                    <ShieldCheck className="w-3.5 h-3.5 text-amber-500" />
-                  </span>
-                  Review Journey &amp; Submit Request
-                </h2>
-                <p className="text-[11px] text-muted mt-0.5 pl-9">
-                  Review your itinerary. No payment is required until our dispatcher confirms the fare.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setStep('details')}
-                className="text-[10px] font-semibold text-muted hover:text-primary px-2.5 py-1.5 rounded-xl bg-elevated border border-base cursor-pointer"
-              >
-                ← Edit Details
-              </button>
-            </div>
-          </div>
-
-          <div className="p-5 space-y-4 text-xs">
-            {/* Itinerary Summary */}
-            <div className="p-4 rounded-2xl bg-surface border border-base space-y-3">
-              <div className="flex items-center justify-between text-muted text-[11px] border-b border-base/60 pb-2">
-                <span className="font-bold text-secondary uppercase tracking-wider">Itinerary Details</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400">
-                  {tripType === 'round_trip' ? 'Round Trip' : 'One-Way Journey'}
-                </span>
-              </div>
-
-              {/* Pickup */}
-              {pickup && (
-                <div className="flex items-start gap-2.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 mt-1 shrink-0" />
-                  <div className="min-w-0">
-                    <span className="text-muted text-[10px] uppercase font-bold">Pickup</span>
-                    <p className="font-semibold text-primary">{pickup.address}</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Intermediate Stops */}
-              {stops.map((stop, i) => (
-                <div key={stop.id} className="flex items-start gap-2.5 pl-3 border-l-2 border-dashed border-cyan-500/40 my-1">
-                  <span className="w-2 h-2 rounded-full bg-cyan-500 mt-1 shrink-0" />
-                  <div className="min-w-0">
-                    <span className="text-muted text-[10px] uppercase font-bold">Stop #{i + 1}</span>
-                    <p className="font-semibold text-secondary">{stop.address}</p>
-                  </div>
-                </div>
-              ))}
-
-              {/* Destination */}
-              {destination && (
-                <div className="flex items-start gap-2.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 mt-1 shrink-0" />
-                  <div className="min-w-0">
-                    <span className="text-muted text-[10px] uppercase font-bold">Destination</span>
-                    <p className="font-semibold text-amber-500">{destination.address}</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Schedule and Vehicle Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-2 border-t border-base/60 text-[11px]">
-                <div>
-                  <span className="text-muted text-[10px] block">Departure</span>
-                  <span className="font-semibold text-primary">{journeyDate} at {journeyTime}</span>
-                </div>
-                {tripType === 'round_trip' && (
-                  <div>
-                    <span className="text-muted text-[10px] block">Return</span>
-                    <span className="font-semibold text-primary">{returnDate} at {returnTime}</span>
-                  </div>
-                )}
-                <div>
-                  <span className="text-muted text-[10px] block">Vehicle</span>
-                  <span className="font-semibold text-amber-500 capitalize">{selectedVehicle?.replace('_', ' ')}</span>
-                </div>
-                <div>
-                  <span className="text-muted text-[10px] block">Passengers</span>
-                  <span className="font-semibold text-primary">{passengerCount} Pax</span>
-                </div>
-                <div>
-                  <span className="text-muted text-[10px] block">Passenger</span>
-                  <span className="font-semibold text-primary truncate block">{passengerName}</span>
-                </div>
-                <div>
-                  <span className="text-muted text-[10px] block">WhatsApp</span>
-                  <span className="font-semibold text-primary truncate block">{passengerPhone}</span>
-                </div>
-              </div>
-
-              {specialInstructions && (
-                <div className="pt-2 border-t border-base/60 text-[11px]">
-                  <span className="text-muted">Special Requests: </span>
-                  <span className="text-secondary italic">{specialInstructions}</span>
-                </div>
-              )}
-            </div>
-
-            {/* CRITICAL REQUIREMENT: Prominent Notice that Fare Will Be Confirmed by Dispatcher */}
-            <div className="rounded-2xl bg-amber-500/10 border-2 border-amber-500/40 p-4 space-y-2">
-              <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 font-black text-sm">
-                <Sparkles className="w-4 h-4 text-amber-500" />
-                <span>Fare will be confirmed by our dispatcher.</span>
-              </div>
-              <p className="text-[11px] text-secondary leading-relaxed">
-                Because your journey involves customized routing and stops, our dispatch team will review vehicle availability and calculate our best direct quotation.
-              </p>
-              <div className="bg-surface/80 p-3 rounded-xl border border-base font-semibold text-[11px] text-primary flex items-center justify-between">
-                <span>Estimated Fare:</span>
-                <span className="text-amber-500 italic font-bold">To be confirmed by Dispatcher</span>
-              </div>
-              <p className="text-[10px] text-muted italic">
-                * You do not need to make any payment right now. The dispatcher will contact you via WhatsApp / phone to confirm the price and payment options.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setStep('details')}
-                className="btn-secondary flex-1 py-3.5 text-xs cursor-pointer"
-              >
-                Back
-              </button>
-              <button
-                type="button"
-                onClick={onSubmitCustomBooking}
-                disabled={isSubmitting}
-                className="btn-primary flex-[2] py-3.5 text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg cursor-pointer"
-              >
-                {isSubmitting ? (
-                  <>
-                    <span className="w-4 h-4 rounded-full border-2 border-slate-950/30 border-t-slate-950 animate-spin" />
-                    <span>Submitting Request…</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Submit Custom Booking Request</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ════ SUBMISSION CONFIRMATION MODAL ════════════════════════════ */}
-      {confirmedBookingRef && (
-        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 animate-fade-up">
-          <div className="bg-card border border-amber-500/40 rounded-3xl w-full max-w-md shadow-2xl p-6 sm:p-8 space-y-5 text-center">
-            <div className="w-16 h-16 rounded-full bg-amber-500/10 text-amber-500 flex items-center justify-center mx-auto border-2 border-amber-500/30 shadow-inner">
-              <CheckCircle2 className="w-9 h-9" />
-            </div>
-
-            <div className="space-y-1">
-              <h3 className="type-card-title text-xl">Custom Request Submitted!</h3>
-              <p className="text-xs text-secondary">
-                Your customized route details have reached our dispatch operations desk.
-              </p>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-surface border border-base space-y-2 text-left text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-muted">Booking Reference:</span>
-                <span className="font-mono text-base font-black text-amber-600 dark:text-amber-400">
+                <span className="text-[10px] text-muted uppercase font-bold tracking-wider block">Booking Reference</span>
+                <span className="font-mono text-base sm:text-lg font-black text-amber-600 dark:text-amber-400">
                   {confirmedBookingRef}
                 </span>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted">Booking Status:</span>
-                <span className="px-2.5 py-0.5 rounded-full text-[11px] uppercase font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                  Pending Review
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted">Fare:</span>
-                <span className="font-bold text-amber-500 italic">To be confirmed by Dispatcher</span>
-              </div>
-              <div className="p-3 bg-amber-500/10 rounded-xl border border-amber-500/20 text-[11px] text-amber-800 dark:text-amber-200 leading-relaxed mt-2">
-                Our dispatcher will contact you at <strong className="text-primary">{passengerPhone}</strong> to confirm vehicle availability, provide the finalized fare, and share payment details.
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2 pt-2">
-              <Link
-                href="/customer/bookings"
-                className="btn-primary w-full py-3 text-xs flex items-center justify-center gap-2 font-bold"
-              >
-                <Clock className="w-4 h-4" />
-                <span>View Booking in My Rides</span>
-              </Link>
               <button
                 type="button"
-                onClick={onResetCustomBooking}
-                className="text-xs text-muted hover:text-primary py-2 cursor-pointer"
+                onClick={() => handleCopyBookingRef(confirmedBookingRef)}
+                className="px-3 py-1.5 rounded-lg bg-surface hover:bg-base text-primary font-semibold text-xs border border-base flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                title="Copy reference code"
               >
-                + Book Another Journey
+                {isCopiedRef ? (
+                  <>
+                    <CheckCheck className="w-3.5 h-3.5 text-emerald-500" />
+                    <span className="text-emerald-500">Copied</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5 text-muted" />
+                    <span>Copy</span>
+                  </>
+                )}
               </button>
             </div>
+
+            <div className="flex items-center justify-between py-1 border-b border-base/60">
+              <span className="text-muted">Booking Status:</span>
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] uppercase font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                Pending Dispatcher Review
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between py-1 border-b border-base/60">
+              <span className="text-muted">Quoted Fare:</span>
+              <span className="font-bold text-amber-500 italic">To be confirmed by Dispatcher (0 SAR Paid)</span>
+            </div>
+
+            <div className="flex items-center justify-between py-1 border-b border-base/60">
+              <span className="text-muted">Assigned Chauffeur Fleet:</span>
+              <span className="font-semibold text-primary capitalize">{selectedVehicle?.replace('_', ' ')}</span>
+            </div>
+
+            <div className="p-3.5 bg-amber-500/10 rounded-xl border border-amber-500/25 text-xs text-amber-800 dark:text-amber-200 leading-relaxed flex items-start gap-2.5">
+              <Info className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+              <div>
+                <strong className="block text-amber-700 dark:text-amber-300 font-bold mb-0.5">Next Steps from Our Dispatch Desk:</strong>
+                Our operations team will review route stops, compute optimal pricing, and contact you via WhatsApp / call at{' '}
+                <strong className="text-primary font-bold">{passengerPhone}</strong> within minutes.
+              </div>
+            </div>
+          </div>
+
+          {/* Action CTAs */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2 max-w-lg mx-auto">
+            <Link
+              href="/customer/bookings"
+              className="btn-primary w-full sm:flex-1 py-3 text-xs flex items-center justify-center gap-2 font-bold shadow-lg"
+            >
+              <Clock className="w-4 h-4" />
+              <span>View Booking in My Rides</span>
+            </Link>
+            <button
+              type="button"
+              onClick={() => {
+                onResetCustomBooking();
+                setStep('route');
+              }}
+              className="btn-secondary w-full sm:flex-1 py-3 text-xs font-semibold cursor-pointer"
+            >
+              + Book Another Journey
+            </button>
           </div>
         </div>
+      ) : (
+        <>
+          {/* ══════════════════════════════════════════════════════════════════
+              STEP 1: ROUTE & INTERMEDIATE STOPS
+              ══════════════════════════════════════════════════════════════════ */}
+          {step === 'route' && (
+            <div className="p-4 sm:p-6 space-y-5 animate-fade-in">
+              {/* Header Info */}
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 mb-1">
+                    <Navigation className="w-3 h-3 text-amber-500" /> Dispatcher Confirmed Route
+                  </div>
+                  <h2 className="text-base sm:text-lg font-bold text-primary">Define Your Custom Route</h2>
+                  <p className="text-xs text-muted mt-0.5">
+                    Specify any pickup, destination, and intermediate stops. Our operations desk will quote you directly.
+                  </p>
+                </div>
+              </div>
+
+              {/* Trip Type Selector Toggle (One-Way vs Round Trip) */}
+              <div className="space-y-1.5">
+                <label className="type-label">Journey Type</label>
+                <div className="grid grid-cols-2 gap-2 bg-surface p-1 rounded-2xl border border-base">
+                  <button
+                    type="button"
+                    onClick={() => setTripType('one_way')}
+                    className={`py-2.5 px-3 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                      tripType === 'one_way'
+                        ? 'bg-amber-500 text-slate-950 shadow-md font-black'
+                        : 'text-secondary hover:text-primary hover:bg-elevated'
+                    }`}
+                  >
+                    <ArrowRight className="w-3.5 h-3.5" />
+                    <span>One-Way Journey</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTripType('round_trip')}
+                    className={`py-2.5 px-3 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                      tripType === 'round_trip'
+                        ? 'bg-amber-500 text-slate-950 shadow-md font-black'
+                        : 'text-secondary hover:text-primary hover:bg-elevated'
+                    }`}
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Round Trip</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Locations Card: Pickup, Stops, Destination */}
+              <div className="space-y-4">
+                {/* 1. Pickup Location */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="type-label flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-500/30" />
+                      Pickup Location *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={onUseCurrentLocation}
+                      className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer transition-colors active:scale-95"
+                    >
+                      <Crosshair className="w-3 h-3" />
+                      Use GPS
+                    </button>
+                  </div>
+
+                  <div
+                    onClick={() => onOpenSearch('pickup')}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => e.key === 'Enter' && onOpenSearch('pickup')}
+                    className="w-full text-left p-3.5 rounded-2xl border border-base bg-surface hover:bg-elevated hover:border-emerald-500/50 transition-all cursor-pointer flex items-center justify-between gap-3 group active:scale-[0.99]"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
+                        <MapPin className="w-4 h-4 text-emerald-500" />
+                      </div>
+                      <span className={`text-xs truncate ${pickup ? 'font-semibold text-primary' : 'text-muted'}`}>
+                        {pickup?.address || 'Search pickup hotel, terminal, or address…'}
+                      </span>
+                    </div>
+                    <Search className="w-4 h-4 text-muted group-hover:text-emerald-500 transition-colors shrink-0" />
+                  </div>
+                </div>
+
+                {/* 2. Intermediate Stops */}
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center justify-between">
+                    <label className="type-label flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-cyan-500 ring-2 ring-cyan-500/30" />
+                      Intermediate Stops (Optional)
+                    </label>
+                    {stops.length < 5 && (
+                      <button
+                        type="button"
+                        onClick={onAddStop}
+                        className="text-[11px] font-bold text-amber-600 dark:text-amber-400 hover:text-amber-500 flex items-center gap-1 cursor-pointer hover:underline"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        + Add Stop
+                      </button>
+                    )}
+                  </div>
+
+                  {stops.length === 0 ? (
+                    <div className="p-3.5 rounded-2xl border border-dashed border-base/80 bg-surface/30 text-center space-y-1">
+                      <p className="text-xs text-muted">
+                        No intermediate stops added yet.
+                      </p>
+                      <p className="text-[11px] text-muted/70">
+                        (e.g., Ziyarat sacred shrines, hotel luggage drop, grocery stopover, prayer pause).
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {stops.map((stop, idx) => (
+                        <div
+                          key={stop.id}
+                          className="p-3 rounded-2xl border border-base bg-surface flex items-center justify-between gap-2.5 transition-all hover:border-cyan-500/40"
+                        >
+                          <div
+                            onClick={() => onOpenSearch(`stop_${idx}` as any)}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => e.key === 'Enter' && onOpenSearch(`stop_${idx}` as any)}
+                            className="flex items-center gap-2.5 flex-1 min-w-0 cursor-pointer"
+                          >
+                            <span className="w-6 h-6 rounded-full bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 text-[10px] font-black flex items-center justify-center shrink-0 border border-cyan-500/30">
+                              {idx + 1}
+                            </span>
+                            <div className="truncate flex-1 min-w-0">
+                              <span className="text-[10px] text-muted block uppercase font-bold">Stop #{idx + 1}</span>
+                              <span className={`text-xs truncate block ${stop.address ? 'font-semibold text-primary' : 'text-muted'}`}>
+                                {stop.address || 'Select stop location…'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => onRemoveStop(stop.id)}
+                            className="p-2 rounded-xl text-muted hover:text-rose-500 hover:bg-rose-500/10 transition-colors shrink-0 cursor-pointer active:scale-95"
+                            title="Remove Stop"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Destination Location */}
+                <div className="space-y-1.5 pt-1">
+                  <div className="flex items-center justify-between">
+                    <label className="type-label flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500 ring-2 ring-amber-500/30" />
+                      Final Destination *
+                    </label>
+                    {pickup && destination && (
+                      <button
+                        type="button"
+                        onClick={onSwapPickupDestination}
+                        className="text-[11px] font-semibold text-muted hover:text-primary flex items-center gap-1 cursor-pointer transition-colors"
+                        title="Swap Pickup and Destination"
+                      >
+                        Swap ⇄
+                      </button>
+                    )}
+                  </div>
+
+                  <div
+                    onClick={() => onOpenSearch('destination')}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => e.key === 'Enter' && onOpenSearch('destination')}
+                    className="w-full text-left p-3.5 rounded-2xl border border-base bg-surface hover:bg-elevated hover:border-amber-500/50 transition-all cursor-pointer flex items-center justify-between gap-3 group active:scale-[0.99]"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0">
+                        <MapPin className="w-4 h-4 text-amber-500" />
+                      </div>
+                      <span className={`text-xs truncate ${destination ? 'font-semibold text-primary' : 'text-muted'}`}>
+                        {destination?.address || 'Search destination city, hotel, or landmark…'}
+                      </span>
+                    </div>
+                    <Search className="w-4 h-4 text-muted group-hover:text-amber-500 transition-colors shrink-0" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Journey Metrics Display (Distance & Driving Duration strictly without fare) */}
+              {isRouting ? (
+                <div className="p-3 rounded-2xl bg-surface border border-base flex items-center justify-center gap-2 text-xs text-muted">
+                  <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
+                  <span>Computing route distance and driving duration…</span>
+                </div>
+              ) : distanceKm > 0 ? (
+                <div className="p-3.5 rounded-2xl bg-surface/70 border border-base text-xs flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-secondary">
+                    <Clock className="w-4 h-4 text-emerald-500 shrink-0" />
+                    <span>Est. Driving Duration: <strong className="text-primary">{durationMinutes} min</strong></span>
+                  </div>
+                  <div className="text-muted text-[11px] shrink-0">
+                    Distance: <strong className="text-secondary">{distanceKm.toFixed(1)} km</strong>
+                  </div>
+                </div>
+              ) : null}
+
+              {routeError && (
+                <p className="text-xs text-rose-500 italic bg-rose-500/10 p-3 rounded-xl border border-rose-500/20">
+                  {routeError}
+                </p>
+              )}
+
+              {/* Mandatory Dispatcher Confirmation Notice Banner */}
+              <div className="rounded-2xl bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-transparent border border-amber-500/30 p-4 flex items-start gap-3 text-xs text-amber-800 dark:text-amber-200">
+                <Sparkles className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <span className="font-black text-amber-700 dark:text-amber-300 block text-xs sm:text-sm">
+                    Fare will be confirmed by our dispatcher.
+                  </span>
+                  <p className="text-[11px] text-amber-700/90 dark:text-amber-200/90 leading-relaxed">
+                    Custom multi-stop itineraries are individually priced based on exact distance, wait time, and vehicle availability. No payment is required until you approve the quote.
+                  </p>
+                </div>
+              </div>
+
+              {/* Continue Action Button */}
+              <button
+                type="button"
+                onClick={handleProceedToVehicle}
+                disabled={!pickup || !destination}
+                className="btn-primary w-full py-3.5 text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg cursor-pointer"
+              >
+                <span>Continue to Vehicle Selection</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════════════════════════════════
+              STEP 2: VEHICLE CATEGORY SELECTION
+              ══════════════════════════════════════════════════════════════════ */}
+          {step === 'vehicle' && (
+            <div className="p-4 sm:p-6 space-y-4 animate-fade-in">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 mb-1">
+                    <Car className="w-3 h-3 text-amber-500" /> VIP Fleet Selection
+                  </div>
+                  <h2 className="text-base sm:text-lg font-bold text-primary">Choose Preferred Vehicle</h2>
+                  <p className="text-xs text-muted mt-0.5">
+                    Select the ideal VIP vehicle category for your custom route itinerary.
+                  </p>
+                </div>
+              </div>
+
+              {/* Vehicle Options Grid */}
+              <div className="space-y-3">
+                {CUSTOM_VEHICLE_OPTIONS.map((item) => {
+                  const isSelected = selectedVehicle === item.category;
+                  return (
+                    <div
+                      key={item.category}
+                      onClick={() => setSelectedVehicle(item.category)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => e.key === 'Enter' && setSelectedVehicle(item.category)}
+                      className={`p-4 rounded-2xl border transition-all cursor-pointer text-left ${
+                        isSelected
+                          ? 'bg-amber-500/10 border-amber-500/70 shadow-md ring-2 ring-amber-500/30'
+                          : 'bg-surface border-base hover:border-amber-500/30 hover:bg-elevated'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-sm text-primary">{item.title}</span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-surface border border-base text-muted">
+                              {item.badge}
+                            </span>
+                            {isSelected && (
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500 text-slate-950 flex items-center gap-1">
+                                <Check className="w-3 h-3 stroke-[3]" /> Selected
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted font-medium mt-1">{item.subtitle}</p>
+
+                          {/* Capacity badges */}
+                          <div className="flex items-center gap-4 mt-2.5 text-xs text-secondary">
+                            <span className="flex items-center gap-1.5 font-medium">
+                              <Users className="w-3.5 h-3.5 text-amber-500" />
+                              Up to {item.capacityPax} Passengers
+                            </span>
+                            <span className="flex items-center gap-1.5 font-medium">
+                              <Luggage className="w-3.5 h-3.5 text-amber-500" />
+                              Up to {item.capacityLuggage} Bags
+                            </span>
+                          </div>
+
+                          {/* Perks */}
+                          <div className="mt-3 space-y-1.5">
+                            {item.perks.map((p, i) => (
+                              <div key={i} className="text-[11px] text-muted flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                                <span>{p}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Dispatcher Rate Badge */}
+                        <div className="text-right shrink-0">
+                          <span className="inline-block px-2.5 py-1 rounded-xl text-[10px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                            Custom Quote
+                          </span>
+                          <span className="block text-[10px] text-muted mt-1">Confirmed by Dispatcher</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Mandatory Dispatcher Confirmation Callout */}
+              <div className="rounded-2xl bg-amber-500/10 border border-amber-500/30 p-3.5 flex items-start gap-2.5 text-xs text-amber-800 dark:text-amber-200">
+                <Info className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold text-amber-700 dark:text-amber-300 block">
+                    No upfront automated rate is billed.
+                  </span>
+                  <span className="text-[11px] text-amber-700/80 dark:text-amber-200/80">
+                    Our operations desk calculates the best available VIP quote based on your route distance and vehicle category.
+                  </span>
+                </div>
+              </div>
+
+              {/* Navigation CTAs */}
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setStep('route')}
+                  className="btn-secondary flex-1 py-3 text-xs cursor-pointer"
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  onClick={handleProceedToDetails}
+                  disabled={!selectedVehicle}
+                  className="btn-primary flex-[2] py-3 text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg cursor-pointer"
+                >
+                  <span>Continue to Passenger Details</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════════════════════════════════
+              STEP 3: PASSENGER & SCHEDULE DETAILS
+              ══════════════════════════════════════════════════════════════════ */}
+          {step === 'details' && (
+            <form onSubmit={handleProceedToReview} className="p-4 sm:p-6 space-y-4 animate-fade-in text-xs">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 mb-1">
+                    <Calendar className="w-3 h-3 text-amber-500" /> Schedule &amp; Contact
+                  </div>
+                  <h2 className="text-base sm:text-lg font-bold text-primary">Schedule &amp; Passenger Information</h2>
+                  <p className="text-xs text-muted mt-0.5">
+                    Provide your travel details so our operations desk can coordinate vehicle dispatch and contact you.
+                  </p>
+                </div>
+              </div>
+
+              {/* Lead Passenger Name & WhatsApp */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div className="space-y-1.5">
+                  <label className="type-label flex items-center gap-1.5">
+                    <User className="w-3 h-3 text-amber-500" /> Lead Passenger Full Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={passengerName}
+                    onChange={(e) => setPassengerName(e.target.value)}
+                    placeholder="e.g., Ahsan Rashid"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="type-label flex items-center gap-1.5">
+                    <Phone className="w-3 h-3 text-emerald-500" /> WhatsApp Contact Phone *
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    value={passengerPhone}
+                    onChange={(e) => setPassengerPhone(e.target.value)}
+                    placeholder="+966 5x xxx xxxx / International"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-amber-500"
+                  />
+                  <span className="text-[10px] text-muted block">Dispatcher will quote you via WhatsApp</span>
+                </div>
+              </div>
+
+              {/* Schedule: Date, Time & Pax Count */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                <div className="space-y-1.5">
+                  <label className="type-label">Pickup Date *</label>
+                  <input
+                    type="date"
+                    required
+                    min={todayDateString}
+                    value={journeyDate}
+                    onChange={(e) => setJourneyDate(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="type-label">Pickup Time *</label>
+                  <input
+                    type="time"
+                    required
+                    value={journeyTime}
+                    onChange={(e) => setJourneyTime(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="type-label">Passengers Count</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={selectedVehicleObj?.capacityPax || 14}
+                    value={passengerCount}
+                    onChange={(e) => setPassengerCount(parseInt(e.target.value) || 1)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs text-center font-bold focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+              </div>
+
+              {/* Round Trip Return Schedule Card */}
+              {tripType === 'round_trip' && (
+                <div className="p-4 rounded-2xl bg-amber-500/5 border border-amber-500/25 space-y-3">
+                  <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 font-bold text-xs">
+                    <RotateCcw className="w-4 h-4 text-amber-500" />
+                    <span>Return Journey Schedule</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div className="space-y-1.5">
+                      <label className="type-label">Return Date *</label>
+                      <input
+                        type="date"
+                        required
+                        min={journeyDate || todayDateString}
+                        value={returnDate}
+                        onChange={(e) => setReturnDate(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="type-label">Return Pickup Time *</label>
+                      <input
+                        type="time"
+                        required
+                        value={returnTime}
+                        onChange={(e) => setReturnTime(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Special Instructions */}
+              <div className="space-y-1.5">
+                <label className="type-label flex items-center gap-1.5">
+                  <MessageSquare className="w-3 h-3 text-muted" /> Special Instructions / Requests (Optional)
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Flight number, waiting request at stops, child car seats, luggage notes..."
+                  value={specialInstructions}
+                  onChange={(e) => setSpecialInstructions(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary placeholder:text-muted text-xs focus:outline-none focus:border-amber-500 resize-none"
+                />
+              </div>
+
+              {/* CTAs */}
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setStep('vehicle')}
+                  className="btn-secondary flex-1 py-3 text-xs cursor-pointer"
+                >
+                  Back
+                </button>
+                <button
+                  type="submit"
+                  className="btn-primary flex-[2] py-3 text-xs font-bold flex items-center justify-center gap-2 shadow-lg cursor-pointer"
+                >
+                  <span>Review Journey Details</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* ══════════════════════════════════════════════════════════════════
+              STEP 4: REVIEW & DISPATCHER SUBMISSION
+              ══════════════════════════════════════════════════════════════════ */}
+          {step === 'review' && (
+            <div className="p-4 sm:p-6 space-y-4 animate-fade-in text-xs">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 mb-1">
+                    <ShieldCheck className="w-3 h-3 text-amber-500" /> Dispatcher Itinerary Review
+                  </div>
+                  <h2 className="text-base sm:text-lg font-bold text-primary">Review Journey &amp; Submit</h2>
+                  <p className="text-xs text-muted mt-0.5">
+                    Verify your custom route specifications. Our dispatch desk will confirm the best direct fare.
+                  </p>
+                </div>
+              </div>
+
+              {/* Itinerary Summary Card */}
+              <div className="p-4 rounded-2xl bg-surface border border-base space-y-3.5">
+                <div className="flex items-center justify-between text-muted text-[11px] border-b border-base/60 pb-2">
+                  <span className="font-bold text-secondary uppercase tracking-wider">Itinerary Details</span>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                    {tripType === 'round_trip' ? 'Round Trip Journey' : 'One-Way Journey'}
+                  </span>
+                </div>
+
+                {/* Route Trail */}
+                <div className="space-y-2">
+                  {pickup && (
+                    <div className="flex items-start gap-2.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 mt-1 shrink-0 ring-2 ring-emerald-500/30" />
+                      <div className="min-w-0 flex-1">
+                        <span className="text-muted text-[10px] uppercase font-bold block">Pickup Location</span>
+                        <p className="font-semibold text-primary text-xs break-words">{pickup.address}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {stops.map((stop, i) => (
+                    <div key={stop.id} className="flex items-start gap-2.5 pl-3 border-l-2 border-dashed border-cyan-500/40 my-1 ml-1">
+                      <span className="w-2 h-2 rounded-full bg-cyan-500 mt-1 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <span className="text-muted text-[10px] uppercase font-bold block">Stop #{i + 1}</span>
+                        <p className="font-semibold text-secondary text-xs break-words">{stop.address}</p>
+                      </div>
+                    </div>
+                  ))}
+
+                  {destination && (
+                    <div className="flex items-start gap-2.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500 mt-1 shrink-0 ring-2 ring-amber-500/30" />
+                      <div className="min-w-0 flex-1">
+                        <span className="text-muted text-[10px] uppercase font-bold block">Final Destination</span>
+                        <p className="font-semibold text-amber-600 dark:text-amber-400 text-xs break-words">{destination.address}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Schedule, Fleet, Passenger Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-3 border-t border-base/60 text-[11px]">
+                  <div>
+                    <span className="text-muted text-[10px] block">Departure</span>
+                    <span className="font-semibold text-primary">{journeyDate} at {journeyTime}</span>
+                  </div>
+                  {tripType === 'round_trip' && (
+                    <div>
+                      <span className="text-muted text-[10px] block">Return Pickup</span>
+                      <span className="font-semibold text-primary">{returnDate} at {returnTime}</span>
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-muted text-[10px] block">Selected Fleet</span>
+                    <span className="font-semibold text-amber-500 capitalize">{selectedVehicle?.replace('_', ' ')}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted text-[10px] block">Total Passengers</span>
+                    <span className="font-semibold text-primary">{passengerCount} Pax</span>
+                  </div>
+                  <div>
+                    <span className="text-muted text-[10px] block">Lead Passenger</span>
+                    <span className="font-semibold text-primary truncate block">{passengerName}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted text-[10px] block">WhatsApp Contact</span>
+                    <span className="font-semibold text-primary truncate block">{passengerPhone}</span>
+                  </div>
+                </div>
+
+                {/* Route statistics */}
+                {distanceKm > 0 && (
+                  <div className="pt-2 border-t border-base/60 flex items-center justify-between text-[11px] text-muted">
+                    <span>Est. Distance: <strong className="text-primary">{distanceKm.toFixed(1)} km</strong></span>
+                    <span>Est. Driving Duration: <strong className="text-primary">{durationMinutes} min</strong></span>
+                  </div>
+                )}
+
+                {specialInstructions && (
+                  <div className="pt-2 border-t border-base/60 text-[11px]">
+                    <span className="text-muted">Special Requests: </span>
+                    <span className="text-secondary italic">{specialInstructions}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* CRITICAL REQUIREMENT: Prominent High-Visibility Dispatcher Fare Notice */}
+              <div className="rounded-2xl bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-amber-500/5 border-2 border-amber-500/50 p-4 space-y-3">
+                <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300 font-black text-sm">
+                  <Sparkles className="w-5 h-5 text-amber-500 shrink-0" />
+                  <span>Fare will be confirmed by our dispatcher.</span>
+                </div>
+                <p className="text-xs text-secondary leading-relaxed">
+                  Because your journey involves customized routing and stops, our dispatch team will review vehicle availability and calculate our best direct quotation.
+                </p>
+
+                {/* Fare quotation status box */}
+                <div className="bg-surface/90 p-3 rounded-xl border border-amber-500/30 font-semibold text-xs flex items-center justify-between">
+                  <span className="text-secondary">Quotation Status:</span>
+                  <span className="text-amber-600 dark:text-amber-400 font-extrabold italic">
+                    To be confirmed by Dispatcher (0 SAR upfront)
+                  </span>
+                </div>
+
+                <p className="text-[11px] text-muted italic">
+                  * You do not need to make any payment right now. The dispatcher will contact you via WhatsApp / phone to confirm the price and payment options.
+                </p>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setStep('details')}
+                  className="btn-secondary flex-1 py-3.5 text-xs cursor-pointer"
+                >
+                  Edit Details
+                </button>
+                <button
+                  type="button"
+                  onClick={onSubmitCustomBooking}
+                  disabled={isSubmitting}
+                  className="btn-primary flex-[2] py-3.5 text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg cursor-pointer"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Submitting Request…</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Submit Custom Booking Request</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

@@ -77,7 +77,16 @@ export default function Navbar() {
   const unreadCount = notifications.filter((n) => !n.read).length;
   const isCustomer = userRole === 'customer';
   const isCustomerPortal = pathname.startsWith('/customer');
-  const showBookCta = (!isAuthenticated || isCustomer) && !pathname.startsWith('/customer');
+  const isAuthRoute =
+    pathname.startsWith('/sign-in') ||
+    pathname.startsWith('/sign-up') ||
+    pathname.startsWith('/forgot-password') ||
+    pathname.startsWith('/reset-password') ||
+    pathname.startsWith('/verify-email') ||
+    pathname.startsWith('/verify-phone') ||
+    pathname.startsWith('/callback') ||
+    pathname.startsWith('/auth');
+  const showBookCta = (!isAuthenticated || isCustomer) && !pathname.startsWith('/customer') && !isAuthRoute;
   const isMarketingPath =
     pathname === '/' ||
     pathname.startsWith('/about') ||
@@ -641,8 +650,8 @@ export default function Navbar() {
         />
       )}
 
-      {/* Mobile sticky book bar: only for customers and guests */}
-      {showBookCta && !pathname.startsWith('/customer') && !pathname.startsWith('/auth') && (!isAuthenticated || userRole === 'customer') && (
+      {/* Mobile sticky book bar: only for customers and guests (hidden on all auth flows & customer portal) */}
+      {showBookCta && !pathname.startsWith('/customer') && !isAuthRoute && (!isAuthenticated || userRole === 'customer') && (
         <div className="sm:hidden fixed bottom-0 inset-x-0 z-40 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pointer-events-none">
           <Link
             href="/customer"

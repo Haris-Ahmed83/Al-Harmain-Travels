@@ -29,31 +29,19 @@ export default function Footer() {
       pathname.startsWith('/dispatcher') ||
       pathname.startsWith('/admin'));
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const media = window.matchMedia('(prefers-reduced-motion: reduce)');
-      setPrefersReducedMotion(media.matches);
-    }
+  // Completely remove footer from all auth flows (sign-in, sign-up, forgot-password, reset-password, verify, callback, etc.)
+  const isAuthPage =
+    Boolean(pathname) &&
+    (pathname.startsWith('/sign-in') ||
+      pathname.startsWith('/sign-up') ||
+      pathname.startsWith('/forgot-password') ||
+      pathname.startsWith('/reset-password') ||
+      pathname.startsWith('/verify-email') ||
+      pathname.startsWith('/verify-phone') ||
+      pathname.startsWith('/callback') ||
+      pathname.startsWith('/auth'));
 
-    const el = footerRef.current;
-    if (!el) return;
-
-    // Observe entry every time user scrolls to the footer
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        setIsInView(entry.isIntersecting);
-      },
-      {
-        threshold: 0.06,
-        rootMargin: '0px 0px -30px 0px',
-      }
-    );
-
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  if (isDashboard) {
+  if (isDashboard || isAuthPage) {
     return null;
   }
 
@@ -127,7 +115,7 @@ export default function Footer() {
             2. MAIN FOOTER CONTENT (4 STAGGERED RISING COLUMNS)
         ───────────────────────────────────────────────────────────── */}
         <div className="py-12 sm:py-14 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-8 lg:gap-10">
-          
+
           {/* ── COL 1: BRAND & MOT LICENSE (4 COLS) ── */}
           <div className="sm:col-span-2 lg:col-span-4 space-y-4" style={getRevealStyle(180)}>
             <div className="flex items-center gap-3">

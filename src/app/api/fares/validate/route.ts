@@ -11,6 +11,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 import { resolveFixedFare } from '@/lib/fixed-fare';
 import type { VehicleCategory, ServiceType, TerminalCode } from '@/types';
 
@@ -19,9 +20,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     const { vehicleCategory, serviceType, terminal } = body as {
-      vehicleCategory: VehicleCategory;
-      serviceType: ServiceType;
-      terminal?: TerminalCode;
+      vehicleCategory: VehicleCategory | string;
+      serviceType: ServiceType | string;
+      terminal?: TerminalCode | string | null;
     };
 
     // Basic presence validation
@@ -32,46 +33,50 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate vehicleCategory enum
-    const validCategories: VehicleCategory[] = ['sedan', 'staria', 'gmc', 'hiroof'];
-    if (!validCategories.includes(vehicleCategory)) {
-      return NextResponse.json(
-        { error: `Invalid vehicleCategory: "${vehicleCategory}".` },
-        { status: 400 },
-      );
+    const effectiveTerminal = terminal && terminal.trim() ? terminal.trim() : null;
+
+    // 1. Check authoritative database first
+    try {
+      let query = supabaseAdmin
+        .from('fixed_fare_rates')
+        .select('*')
+        .eq('vehicle_category', vehicleCategory)
+        .eq('service_type', serviceType);
+
+      if (effectiveTerminal) {
+        query = query.eq('terminal', effectiveTerminal);
+      } else {
+        query = query.is('terminal', null);
+      }
+
+      const { data: dbRates, error: dbErr } = await query;
+
+      if (!dbErr && dbRates && dbRates.length > 0) {
+        const match = dbRates[0];
+        if (!match.is_active) {
+          return NextResponse.json(
+            {
+              found: false,
+              error: 'This rate has been deactivated by administration and is no longer available for booking.',
+            },
+            { status: 422 },
+          );
+        }
+
+        return NextResponse.json({
+          found: true,
+          fare: Number(match.fare_amount),
+          currency: match.currency || 'SAR',
+          fareType: 'fixed',
+          rateId: match.id,
+        });
+      }
+    } catch (dbCheckErr) {
+      console.warn('DB check warning during fare validation:', dbCheckErr);
     }
 
-    // Validate serviceType enum
-    const validServices: ServiceType[] = [
-      'intercity_jeddah_makkah',
-      'intercity_makkah_jeddah',
-      'intercity_makkah_madinah',
-      'intercity_makkah_madinah_sameday',
-      'ziyarat_taif',
-      'ziyarat_taif_bani_saad',
-      'ziyarat_makkah',
-    ];
-    if (!validServices.includes(serviceType)) {
-      return NextResponse.json(
-        { error: `Invalid serviceType: "${serviceType}".` },
-        { status: 400 },
-      );
-    }
-
-    // Validate terminal if provided
-    const validTerminals: TerminalCode[] = ['terminal_1', 'terminal_h', 'terminal_n', null];
-    if (terminal !== undefined && !validTerminals.includes(terminal)) {
-      return NextResponse.json(
-        { error: `Invalid terminal: "${terminal}".` },
-        { status: 400 },
-      );
-    }
-
-    // Resolve fare from the authoritative in-code table
-    // Note: we use the compiled in-code table (not Supabase) so this endpoint
-    // works even if the database is unreachable, and avoids exposing
-    // the service-role key in an API route.
-    const resolution = resolveFixedFare(vehicleCategory, serviceType, terminal ?? null);
+    // 2. Fallback to compile-time rate table if not in DB or if DB offline
+    const resolution = resolveFixedFare(vehicleCategory, serviceType, effectiveTerminal);
 
     if (!resolution.found) {
       return NextResponse.json(
@@ -95,3 +100,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
