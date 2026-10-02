@@ -51,6 +51,67 @@ export default function Footer() {
     }
   };
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    // Detect user preference for reduced motion
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setPrefersReducedMotion(mediaQuery.matches);
+    const motionListener = (e: MediaQueryListEvent) => {
+      setPrefersReducedMotion(e.matches);
+      if (e.matches) setIsInView(true);
+    };
+    mediaQuery.addEventListener?.('change', motionListener);
+
+    if (mediaQuery.matches) {
+      setIsInView(true);
+      return () => {
+        mediaQuery.removeEventListener?.('change', motionListener);
+      };
+    }
+
+    const node = footerRef.current;
+    if (!node || !('IntersectionObserver' in window)) {
+      setIsInView(true);
+      return () => {
+        mediaQuery.removeEventListener?.('change', motionListener);
+      };
+    }
+
+    // Immediately reveal if footer is already visible or near viewport on mount
+    const rect = node.getBoundingClientRect();
+    if (rect.top <= window.innerHeight + 150) {
+      setIsInView(true);
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        if (entry.isIntersecting) {
+          setIsInView(true);
+          observer.disconnect();
+        }
+      },
+      {
+        threshold: 0.02,
+        rootMargin: '100px 0px 0px 0px',
+      }
+    );
+
+    observer.observe(node);
+
+    // Guaranteed fallback: ensure footer content is shown even if observer fails or doesn't trigger
+    const fallbackTimer = setTimeout(() => {
+      setIsInView(true);
+    }, 600);
+
+    return () => {
+      mediaQuery.removeEventListener?.('change', motionListener);
+      observer.disconnect();
+      clearTimeout(fallbackTimer);
+    };
+  }, [pathname]);
+
   // Helper for smooth downward-to-upward staggered reveal
   const getRevealStyle = (delayMs: number) => {
     if (prefersReducedMotion) return {};
