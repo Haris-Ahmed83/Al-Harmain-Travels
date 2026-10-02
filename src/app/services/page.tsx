@@ -13,6 +13,8 @@ import {
   Users,
   Luggage,
 } from 'lucide-react';
+import CinematicTexture from '@/components/cinematic/CinematicTexture';
+import VehicleClassesSection from '@/components/services/VehicleClassesSection';
 
 export default function ServicesPage() {
   const { services, settings } = useApp();
@@ -20,8 +22,9 @@ export default function ServicesPage() {
   const activeServices = services.filter((s) => s.is_active);
 
   return (
-    <div className="min-h-screen bg-page text-primary py-12 lg:py-20">
-      <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 space-y-16">
+    <div className="min-h-screen bg-page text-primary py-12 lg:py-20 relative overflow-hidden">
+      <CinematicTexture variant="light" />
+      <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 space-y-16 relative z-10">
         {/* Header */}
         <div className="text-center max-w-3xl mx-auto space-y-4">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950 border border-emerald-300 dark:border-emerald-700/50 text-emerald-800 dark:text-emerald-300 text-xs font-semibold">
@@ -97,10 +100,11 @@ export default function ServicesPage() {
                   <div className="pt-2">
                     <Link
                       href="/customer"
-                      className="w-full py-3 px-4 rounded-xl text-center text-xs font-bold bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white shadow-md shadow-emerald-950/40 transition-all flex items-center justify-center gap-2"
+                      className="w-full bg-gradient-to-r from-[#d4af37] via-[#e5c567] to-[#d4af37] hover:from-[#c5a030] hover:to-[#dfc15a] text-[#06101e] py-3.5 px-5 rounded-full text-xs font-bold tracking-wider uppercase transition-all duration-300 shadow-xl hover:shadow-[#d4af37]/20 inline-flex items-center justify-center gap-2.5 cursor-pointer group active:scale-95"
                     >
-                      <Compass className="w-4 h-4" />
+                      <Compass className="w-4 h-4 text-[#06101e]" />
                       <span>Book This Service</span>
+                      <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
                     </Link>
                   </div>
                 </div>
@@ -109,41 +113,8 @@ export default function ServicesPage() {
           )}
         </div>
 
-        {/* Fleet Class Overview */}
-        <div className="bg-card border border-base rounded-3xl p-8 sm:p-12 space-y-6">
-          <div className="text-center max-w-2xl mx-auto">
-            <span className="type-eyebrow">Our Vehicle Classes</span>
-            <h2 className="type-section-title mt-1">
-              Maintained to Sovereign Standards
-            </h2>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 pt-4">
-            <div className="p-5 rounded-2xl bg-surface border border-base space-y-2">
-              <span className="type-eyebrow text-amber-500 dark:text-amber-400">Executive Sedan</span>
-              <h4 className="type-card-title">Toyota Camry / Lexus ES</h4>
-              <p className="type-caption">Up to 3 passengers with 2 large luggage bags. Ideal for solo or couple pilgrims.</p>
-            </div>
-
-            <div className="p-5 rounded-2xl bg-surface border border-base space-y-2">
-              <span className="type-eyebrow">Premium Family SUV</span>
-              <h4 className="type-card-title">Hyundai Palisade / Ford Explorer</h4>
-              <p className="type-caption">Up to 5 passengers with 4 large suitcases. Perfect for nuclear families.</p>
-            </div>
-
-            <div className="p-5 rounded-2xl bg-surface border border-base space-y-2">
-              <span className="type-eyebrow text-amber-500 dark:text-amber-400">VIP Ultra Luxury</span>
-              <h4 className="type-card-title">GMC Yukon XL Denali</h4>
-              <p className="type-caption">Up to 7 passengers in executive leather comfort with expansive trunk volume.</p>
-            </div>
-
-            <div className="p-5 rounded-2xl bg-surface border border-base space-y-2">
-              <span className="type-eyebrow text-teal-600 dark:text-teal-400">Family Caravan Van</span>
-              <h4 className="type-card-title">Toyota HiAce Royal Lounge</h4>
-              <p className="type-caption">Up to 11 passengers with dedicated rear luggage compartment.</p>
-            </div>
-          </div>
-        </div>
+        {/* Fleet Class Overview: Interactive Drag & Tilt Component */}
+        <VehicleClassesSection />
       </div>
     </div>
   );

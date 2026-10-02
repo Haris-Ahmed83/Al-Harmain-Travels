@@ -3,7 +3,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import 'leaflet/dist/leaflet.css';
 import { Crosshair, MapPin, Navigation, Compass, Layers } from 'lucide-react';
-import { useTheme } from '@/context/ThemeContext';
 import MapControls, { MapViewMode } from './MapControls';
 import {
   loadGoogleMaps,
@@ -256,7 +255,6 @@ export default function BookingMap({
   onRecenterClick,
   className = 'h-full w-full min-h-[360px] rounded-3xl overflow-hidden',
 }: BookingMapProps) {
-  const { isDark } = useTheme();
   const mapContainerRef = useRef<HTMLDivElement>(null);
 
   // Engine state: 'google' | 'leaflet' | 'loading'
@@ -329,9 +327,7 @@ export default function BookingMap({
         }).setView(initialCenter, initialZoom);
 
         // High-DPI tiles (CartoDB / OpenStreetMap / Satellite)
-        let tileUrl = isDark
-          ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-          : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+        let tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
         if (mapMode === 'satellite') {
           tileUrl = 'https://server.arcgisonline.com/ArcMap/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
         }
@@ -573,15 +569,13 @@ export default function BookingMap({
       if (mode === 'satellite') {
         tileUrl = 'https://server.arcgisonline.com/ArcMap/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
       } else {
-        tileUrl = isDark
-          ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-          : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+        tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
       }
       try {
         lTileLayerRef.current.setUrl(tileUrl);
       } catch { }
     },
-    [isDark]
+    []
   );
 
   const handleMapModeChange = useCallback(
@@ -596,16 +590,6 @@ export default function BookingMap({
     [engine, applyGoogleMapMode, applyLeafletMapMode]
   );
 
-  // Sync theme changes when in standard mode
-  useEffect(() => {
-    if (mapMode === 'standard') {
-      if (engine === 'google') {
-        applyGoogleMapMode('standard');
-      } else if (engine === 'leaflet') {
-        applyLeafletMapMode('standard');
-      }
-    }
-  }, [isDark, engine, mapMode, applyGoogleMapMode, applyLeafletMapMode]);
 
   // Zoom controls
   const handleZoomIn = useCallback(() => {
