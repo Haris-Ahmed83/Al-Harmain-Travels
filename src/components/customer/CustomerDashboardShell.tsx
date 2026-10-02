@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
+import { useTheme } from '@/context/ThemeContext';
 import {
   Compass,
   Clock,
@@ -11,6 +12,8 @@ import {
   UserCheck,
   ChevronLeft,
   ChevronRight,
+  Sun,
+  Moon,
   Sparkles,
   PhoneCall,
   LogOut,
@@ -24,6 +27,7 @@ interface CustomerDashboardShellProps {
 export default function CustomerDashboardShell({ children }: CustomerDashboardShellProps) {
   const pathname = usePathname();
   const { currentUser, activeCustomerBooking, bookings, signOut } = useApp();
+  const { isDark, toggleTheme } = useTheme();
 
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [hasMounted, setHasMounted] = useState(false);
