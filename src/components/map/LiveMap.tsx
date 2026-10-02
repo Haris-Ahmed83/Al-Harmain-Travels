@@ -2,7 +2,6 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import 'leaflet/dist/leaflet.css';
-import { useTheme } from '@/context/ThemeContext';
 import {
   loadGoogleMaps,
   isValidCoordinate,
@@ -236,7 +235,6 @@ export default function LiveMap({
   telemetrySubtext,
   onLocationSelect,
 }: LiveMapProps) {
-  const { isDark } = useTheme();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const [engine, setEngine] = useState<'google' | 'leaflet' | 'loading'>('loading');
   const [mapMode, setMapMode] = useState<MapViewMode>('standard');
@@ -283,9 +281,7 @@ export default function LiveMap({
           attributionControl: false,
         }).setView(center, zoom);
 
-        const tileUrl = isDark
-          ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-          : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+        const tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
 
         const tileLayer = L.tileLayer(tileUrl, {
           maxZoom: 20,
@@ -452,15 +448,13 @@ export default function LiveMap({
       if (mode === 'satellite') {
         tileUrl = 'https://server.arcgisonline.com/ArcMap/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
       } else {
-        tileUrl = isDark
-          ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-          : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+        tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
       }
       try {
         lTileLayerRef.current.setUrl(tileUrl);
       } catch { }
     },
-    [isDark]
+    []
   );
 
   const handleMapModeChange = useCallback(
@@ -475,16 +469,6 @@ export default function LiveMap({
     [engine, applyGoogleMapMode, applyLeafletMapMode]
   );
 
-  // Sync theme changes when in standard mode
-  useEffect(() => {
-    if (mapMode === 'standard') {
-      if (engine === 'google') {
-        applyGoogleMapMode('standard');
-      } else if (engine === 'leaflet') {
-        applyLeafletMapMode('standard');
-      }
-    }
-  }, [isDark, engine, mapMode, applyGoogleMapMode, applyLeafletMapMode]);
 
   // Window resize observer to invalidate Leaflet map size
   useEffect(() => {

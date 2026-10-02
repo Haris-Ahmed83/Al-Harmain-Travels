@@ -14,6 +14,7 @@ import {
   Building,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import CinematicTexture from '@/components/cinematic/CinematicTexture';
 
 export default function ContactPage() {
   const { settings, addNotification } = useApp();
@@ -44,8 +45,9 @@ export default function ContactPage() {
   };
 
   return (
-    <div className="min-h-screen bg-page text-primary py-12 lg:py-20">
-      <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 space-y-16">
+    <div className="min-h-screen bg-page text-primary py-12 lg:py-20 relative overflow-hidden">
+      <CinematicTexture variant="light" />
+      <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 space-y-16 relative z-10">
         {/* Header */}
         <div className="text-center max-w-3xl mx-auto space-y-4">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-100 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-700/50 text-emerald-800 dark:text-emerald-300 text-xs font-semibold">
@@ -116,23 +118,44 @@ export default function ContactPage() {
             </div>
 
             {/* Regional Branches */}
-            <div className="p-8 rounded-3xl bg-card border border-base space-y-4">
-              <h3 className="text-lg font-bold text-primary">Our Regional Stations</h3>
+            <div className="p-8 rounded-3xl bg-card border border-base space-y-6">
+              <h3 className="text-xl font-bold text-primary">Our Regional Stations</h3>
               
-              <div className="space-y-4 text-xs">
-                <div className="p-3.5 rounded-xl bg-surface border border-base">
-                  <div className="font-bold text-amber-600 dark:text-amber-400">Makkah Al-Mukarramah Office</div>
-                  <p className="text-secondary mt-0.5">Ibrahim Al Khalil St, Opposite Abraj Al Bait, Central District</p>
+              <div className="space-y-4 text-sm">
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
+                    <MapPin className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted">Makkah Al-Mukarramah Office</div>
+                    <div className="text-primary font-semibold">
+                      Ibrahim Al Khalil St, Opposite Abraj Al Bait, Central District
+                    </div>
+                  </div>
                 </div>
 
-                <div className="p-3.5 rounded-xl bg-surface border border-base">
-                  <div className="font-bold text-emerald-600 dark:text-emerald-400">Madinah Al-Munawwarah Office</div>
-                  <p className="text-secondary mt-0.5">Northern Central Area, King Fahd Road, Near Masjid Al Nabawi</p>
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
+                    <MapPin className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted">Madinah Al-Munawwarah Office</div>
+                    <div className="text-primary font-semibold">
+                      Northern Central Area, King Fahd Road, Near Masjid Al Nabawi
+                    </div>
+                  </div>
                 </div>
 
-                <div className="p-3.5 rounded-xl bg-surface border border-base">
-                  <div className="font-bold text-teal-600 dark:text-teal-400">Jeddah Airport Terminal Station</div>
-                  <p className="text-secondary mt-0.5">King Abdulaziz International Airport, Terminal 1 Commercial Hub</p>
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
+                    <MapPin className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted">Jeddah Airport Terminal Station</div>
+                    <div className="text-primary font-semibold">
+                      King Abdulaziz International Airport, Terminal 1 Commercial Hub
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -234,9 +257,9 @@ export default function ContactPage() {
 
                   <button
                     type="submit"
-                    className="w-full py-4 px-6 rounded-xl font-bold bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-lg shadow-amber-950/40 transition-all flex items-center justify-center gap-2 text-sm"
+                    className="w-full bg-gradient-to-r from-[#d4af37] via-[#e5c567] to-[#d4af37] hover:from-[#c5a030] hover:to-[#dfc15a] text-[#06101e] py-4 px-6 rounded-full text-xs sm:text-sm font-bold tracking-wider uppercase transition-all duration-300 shadow-xl hover:shadow-[#d4af37]/20 inline-flex items-center justify-center gap-2.5 cursor-pointer group active:scale-95"
                   >
-                    <Send className="w-4 h-4" />
+                    <Send className="w-4 h-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
                     <span>Transmit Message to Operations</span>
                   </button>
                 </form>

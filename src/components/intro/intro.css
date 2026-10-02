@@ -1,0 +1,372 @@
+/* ─────────────────────────────────────────────────
+   AL HARMAIN TRAVELS — BESPOKE CINEMATIC PAGE LOADER
+   Warm luxury solid background (#faf8f4), kinetic moving texture,
+   sacred geometry, real-time loading progression & velvet curtain reveal.
+───────────────────────────────────────────────── */
+
+.intro-overlay {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 99999999;
+  background-color: #faf8f4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  will-change: transform, clip-path, opacity;
+}
+
+/* Velvet Curtain Slide-Up Exit when Page Completely Loads */
+.intro-overlay.intro-dismissing {
+  animation: intro-curtain-reveal 0.9s cubic-bezier(0.77, 0, 0.175, 1) forwards !important;
+}
+
+@keyframes intro-curtain-reveal {
+  0% {
+    transform: translateY(0);
+    clip-path: inset(0 0 0 0);
+  }
+  100% {
+    transform: translateY(-100%);
+    clip-path: inset(0 0 100% 0);
+    visibility: hidden;
+  }
+}
+
+/* Ambient Radial Golden Aura */
+.intro-ambient-aura {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(800px, 90vw);
+  height: min(800px, 90vw);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    circle,
+    rgba(212, 175, 55, 0.1) 0%,
+    rgba(184, 146, 42, 0.05) 45%,
+    rgba(11, 71, 54, 0.03) 65%,
+    transparent 80%
+  );
+  pointer-events: none;
+  animation: intro-aura-breathe 6s ease-in-out infinite;
+  filter: blur(40px);
+}
+
+@keyframes intro-aura-breathe {
+  0%, 100% {
+    transform: translate(-50%, -50%) scale(0.92);
+    opacity: 0.6;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.1);
+    opacity: 0.95;
+  }
+}
+
+/* Stage Container */
+.intro-stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: min(650px, 92vw);
+  padding: 1.5rem;
+  z-index: 10;
+}
+
+/* ── Sacred Geometric Emblem ── */
+.intro-emblem-wrap {
+  position: relative;
+  width: clamp(76px, 12vw, 108px);
+  height: clamp(76px, 12vw, 108px);
+  margin-bottom: clamp(1.25rem, 3vh, 2rem);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: intro-emblem-float 5s ease-in-out infinite;
+}
+
+@keyframes intro-emblem-float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+.intro-emblem-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Subtle continuous rotation for outer ring */
+.intro-spin-slow {
+  transform-origin: center;
+  animation: intro-rotate-cw 40s linear infinite;
+}
+
+@keyframes intro-rotate-cw {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Rub el Hizb Star breathing */
+.intro-star-1 {
+  transform-origin: center;
+  animation: intro-star-pulse 4s ease-in-out infinite;
+}
+
+.intro-star-2 {
+  transform-origin: center;
+  animation: intro-star-pulse 4s ease-in-out infinite 0.75s;
+}
+
+@keyframes intro-star-pulse {
+  0%, 100% {
+    stroke-opacity: 0.65;
+  }
+  50% {
+    stroke-opacity: 1;
+  }
+}
+
+.intro-core-dot {
+  animation: intro-core-glow 2.5s ease-in-out infinite alternate;
+}
+
+@keyframes intro-core-glow {
+  0% {
+    r: 3;
+    opacity: 0.7;
+  }
+  100% {
+    r: 4.5;
+    opacity: 1;
+  }
+}
+
+/* Center Calligraphic Monogram */
+.intro-emblem-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: 'Amiri', 'Traditional Arabic', 'Scheherazade New', serif;
+  font-size: clamp(1rem, 2.2vw, 1.4rem);
+  font-weight: 700;
+  color: #b8922a;
+  letter-spacing: 0.05em;
+  text-shadow: 0 0 16px rgba(184, 146, 42, 0.35);
+  pointer-events: none;
+}
+
+/* ── Brand Title Container ── */
+.intro-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  column-gap: clamp(0.35rem, 1.2vw, 0.85rem);
+  row-gap: 0.2rem;
+  font-family: var(--font-display, 'Cormorant Garamond', Georgia, serif);
+  font-size: clamp(2rem, 5.5vw + 0.4rem, 3.8rem);
+  font-weight: 700;
+  color: #06101e;
+  text-align: center;
+  line-height: 1.15;
+  letter-spacing: 0.18em;
+  opacity: 0;
+  transform: translateY(14px);
+  animation: intro-title-appear 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.1s forwards;
+}
+
+@keyframes intro-title-appear {
+  0% {
+    opacity: 0;
+    filter: blur(8px);
+    transform: translateY(14px);
+    letter-spacing: 0.26em;
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0);
+    letter-spacing: 0.18em;
+  }
+}
+
+.intro-word {
+  display: inline-flex;
+  white-space: nowrap;
+}
+
+.intro-word-gold {
+  color: #b8922a;
+  background: linear-gradient(135deg, #b8922a 0%, #d4af37 50%, #9c7b20 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Kinetic Staggered Letter Entrance */
+.intro-char {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(10px) scale(0.92);
+  filter: blur(3px);
+  animation: intro-char-kinetic 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  animation-delay: calc(0.35s + var(--char-idx, 0) * 35ms);
+}
+
+@keyframes intro-char-kinetic {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.92);
+    filter: blur(3px);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.03);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+/* Elegant Tagline */
+.intro-tagline {
+  margin-top: clamp(0.4rem, 1vh, 0.75rem);
+  font-family: var(--font-body, 'Plus Jakarta Sans', system-ui, sans-serif);
+  font-size: clamp(0.6rem, 1vw + 0.2rem, 0.72rem);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.28em;
+  color: #0b4736;
+  opacity: 0;
+  animation: intro-tagline-fade 0.8s ease 0.6s forwards;
+  text-align: center;
+}
+
+@keyframes intro-tagline-fade {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 0.85;
+    transform: translateY(0);
+  }
+}
+
+/* ── Progress Track & Status ── */
+.intro-progress-container {
+  margin-top: clamp(1.75rem, 4vh, 2.75rem);
+  width: 100%;
+  max-width: clamp(200px, 45vw, 290px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.65rem;
+  opacity: 0;
+  animation: intro-progress-fade 0.7s ease 0.4s forwards;
+}
+
+@keyframes intro-progress-fade {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.intro-progress-bar {
+  width: 100%;
+  height: 2px;
+  background-color: rgba(6, 16, 30, 0.08);
+  border-radius: 9999px;
+  overflow: hidden;
+  position: relative;
+}
+
+.intro-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #b8922a 0%, #d4af37 60%, #059669 100%);
+  border-radius: 9999px;
+  transition: width 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: 0 0 10px rgba(184, 146, 42, 0.45);
+}
+
+.intro-progress-meta {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-body, 'Plus Jakarta Sans', system-ui, sans-serif);
+  font-size: 0.6875rem;
+  color: #64748b;
+  letter-spacing: 0.02em;
+}
+
+.intro-status-text {
+  font-size: clamp(0.625rem, 0.85vw + 0.15rem, 0.6875rem);
+  font-weight: 500;
+  color: #475569;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 80%;
+  transition: opacity 0.25s ease;
+}
+
+.intro-percentage-num {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: #b8922a;
+}
+
+/* Accessibility: Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  .intro-overlay.intro-dismissing {
+    animation: intro-quick-fade 0.3s ease forwards !important;
+  }
+  @keyframes intro-quick-fade {
+    to {
+      opacity: 0;
+      visibility: hidden;
+    }
+  }
+  .intro-title,
+  .intro-char,
+  .intro-tagline,
+  .intro-emblem-wrap,
+  .intro-spin-slow,
+  .intro-ambient-aura,
+  .intro-progress-container {
+    animation: none !important;
+    opacity: 1 !important;
+    filter: none !important;
+    transform: none !important;
+  }
+}

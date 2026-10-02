@@ -1,0 +1,37 @@
+{
+  "name": "Al Harmain Travels — Luxury Chauffeur & Umrah",
+  "short_name": "Al Harmain",
+  "description": "VIP chauffeur transfers across Makkah, Madinah, and Jeddah. Authorized Haram clearances, GPS fleet tracking, and luxury transfers.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#faf8f4",
+  "theme_color": "#0b4736",
+  "categories": ["travel", "transportation", "lifestyle"],
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
