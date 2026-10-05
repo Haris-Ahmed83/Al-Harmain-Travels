@@ -14,6 +14,7 @@ import {
   Compass,
 } from 'lucide-react';
 import CinematicTexture from '@/components/cinematic/CinematicTexture';
+import BrandLogo from '@/components/ui/BrandLogo';
 
 export default function Footer() {
   const pathname = usePathname();
@@ -41,9 +42,7 @@ export default function Footer() {
       pathname.startsWith('/callback') ||
       pathname.startsWith('/auth'));
 
-  if (isDashboard || isAuthPage) {
-    return null;
-  }
+  const shouldHideFooter = isDashboard || isAuthPage;
 
   const scrollToTop = () => {
     if (typeof window !== 'undefined') {
@@ -52,7 +51,7 @@ export default function Footer() {
   };
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (shouldHideFooter || typeof window === 'undefined') return;
 
     // Detect user preference for reduced motion
     const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -123,6 +122,10 @@ export default function Footer() {
     };
   };
 
+  if (shouldHideFooter) {
+    return null;
+  }
+
   return (
     <footer
       ref={footerRef}
@@ -179,19 +182,7 @@ export default function Footer() {
 
           {/* ── COL 1: BRAND & MOT LICENSE (4 COLS) ── */}
           <div className="sm:col-span-2 lg:col-span-4 space-y-4" style={getRevealStyle(180)}>
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-emerald-800/70 border border-[#d4af37]/40 flex items-center justify-center text-[#d4af37] font-semibold text-sm shadow-sm">
-                الح
-              </div>
-              <div className="flex flex-col">
-                <span className="text-lg font-semibold tracking-tight text-white font-sans">
-                  Al Harmain Travels
-                </span>
-                <span className="text-[10px] tracking-wider uppercase text-[#d4af37] font-medium font-sans">
-                  VIP Chauffeur &bull; Makkah &bull; Madinah
-                </span>
-              </div>
-            </div>
+            <BrandLogo size="md" href="/" subtitle="VIP Chauffeur · Makkah · Madinah" />
 
             {/* Clean Formal MOT License Info */}
             <div className="flex items-center gap-2 text-xs text-emerald-200/80 pt-1">

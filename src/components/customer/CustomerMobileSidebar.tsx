@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   MessageSquare,
 } from 'lucide-react';
+import BrandLogo from '@/components/ui/BrandLogo';
 
 interface CustomerMobileSidebarProps {
   isOpen: boolean;
@@ -104,24 +105,7 @@ export default function CustomerMobileSidebar({ isOpen, onClose }: CustomerMobil
       >
         {/* Header: Brand Emblem + Title + Close Button (Static brand prevents accidental click-throughs) */}
         <div className="flex items-center justify-between px-4 pb-4 border-b border-slate-200/80 dark:border-slate-800/80 shrink-0">
-          <div className="flex items-center gap-2.5 select-none min-w-0">
-            <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-950 flex items-center justify-center shadow-md border border-emerald-500/30 shrink-0">
-              <span className="text-base font-bold text-amber-400 tracking-tighter">الح</span>
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-baseline gap-1 leading-none">
-                <span className="font-display text-base font-semibold tracking-heading text-slate-900 dark:text-white">
-                  Al Harmain
-                </span>
-                <span className="font-display text-base font-semibold tracking-heading text-amber-500 dark:text-amber-400">
-                  Travel
-                </span>
-              </div>
-              <p className="text-[10px] text-emerald-600 dark:text-emerald-400 tracking-wider uppercase font-bold mt-1">
-                VIP Customer Portal
-              </p>
-            </div>
-          </div>
+          <BrandLogo size="sm" href="/customer" subtitle="VIP Customer Portal" />
 
           <button
             type="button"

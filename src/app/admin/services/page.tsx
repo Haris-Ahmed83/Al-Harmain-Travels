@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '@/context/AppContext';
 import { ServiceItem, VehicleType } from '@/types';
 import {
@@ -15,8 +15,18 @@ import {
   Car,
   DollarSign,
   X,
+  Sparkles,
+  Layers,
+  Globe,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  AdminPageHeader,
+  AdminStatCard,
+  AdminStatusBadge,
+  AdminActionButton,
+  AdminActionGroup,
+} from '@/components/admin/AdminUIComponents';
 import { CardGridSkeleton, EmptyStateView } from '@/components/ui/DataStateSkeletons';
 
 export default function AdminServicesPage() {
@@ -33,6 +43,14 @@ export default function AdminServicesPage() {
   const [basePrice, setBasePrice] = useState<number>(300);
   const [vehicleType, setVehicleType] = useState<VehicleType>('vip_gmc');
   const [features, setFeatures] = useState<string>('Direct Haram Access\nComplimentary Zamzam\nMultilingual Captain');
+
+  // Metrics
+  const metrics = useMemo(() => {
+    const total = services.length;
+    const published = services.filter((s) => s.is_active).length;
+    const hidden = total - published;
+    return { total, published, hidden };
+  }, [services]);
 
   const openAddModal = () => {
     setEditingServiceId(null);
@@ -60,7 +78,7 @@ export default function AdminServicesPage() {
 
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title || !description) {
+    if (!title.trim() || !description.trim()) {
       toast.error('Title and description are required.');
       return;
     }
@@ -74,20 +92,20 @@ export default function AdminServicesPage() {
 
     if (editingServiceId) {
       await updateService(editingServiceId, {
-        title,
+        title: title.trim(),
         slug: generatedSlug,
-        description,
-        image_url: imageUrl,
+        description: description.trim(),
+        image_url: imageUrl.trim(),
         base_price: basePrice,
         vehicle_type: vehicleType,
         features: featureList,
       });
     } else {
       await addService({
-        title,
+        title: title.trim(),
         slug: generatedSlug,
-        description,
-        image_url: imageUrl,
+        description: description.trim(),
+        image_url: imageUrl.trim(),
         base_price: basePrice,
         vehicle_type: vehicleType,
         features: featureList,
@@ -100,26 +118,50 @@ export default function AdminServicesPage() {
 
   return (
     <div className="page-shell space-y-6">
-      {/* Header */}
-      <div className="bg-card border border-base p-6 sm:p-8 rounded-3xl shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <span className="type-eyebrow">Marketing &amp; Catalog CMS</span>
-          <h1 className="type-page-title mt-1">Services Management</h1>
-          <p className="text-xs text-secondary">
-            Add, update, or deactivate public travel services displayed on the public marketing website.
-          </p>
-        </div>
-
+      {/* ── 1. Page Header ────────────────────────────────────────────────── */}
+      <AdminPageHeader
+        eyebrow="Marketing & Catalog CMS"
+        badge="Live Showcase"
+        title="Services & Packages CMS"
+        description="Configure public travel services, Umrah transportation bundles, and VIP airport meet-and-assist packages presented on the landing portal."
+      >
         <button
           onClick={openAddModal}
-          className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow flex items-center gap-2 transition-all self-start sm:self-auto"
+          className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-sm flex items-center gap-2 transition-all cursor-pointer"
         >
           <Plus className="w-4 h-4" />
-          <span>Add New Service</span>
+          <span>+ Add New Service</span>
         </button>
+      </AdminPageHeader>
+
+      {/* ── 2. Metric Stat Cards ──────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <AdminStatCard
+          title="Total Service Packages"
+          value={metrics.total}
+          subtitle="Catalog offerings"
+          icon={<Briefcase className="w-4.5 h-4.5" />}
+          tone="neutral"
+        />
+
+        <AdminStatCard
+          title="Published on Web"
+          value={metrics.published}
+          subtitle="Active for public bookings"
+          icon={<Globe className="w-4.5 h-4.5" />}
+          tone="green"
+        />
+
+        <AdminStatCard
+          title="Hidden / Draft"
+          value={metrics.hidden}
+          subtitle="Offline packages"
+          icon={<EyeOff className="w-4.5 h-4.5" />}
+          tone="amber"
+        />
       </div>
 
-      {/* Services Grid */}
+      {/* ── 3. Services Grid ──────────────────────────────────────────────── */}
       {isDataLoading ? (
         <CardGridSkeleton count={6} heightClass="h-72" />
       ) : services.length === 0 ? (
@@ -133,201 +175,214 @@ export default function AdminServicesPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {services.map((s) => (
-          <div
-            key={s.id}
-            className={`p-6 rounded-3xl bg-card border transition-all flex flex-col justify-between shadow-xl ${
-              s.is_active ? 'border-base' : 'border-rose-500/40 dark:border-rose-900/40 opacity-70'
-            }`}
-          >
-            <div className="space-y-4">
-              <div className="relative h-40 rounded-2xl overflow-hidden bg-surface">
-                <img
-                  src={s.image_url || 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=800&q=80'}
-                  alt={s.title}
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute top-2 right-2 px-2.5 py-0.5 rounded-full bg-slate-950/80 text-[11px] font-bold text-amber-400 border border-amber-400/30">
-                  {s.base_price} {settings.currency}
-                </div>
-                <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-emerald-950/80 text-[10px] uppercase font-bold text-emerald-300">
-                  {s.vehicle_type}
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between">
-                  <h3 className="text-base font-bold text-primary">{s.title}</h3>
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold ${
-                      s.is_active
-                        ? 'bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
-                        : 'bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800'
-                    }`}
-                  >
-                    {s.is_active ? 'Active on Web' : 'Hidden'}
-                  </span>
-                </div>
-                <p className="text-xs text-secondary mt-1 line-clamp-2">{s.description}</p>
-              </div>
-
-              <div className="space-y-1">
-                <span className="text-[10px] uppercase tracking-wider text-muted font-bold">Key Highlights:</span>
-                {s.features && s.features.slice(0, 3).map((feat, idx) => (
-                  <div key={idx} className="text-[11px] text-secondary flex items-center gap-1.5 truncate">
-                    <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
-                    <span>{feat}</span>
+            <div
+              key={s.id}
+              className={`p-5 sm:p-6 rounded-3xl bg-card border transition-all flex flex-col justify-between shadow-sm hover:shadow-md ${
+                s.is_active ? 'border-base hover:border-strong' : 'border-rose-500/30 opacity-75'
+              }`}
+            >
+              <div className="space-y-4">
+                <div className="relative h-44 rounded-2xl overflow-hidden bg-surface">
+                  <img
+                    src={
+                      s.image_url ||
+                      'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=800&q=80'
+                    }
+                    alt={s.title}
+                    className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
+                  />
+                  <div className="absolute top-2.5 right-2.5 px-3 py-1 rounded-full bg-slate-950/85 text-xs font-black text-amber-400 border border-amber-400/30 shadow-md">
+                    {s.base_price} {settings.currency}
                   </div>
-                ))}
+                  <div className="absolute bottom-2.5 left-2.5 px-2.5 py-1 rounded-lg bg-emerald-950/90 text-[10.5px] uppercase font-bold text-emerald-300 border border-emerald-500/30">
+                    {s.vehicle_type?.replace(/_/g, ' ')}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-base font-bold text-primary truncate" title={s.title}>
+                      {s.title}
+                    </h3>
+                    <AdminStatusBadge status={s.is_active ? 'published' : 'hidden'} size="sm" />
+                  </div>
+                  <p className="text-xs text-secondary mt-1.5 line-clamp-2 leading-relaxed">
+                    {s.description}
+                  </p>
+                </div>
+
+                <div className="space-y-1.5 pt-2 border-t border-base/70">
+                  <span className="text-[10.5px] uppercase tracking-wider text-muted font-bold block">
+                    Key Highlights:
+                  </span>
+                  {s.features &&
+                    s.features.slice(0, 3).map((feat, idx) => (
+                      <div key={idx} className="text-xs text-secondary flex items-center gap-2 truncate">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                        <span className="truncate">{feat}</span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+
+              {/* Action Buttons: View/Toggle -> Edit -> Delete */}
+              <div className="pt-4 mt-4 border-t border-base flex items-center justify-between gap-2">
+                <button
+                  onClick={() => toggleServiceActive(s.id)}
+                  className={`inline-flex items-center gap-1.5 text-xs font-bold cursor-pointer transition-colors px-2.5 py-1.5 rounded-xl border ${
+                    s.is_active
+                      ? 'text-amber-700 dark:text-amber-400 bg-amber-500/10 border-amber-500/25 hover:bg-amber-500/20'
+                      : 'text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/25 hover:bg-emerald-500/20'
+                  }`}
+                >
+                  {s.is_active ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  <span>{s.is_active ? 'Deactivate' : 'Publish to Web'}</span>
+                </button>
+
+                <AdminActionGroup>
+                  <AdminActionButton
+                    variant="edit"
+                    tooltip="Edit service package"
+                    onClick={() => openEditModal(s)}
+                  />
+                  <AdminActionButton
+                    variant="delete"
+                    tooltip="Delete service package"
+                    onClick={() => deleteService(s.id)}
+                  />
+                </AdminActionGroup>
               </div>
             </div>
-
-            {/* Actions */}
-            <div className="pt-4 mt-4 border-t border-base flex items-center justify-between">
-              <button
-                onClick={() => toggleServiceActive(s.id)}
-                className={`flex items-center gap-1 text-xs font-semibold ${
-                  s.is_active ? 'text-amber-600 dark:text-amber-400 hover:text-amber-500' : 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-500'
-                }`}
-              >
-                {s.is_active ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                <span>{s.is_active ? 'Deactivate' : 'Publish'}</span>
-              </button>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => openEditModal(s)}
-                  className="p-1.5 rounded-lg bg-surface hover:bg-elevated text-secondary hover:text-primary transition-colors"
-                  title="Edit Service"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => deleteService(s.id)}
-                  className="p-1.5 rounded-lg bg-surface hover:bg-rose-100 dark:hover:bg-rose-950 text-secondary hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
-                  title="Delete Service"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
       )}
 
-      {/* Add / Edit Service Modal */}
+      {/* ── 4. Add / Edit Service Modal ────────────────────────────────────── */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <form
             onSubmit={handleFormSubmit}
-            className="bg-card border border-base rounded-3xl p-6 max-w-lg w-full space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto"
+            className="bg-card border border-base rounded-3xl p-6 sm:p-7 max-w-lg w-full space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto"
           >
             <div className="flex items-center justify-between border-b border-base pb-3">
-              <div className="flex items-center gap-2">
-                <Briefcase className="w-5 h-5 text-emerald-500" />
-                <h3 className="type-card-title">
-                  {editingServiceId ? 'Edit Service' : 'Add New Public Service'}
-                </h3>
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+                  <Briefcase className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="type-card-title text-base font-bold text-primary">
+                    {editingServiceId ? 'Edit Service Package' : 'Add New Public Service'}
+                  </h3>
+                  <p className="text-xs text-muted">Marketing catalog item configuration</p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setModalOpen(false)}
-                className="text-muted hover:text-primary transition-colors"
+                className="text-muted hover:text-primary transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-3 text-xs">
+            <div className="space-y-3.5 text-xs">
               <div>
-                <label className="type-label">Service Title *</label>
+                <label className="type-label block mb-1">Service Title *</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Jeddah Airport to Makkah VIP"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary placeholder:text-muted focus:outline-none focus:border-emerald-500"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary placeholder:text-muted focus:outline-none focus:border-emerald-500 text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="type-label block mb-1">Slug URL Identifier</label>
+                <input
+                  type="text"
+                  placeholder="auto-generated-from-title"
+                  value={slug}
+                  onChange={(e) => setSlug(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary font-mono placeholder:text-muted focus:outline-none focus:border-emerald-500 text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="type-label block mb-1">Marketing Description *</label>
+                <textarea
+                  required
+                  rows={3}
+                  placeholder="Comprehensive description of the ride experience..."
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary placeholder:text-muted focus:outline-none focus:border-emerald-500 text-xs leading-relaxed"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="type-label">Base Price (SAR) *</label>
+                  <label className="type-label block mb-1">Base Starting Price ({settings.currency})</label>
                   <input
                     type="number"
-                    required
+                    min={0}
                     value={basePrice}
                     onChange={(e) => setBasePrice(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary placeholder:text-muted focus:outline-none focus:border-emerald-500"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary focus:outline-none focus:border-emerald-500 text-xs"
                   />
                 </div>
                 <div>
-                  <label className="type-label">Vehicle Type</label>
+                  <label className="type-label block mb-1">Vehicle Category</label>
                   <select
                     value={vehicleType}
                     onChange={(e) => setVehicleType(e.target.value as VehicleType)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary focus:outline-none focus:border-emerald-500"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary focus:outline-none focus:border-emerald-500 text-xs"
                   >
-                    <option value="vip_gmc">VIP GMC Yukon XL</option>
+                    <option value="vip_gmc">VIP GMC Yukon</option>
+                    <option value="sedan">Luxury Sedan</option>
                     <option value="suv">Family SUV</option>
-                    <option value="sedan">Executive Sedan</option>
-                    <option value="van">Royal Van</option>
-                    <option value="bus">Pilgrim Bus</option>
+                    <option value="van">Executive Van</option>
+                    <option value="bus">Coach Bus</option>
                   </select>
                 </div>
               </div>
 
               <div>
-                <label className="type-label">Image URL</label>
+                <label className="type-label block mb-1">Photo Image URL</label>
                 <input
                   type="url"
-                  placeholder="https://..."
+                  placeholder="https://images.unsplash.com/..."
                   value={imageUrl}
                   onChange={(e) => setImageUrl(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary placeholder:text-muted focus:outline-none focus:border-emerald-500"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary font-mono placeholder:text-muted focus:outline-none focus:border-emerald-500 text-xs"
                 />
               </div>
 
               <div>
-                <label className="type-label">Service Description *</label>
-                <textarea
-                  rows={3}
-                  required
-                  placeholder="Detailed description of what the service offers..."
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary placeholder:text-muted focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label className="type-label">
-                  Features &amp; Inclusions (one per line)
-                </label>
+                <label className="type-label block mb-1">Key Feature Highlights (One per line)</label>
                 <textarea
                   rows={3}
                   value={features}
                   onChange={(e) => setFeatures(e.target.value)}
-                  placeholder="Meet & Greet&#10;Direct Haram Access&#10;Water & Zamzam"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary placeholder:text-muted focus:outline-none focus:border-emerald-500"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary focus:outline-none focus:border-emerald-500 text-xs leading-relaxed"
                 />
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-3 pt-2">
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-base">
               <button
                 type="button"
                 onClick={() => setModalOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-surface text-secondary hover:bg-elevated hover:text-primary transition-colors"
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-muted hover:text-primary cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white"
+                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm cursor-pointer"
               >
-                {editingServiceId ? 'Save Changes' : 'Publish Service'}
+                {editingServiceId ? 'Update Service' : 'Publish Service'}
               </button>
             </div>
           </form>

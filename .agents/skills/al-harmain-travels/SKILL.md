@@ -68,7 +68,7 @@ Access is guarded by `src/components/auth/RouteGuard.tsx`:
 | **Customer** | `/customer/*` | Interactive ride booking, trip history (`/bookings`), live vehicle radar (`/track`), saved places, emergency contacts, profile edit. |
 | **Driver** | `/driver/*` | Driver cockpit, online/offline status switch, trip acceptance & execution, extra charges (tolls, parking), cash collection tracking, earnings overview (`/earnings`). |
 | **Dispatcher** | `/dispatcher/*` | Fleet radar with live vehicle markers, trip queue (`/queue`), manual telephone booking intake (`/new-booking`), driver assignment & auto-dispatch, customer directory. |
-| **Admin** | `/admin/*` | Executive KPI dashboard, fleet vehicle inventory (`/fleet`), staff & driver onboarding (`/users`), Umrah/Airport service package CMS (`/services`), financial reports (`/reports`), audit logs, system settings (`/settings`). |
+| **Admin** | `/admin/*` | Executive KPI dashboard, staff & driver onboarding (`/users`), rates & tariff master (`/rates`), Umrah/Airport service package CMS (`/services`), financial reports (`/reports`), audit logs, system settings (`/settings`). |
 
 ---
 

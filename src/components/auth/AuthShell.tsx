@@ -3,6 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { ShieldCheck, Lock, Award, Headphones } from 'lucide-react';
+import BrandLogo from '@/components/ui/BrandLogo';
 
 interface AuthShellProps {
   badge?: string;
@@ -53,27 +54,8 @@ export default function AuthShell({
         {/* Brand Header */}
         <div className="text-center space-y-3">
           {/* Logo & Wordmark */}
-          <div>
-            <Link
-              href="/"
-              className="inline-flex items-center gap-3 group transition-transform active:scale-[0.98] focus-visible:outline-none"
-            >
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-950 flex items-center justify-center text-amber-300 font-bold text-xl border border-emerald-500/30 shadow-lg shadow-emerald-950/30 group-hover:border-amber-400/50 group-hover:scale-105 transition-all duration-300">
-                <span className="font-serif tracking-tight drop-shadow">الح</span>
-              </div>
-              <div className="text-left">
-                <div className="font-display text-2xl font-bold text-primary leading-none tracking-tight group-hover:text-emerald-500 dark:group-hover:text-emerald-400 transition-colors">
-                  Al Harmain <span className="text-amber-500">Travel</span>
-                </div>
-                <div className="text-[10px] text-emerald-600 dark:text-emerald-400/90 tracking-label uppercase font-semibold mt-1 flex items-center gap-1.5">
-                  <span>Makkah</span>
-                  <span className="text-amber-500/60">&bull;</span>
-                  <span>Madinah</span>
-                  <span className="text-amber-500/60">&bull;</span>
-                  <span>Jeddah</span>
-                </div>
-              </div>
-            </Link>
+          <div className="flex justify-center">
+            <BrandLogo size="lg" href="/" subtitle="Makkah · Madinah · Jeddah" />
           </div>
 
           {/* Page Heading & Contextual Subtitle */}

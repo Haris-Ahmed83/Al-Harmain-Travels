@@ -7,6 +7,7 @@ import {
   Vehicle,
   SystemSettings,
   UserRole,
+  UserStatus,
   Profile,
   BookingStatus,
   DriverStatus,
@@ -165,6 +166,32 @@ interface AppContextType {
   deleteRateTerminal: (id: string) => Promise<{ success: boolean; error?: string; canDeactivate?: boolean; linkedBookings?: number }>;
 
   // User Management (Admin)
+  adminCreateUser: (data: {
+    role: UserRole;
+    full_name: string;
+    email: string;
+    phone: string;
+    password?: string;
+    email_verified?: boolean;
+    status?: UserStatus;
+    license_number?: string;
+    national_id?: string;
+    assigned_vehicle_id?: string;
+  }) => Promise<{ success: boolean; user?: Profile; error?: string; generatedPassword?: string }>;
+  adminUpdateUser: (userId: string, data: {
+    full_name?: string;
+    email?: string;
+    phone?: string;
+    role?: UserRole;
+    status?: UserStatus;
+    email_verified?: boolean;
+    phone_verified?: boolean;
+    license_number?: string;
+    national_id?: string;
+    assigned_vehicle_id?: string | null;
+    password?: string;
+  }) => Promise<{ success: boolean; error?: string }>;
+  adminAssignVehicle: (driverId: string, vehicleId: string | null) => Promise<{ success: boolean; error?: string }>;
   createStaffAccount: (data: { full_name: string; email: string; phone: string }) => Promise<Profile>;
   createDriverAccount: (data: { full_name: string; email: string; phone: string; license_number: string; vehicle_id?: string }) => Promise<Profile>;
   toggleUserStatus: (id: string) => void;
@@ -458,7 +485,45 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       if (dbVehicles) setVehicles(dbVehicles as Vehicle[]);
       if (dbPlaces) setSavedPlaces(dbPlaces as SavedPlace[]);
       if (dbRecents) setRecentLocations(dbRecents as RecentLocation[]);
-      if (dbDrivers) setDrivers(dbDrivers as Driver[]);
+      if (dbDrivers) {
+        const currentRateVehs: RateVehicleType[] = (dbRateVehicles && dbRateVehicles.length > 0)
+          ? (dbRateVehicles as RateVehicleType[])
+          : rateVehicles;
+        const currentVehicles: Vehicle[] = (dbVehicles && dbVehicles.length > 0)
+          ? (dbVehicles as Vehicle[])
+          : vehicles;
+
+        const mappedDrivers = (dbDrivers as any[]).map((d) => {
+          if (d.assigned_vehicle_id) {
+            const rv = currentRateVehs.find((v) => v.id === d.assigned_vehicle_id || v.category === d.assigned_vehicle_id);
+            if (rv) {
+              return {
+                ...d,
+                assigned_vehicle: {
+                  id: rv.id,
+                  plate_number: rv.category.toUpperCase(),
+                  make: rv.name,
+                  model: `(${rv.seating_capacity} Seats)`,
+                  vehicle_type: rv.category as any,
+                  seating_capacity: rv.seating_capacity,
+                  status: rv.is_active ? 'assigned' : 'inactive',
+                  created_at: rv.created_at || new Date().toISOString(),
+                  updated_at: rv.updated_at || new Date().toISOString(),
+                },
+              };
+            }
+            const leg = currentVehicles.find((v) => v.id === d.assigned_vehicle_id);
+            if (leg) {
+              return {
+                ...d,
+                assigned_vehicle: leg,
+              };
+            }
+          }
+          return d;
+        });
+        setDrivers(mappedDrivers as Driver[]);
+      }
       if (dbBookings) {
         const uniqueMap = new Map<string, Booking>();
         for (const b of dbBookings as Booking[]) {
@@ -1926,6 +1991,28 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         }
         return updated;
       });
+      // Synchronize assigned driver's vehicle details with updated Rates vehicle
+      setDrivers((prev) =>
+        prev.map((d) => {
+          if (d.assigned_vehicle_id === id) {
+            return {
+              ...d,
+              assigned_vehicle: {
+                id: updatedV.id || id,
+                plate_number: (updatedV.category || d.assigned_vehicle?.plate_number || '').toUpperCase(),
+                make: updatedV.name || d.assigned_vehicle?.make || '',
+                model: `(${updatedV.seating_capacity ?? d.assigned_vehicle?.seating_capacity ?? 4} Seats)`,
+                vehicle_type: (updatedV.category || d.assigned_vehicle?.vehicle_type) as any,
+                seating_capacity: updatedV.seating_capacity ?? d.assigned_vehicle?.seating_capacity ?? 4,
+                status: updatedV.is_active === false ? 'inactive' : 'assigned',
+                created_at: d.assigned_vehicle?.created_at || new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              },
+            };
+          }
+          return d;
+        })
+      );
       toast.success(`Vehicle "${updatedV.name || id}" updated.`);
       return { success: true, vehicle: updatedV };
     } catch (err: unknown) {
@@ -1957,6 +2044,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         }
         return updated;
       });
+      // Automatically unassign any driver whose assigned rate vehicle was deleted
+      setDrivers((prev) =>
+        prev.map((d) =>
+          d.assigned_vehicle_id === id
+            ? { ...d, assigned_vehicle_id: null, assigned_vehicle: null, status: 'available' }
+            : d
+        )
+      );
       toast.success('Vehicle type deleted successfully.');
       return { success: true };
     } catch (err: unknown) {
@@ -2231,9 +2326,278 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // User Management (Admin creates Staff and Drivers)
+  // User Management (Admin)
+  const adminCreateUser = async (data: {
+    role: UserRole;
+    full_name: string;
+    email: string;
+    phone: string;
+    password?: string;
+    email_verified?: boolean;
+    status?: UserStatus;
+    license_number?: string;
+    national_id?: string;
+    assigned_vehicle_id?: string;
+  }): Promise<{ success: boolean; user?: Profile; error?: string; generatedPassword?: string }> => {
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+
+      const resData = await res.json().catch(() => ({ success: false, error: 'Server error' }));
+      if (!res.ok || !resData.success) {
+        const errorMsg = resData.error || 'Failed to create user account';
+        toast.error(errorMsg);
+        return { success: false, error: errorMsg };
+      }
+
+      const createdProfile: Profile = resData.user;
+      setUsersList((prev) => [createdProfile, ...prev.filter((u) => u.id !== createdProfile.id)]);
+
+      if (data.role === 'driver' && resData.driver) {
+        const matchedRateVeh = data.assigned_vehicle_id
+          ? rateVehicles.find((rv) => rv.id === data.assigned_vehicle_id || rv.category === data.assigned_vehicle_id) || null
+          : null;
+        const matchedLegacyVeh = !matchedRateVeh && data.assigned_vehicle_id
+          ? vehicles.find((v) => v.id === data.assigned_vehicle_id) || null
+          : null;
+
+        const assignedVeh: Vehicle | null = matchedRateVeh
+          ? {
+              id: matchedRateVeh.id,
+              plate_number: matchedRateVeh.category.toUpperCase(),
+              make: matchedRateVeh.name,
+              model: `(${matchedRateVeh.seating_capacity} Seats)`,
+              vehicle_type: matchedRateVeh.category as any,
+              seating_capacity: matchedRateVeh.seating_capacity,
+              status: 'assigned',
+              created_at: matchedRateVeh.created_at || new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }
+          : matchedLegacyVeh;
+
+        const newDriver: Driver = {
+          ...resData.driver,
+          profile: createdProfile,
+          assigned_vehicle: assignedVeh,
+        };
+        setDrivers((prev) => [newDriver, ...prev.filter((d) => d.id !== createdProfile.id)]);
+      }
+
+      addNotification(
+        'User Created',
+        `${createdProfile.full_name} onboarded as ${createdProfile.role.toUpperCase()}.`,
+        'info',
+        'admin'
+      );
+      toast.success(resData.message || `Account for ${createdProfile.full_name} created successfully`);
+      return {
+        success: true,
+        user: createdProfile,
+        generatedPassword: resData.generatedPassword,
+      };
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Network error';
+      toast.error(errorMsg);
+      return { success: false, error: errorMsg };
+    }
+  };
+
+  const adminUpdateUser = async (
+    userId: string,
+    updates: {
+      full_name?: string;
+      email?: string;
+      phone?: string;
+      role?: UserRole;
+      status?: UserStatus;
+      email_verified?: boolean;
+      phone_verified?: boolean;
+      license_number?: string;
+      national_id?: string;
+      assigned_vehicle_id?: string | null;
+      password?: string;
+    }
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, ...updates }),
+      });
+
+      const resData = await res.json().catch(() => ({ success: false, error: 'Server error' }));
+      if (!res.ok || !resData.success) {
+        const errorMsg = resData.error || 'Failed to update user';
+        toast.error(errorMsg);
+        return { success: false, error: errorMsg };
+      }
+
+      const updatedProfile: Profile = resData.user;
+      setUsersList((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, ...updatedProfile } : u))
+      );
+
+      // Handle driver state update if relevant
+      if (
+        updates.assigned_vehicle_id !== undefined ||
+        updates.license_number !== undefined ||
+        updates.national_id !== undefined
+      ) {
+        const matchedRateVeh = updates.assigned_vehicle_id
+          ? rateVehicles.find((rv) => rv.id === updates.assigned_vehicle_id || rv.category === updates.assigned_vehicle_id) || null
+          : null;
+        const matchedLegacyVeh = !matchedRateVeh && updates.assigned_vehicle_id
+          ? vehicles.find((v) => v.id === updates.assigned_vehicle_id) || null
+          : null;
+
+        const assignedVeh: Vehicle | null = matchedRateVeh
+          ? {
+              id: matchedRateVeh.id,
+              plate_number: matchedRateVeh.category.toUpperCase(),
+              make: matchedRateVeh.name,
+              model: `(${matchedRateVeh.seating_capacity} Seats)`,
+              vehicle_type: matchedRateVeh.category as any,
+              seating_capacity: matchedRateVeh.seating_capacity,
+              status: 'assigned',
+              created_at: matchedRateVeh.created_at || new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }
+          : matchedLegacyVeh;
+
+        setDrivers((prev) =>
+          prev.map((d) => {
+            if (d.id === userId) {
+              return {
+                ...d,
+                license_number:
+                  updates.license_number !== undefined ? updates.license_number : d.license_number,
+                national_id:
+                  updates.national_id !== undefined ? updates.national_id : d.national_id,
+                assigned_vehicle_id:
+                  updates.assigned_vehicle_id !== undefined
+                    ? updates.assigned_vehicle_id
+                    : d.assigned_vehicle_id,
+                assigned_vehicle:
+                  updates.assigned_vehicle_id !== undefined ? assignedVeh : d.assigned_vehicle,
+                status: updates.assigned_vehicle_id ? 'assigned' : 'available',
+                profile: { ...d.profile, ...updatedProfile } as Profile,
+              };
+            }
+            return d;
+          })
+        );
+      }
+
+      toast.success(resData.message || 'User updated successfully');
+      return { success: true };
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Network error';
+      toast.error(errorMsg);
+      return { success: false, error: errorMsg };
+    }
+  };
+
+  const adminAssignVehicle = async (
+    driverId: string,
+    vehicleId: string | null
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: driverId,
+          assigned_vehicle_id: vehicleId,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({ success: false, error: 'Server error' }));
+      if (!res.ok || !data.success) {
+        const errorMsg = data.error || 'Failed to update vehicle assignment';
+        toast.error(errorMsg);
+        return { success: false, error: errorMsg };
+      }
+
+      const matchedRateVeh = vehicleId
+        ? rateVehicles.find((rv) => rv.id === vehicleId || rv.category === vehicleId) || null
+        : null;
+      const matchedLegacyVeh = !matchedRateVeh && vehicleId
+        ? vehicles.find((v) => v.id === vehicleId) || null
+        : null;
+
+      const matchedVeh: Vehicle | null = matchedRateVeh
+        ? {
+            id: matchedRateVeh.id,
+            plate_number: matchedRateVeh.category.toUpperCase(),
+            make: matchedRateVeh.name,
+            model: `(${matchedRateVeh.seating_capacity} Seats)`,
+            vehicle_type: matchedRateVeh.category as any,
+            seating_capacity: matchedRateVeh.seating_capacity,
+            status: 'assigned',
+            created_at: matchedRateVeh.created_at || new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }
+        : matchedLegacyVeh;
+
+      const targetDriver = drivers.find((d) => d.id === driverId);
+
+      // Update drivers state
+      setDrivers((prev) =>
+        prev.map((d) => {
+          if (d.id === driverId) {
+            return {
+              ...d,
+              assigned_vehicle_id: vehicleId,
+              assigned_vehicle: matchedVeh,
+              status: vehicleId ? 'assigned' : 'available',
+            };
+          }
+          return d;
+        })
+      );
+
+      const driverName = targetDriver?.profile?.full_name || 'Captain';
+      if (vehicleId && matchedVeh) {
+        addNotification(
+          'Vehicle Assigned',
+          `${matchedVeh.make} (${matchedVeh.plate_number}) assigned to ${driverName}.`,
+          'info',
+          'admin'
+        );
+        toast.success(`Vehicle "${matchedVeh.make}" assigned to ${driverName}`);
+      } else {
+        addNotification(
+          'Vehicle Unassigned',
+          `Vehicle unassigned from ${driverName}.`,
+          'info',
+          'admin'
+        );
+        toast.success(`Vehicle unassigned from ${driverName}`);
+      }
+      return { success: true };
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Failed to update vehicle assignment';
+      toast.error(errorMsg);
+      return { success: false, error: errorMsg };
+    }
+  };
+
   const createStaffAccount = async (data: { full_name: string; email: string; phone: string }): Promise<Profile> => {
-    const newStaff: Profile = {
+    const res = await adminCreateUser({
+      role: 'dispatcher',
+      full_name: data.full_name,
+      email: data.email,
+      phone: data.phone,
+      email_verified: true,
+      status: 'active',
+    });
+    if (res.success && res.user) return res.user;
+
+    // Resilient fallback
+    const fallbackStaff: Profile = {
       id: 'staff-' + Date.now(),
       role: 'dispatcher',
       full_name: data.full_name,
@@ -2245,13 +2609,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
-    setUsersList((prev) => [newStaff, ...prev]);
-    try {
-      await supabase.from('profiles').insert(newStaff);
-    } catch { }
-    addNotification('Staff Member Created', `${data.full_name} granted Dispatcher access.`, 'info', 'admin');
-    toast.success(`Staff account for ${data.full_name} created`);
-    return newStaff;
+    setUsersList((prev) => [fallbackStaff, ...prev]);
+    return fallbackStaff;
   };
 
   const createDriverAccount = async (data: {
@@ -2261,9 +2620,22 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     license_number: string;
     vehicle_id?: string;
   }): Promise<Profile> => {
-    const driverId = 'drv-' + Date.now();
-    const newDriverProfile: Profile = {
-      id: driverId,
+    const res = await adminCreateUser({
+      role: 'driver',
+      full_name: data.full_name,
+      email: data.email,
+      phone: data.phone,
+      license_number: data.license_number,
+      assigned_vehicle_id: data.vehicle_id,
+      email_verified: true,
+      status: 'active',
+    });
+    if (res.success && res.user) return res.user;
+
+    // Resilient fallback
+    const fallbackId = 'drv-' + Date.now();
+    const fallbackDriverProfile: Profile = {
+      id: fallbackId,
       role: 'driver',
       full_name: data.full_name,
       email: data.email,
@@ -2274,9 +2646,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
-
-    const newDriver: Driver = {
-      id: driverId,
+    const fallbackDriver: Driver = {
+      id: fallbackId,
       license_number: data.license_number,
       assigned_vehicle_id: data.vehicle_id || null,
       status: 'available',
@@ -2284,19 +2655,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       total_rides: 0,
       total_earnings: 0,
       cash_collected: 0,
-      profile: newDriverProfile,
+      profile: fallbackDriverProfile,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
-
-    setUsersList((prev) => [newDriverProfile, ...prev]);
-    setDrivers((prev) => [newDriver, ...prev]);
-    try {
-      await supabase.from('profiles').insert(newDriverProfile);
-    } catch { }
-    addNotification('Driver Onboarded', `Captain ${data.full_name} added to fleet.`, 'info', 'admin');
-    toast.success(`Driver account for Captain ${data.full_name} created`);
-    return newDriverProfile;
+    setUsersList((prev) => [fallbackDriverProfile, ...prev]);
+    setDrivers((prev) => [fallbackDriver, ...prev]);
+    return fallbackDriverProfile;
   };
 
   const toggleUserStatus = (id: string) => {
@@ -2323,21 +2688,28 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const deleteUser = async (id: string): Promise<boolean> => {
     try {
-      // 1. Optimistically remove from all frontend state immediately for snappy UX
+      // 1. Release any vehicle assigned to this driver
+      const targetDriver = drivers.find((d) => d.id === id || d.profile?.id === id);
+      if (targetDriver?.assigned_vehicle_id) {
+        const vehId = targetDriver.assigned_vehicle_id;
+        setVehicles((prev) =>
+          prev.map((v) => (v.id === vehId ? { ...v, status: 'available' } : v))
+        );
+      }
+
+      // 2. Optimistically remove from all frontend state immediately for snappy UX
       setUsersList((prev) => prev.filter((u) => u.id !== id));
       setDrivers((prev) => prev.filter((d) => d.id !== id && d.profile?.id !== id));
 
-      // 2. If the user being deleted is the currently active session, sign out first
+      // 3. If the user being deleted is the currently active session, sign out first
       if (currentUser.id === id) {
         await signOut();
       }
 
-      // 3. For UUID users (real Supabase auth users): call server-side Admin API route
-      // This atomically deletes from auth.users AND all related public.* tables.
-      // Non-UUID IDs are local demo/seed records with no auth.users counterpart.
+      // 4. For UUID users: call server-side Admin API route
       const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
       if (isUuid) {
-        const res = await fetch('/api/admin/delete-user', {
+        const res = await fetch('/api/admin/users', {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: id }),
@@ -2349,12 +2721,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           const errMsg = json.error || 'Server deletion failed.';
           console.error('deleteUser server error:', errMsg);
           toast.error('Failed to fully delete user: ' + errMsg);
-          // Restore optimistic update since server failed
           await fetchRemoteData();
           return false;
         }
       } else {
-        // Local/demo record — remove from public.profiles only (no auth.users row)
+        // Local/demo record — remove from public.profiles only
         const { error } = await supabase.from('profiles').delete().eq('id', id);
         if (error) {
           console.error('deleteUser profiles error (non-UUID):', error);
@@ -2366,7 +2737,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
       toast.success('User account permanently deleted.');
       return true;
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('deleteUser error:', err);
       toast.error('An unexpected error occurred while deleting user.');
       await fetchRemoteData();
@@ -2386,7 +2757,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     try {
       await supabase.from('vehicles').insert(newVehicle);
     } catch { }
-    toast.success(`Vehicle ${vehicle.plate_number} added to fleet`);
+    toast.success(`Vehicle ${vehicle.plate_number} added successfully`);
   };
 
   const updateVehicle = async (id: string, partial: Partial<Vehicle>) => {
@@ -3936,6 +4307,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         updateRateTerminal,
         deleteRateTerminal,
 
+        adminCreateUser,
+        adminUpdateUser,
+        adminAssignVehicle,
         createStaffAccount,
         createDriverAccount,
         toggleUserStatus,

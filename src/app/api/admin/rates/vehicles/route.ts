@@ -191,6 +191,24 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
+    // Safety Check: Check if currently assigned to any active drivers
+    const { data: assignedDrivers } = await supabaseAdmin
+      .from('drivers')
+      .select('id, profile:profiles(full_name)')
+      .eq('assigned_vehicle_id', id);
+
+    if (assignedDrivers && assignedDrivers.length > 0) {
+      const driverNames = assignedDrivers.map((d: any) => d.profile?.full_name || 'Captain').join(', ');
+      return NextResponse.json(
+        {
+          error: `Cannot delete vehicle type "${id}": It is currently assigned to ${assignedDrivers.length} captain(s) (${driverNames}) in User Management. Please unassign or reassign the captain(s) first, or deactivate this vehicle type instead.`,
+          linkedDrivers: assignedDrivers.length,
+          canDeactivate: true,
+        },
+        { status: 409 }
+      );
+    }
+
     const { error } = await supabaseAdmin
       .from('rate_vehicle_types')
       .delete()

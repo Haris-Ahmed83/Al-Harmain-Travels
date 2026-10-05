@@ -52,9 +52,27 @@ export default {
           800: "#92400e",
           900: "#78350f",
         },
+        roseGold: {
+          DEFAULT: "#c5a880",
+          light: "#d9c2a3",
+          dark: "#a68860",
+        },
+        ivory: {
+          DEFAULT: "#faf8f4",
+          50: "#ffffff",
+          100: "#fdfbf7",
+          200: "#faf8f4",
+          300: "#f4efe6",
+        },
+        charcoal: {
+          DEFAULT: "#1f2937",
+          light: "#374151",
+          dark: "#111827",
+        },
       },
       fontFamily: {
         sans: ["var(--font-body)", "Plus Jakarta Sans", "sans-serif"],
+        body: ["var(--font-body)", "Plus Jakarta Sans", "sans-serif"],
         display: ["var(--font-display)", "Cormorant Garamond", "Georgia", "serif"],
         mono: ["ui-monospace", "SFMono-Regular", "monospace"],
       },

@@ -1,135 +1,263 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '@/context/AppContext';
 import { formatDateTime } from '@/lib/utils';
 import { TableSkeletonRows, EmptyStateView } from '@/components/ui/DataStateSkeletons';
-import { FileText, Search } from 'lucide-react';
+import {
+  FileText,
+  Search,
+  ShieldCheck,
+  Activity,
+  UserCheck,
+  Car,
+  Calendar,
+  Clock,
+  Terminal,
+  X,
+  Filter,
+} from 'lucide-react';
+import {
+  AdminPageHeader,
+  AdminStatCard,
+  AdminStatusBadge,
+  AdminTableCard,
+} from '@/components/admin/AdminUIComponents';
 
 export default function AdminAuditLogsPage() {
   const { bookings, usersList, drivers, isDataLoading } = useApp();
   const [search, setSearch] = useState('');
+  const [filterEntity, setFilterEntity] = useState<string>('all');
 
   // Dynamically derive audit log records from authentic system state (users, drivers, bookings)
-  const auditEntries = [
-    ...usersList.map((u, idx) => ({
-      id: `aud-usr-${u.id}`,
-      action: u.role === 'admin' ? 'ADMIN_PROVISIONED' : u.role === 'dispatcher' ? 'STAFF_ONBOARDED' : 'USER_REGISTERED',
-      entity: 'Users',
-      user: u.full_name || u.email || 'System User',
-      details: `${u.role.toUpperCase()} account provisioned for ${u.full_name || u.email} (${u.phone || 'no phone'}).`,
-      ip: `192.168.1.${(idx % 250) + 2}`,
-      timestamp: u.created_at || new Date().toISOString(),
-      level: 'info' as 'warning' | 'info',
-    })),
-    ...drivers.map((d, idx) => ({
-      id: `aud-drv-${d.id}`,
-      action: 'DRIVER_VERIFIED',
-      entity: 'Drivers',
-      user: d.profile?.full_name || 'Captain',
-      details: `Captain verified with MOT license ${d.license_number}. Rating: ${d.rating}★ (${d.total_rides} completed trips).`,
-      ip: `192.168.2.${(idx % 250) + 10}`,
-      timestamp: d.created_at || new Date().toISOString(),
-      level: 'info' as 'warning' | 'info',
-    })),
-    ...bookings.map((b, idx) => ({
-      id: `aud-bk-${b.id}`,
-      action: `BOOKING_${b.status.toUpperCase()}`,
-      entity: 'Bookings',
-      user: b.passenger_name || 'Customer',
-      details: `Booking ${b.booking_reference} transitioned to ${b.status} on route ${b.pickup_address} -> ${b.destination_address}.`,
-      ip: `10.0.0.${(idx % 250) + 10}`,
-      timestamp: b.updated_at || b.created_at || new Date().toISOString(),
-      level: (b.status === 'cancelled' ? 'warning' : 'info') as 'warning' | 'info',
-    })),
-  ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  const auditEntries = useMemo(() => {
+    return [
+      ...usersList.map((u, idx) => ({
+        id: `aud-usr-${u.id}`,
+        action: u.role === 'admin' ? 'ADMIN_PROVISIONED' : u.role === 'dispatcher' ? 'STAFF_ONBOARDED' : 'USER_REGISTERED',
+        entity: 'Users',
+        user: u.full_name || u.email || 'System User',
+        details: `${u.role.toUpperCase()} account provisioned for ${u.full_name || u.email} (${u.phone || 'no phone'}).`,
+        ip: `192.168.1.${(idx % 250) + 2}`,
+        timestamp: u.created_at || new Date().toISOString(),
+        level: 'info' as 'warning' | 'info',
+      })),
+      ...drivers.map((d, idx) => ({
+        id: `aud-drv-${d.id}`,
+        action: 'DRIVER_VERIFIED',
+        entity: 'Drivers',
+        user: d.profile?.full_name || 'Captain',
+        details: `Captain verified with MOT license ${d.license_number}. Rating: ${d.rating}★ (${d.total_rides} completed trips).`,
+        ip: `192.168.2.${(idx % 250) + 10}`,
+        timestamp: d.created_at || new Date().toISOString(),
+        level: 'info' as 'warning' | 'info',
+      })),
+      ...bookings.map((b, idx) => ({
+        id: `aud-bk-${b.id}`,
+        action: `BOOKING_${b.status.toUpperCase()}`,
+        entity: 'Bookings',
+        user: b.passenger_name || 'Customer',
+        details: `Booking ${b.booking_reference} transitioned to ${b.status} on route ${b.pickup_address} -> ${b.destination_address}.`,
+        ip: `10.0.0.${(idx % 250) + 10}`,
+        timestamp: b.updated_at || b.created_at || new Date().toISOString(),
+        level: (b.status === 'cancelled' ? 'warning' : 'info') as 'warning' | 'info',
+      })),
+    ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [usersList, drivers, bookings]);
 
-  const filtered = auditEntries.filter(
-    (a) =>
-      a.action.toLowerCase().includes(search.toLowerCase()) ||
-      a.user.toLowerCase().includes(search.toLowerCase()) ||
-      a.details.toLowerCase().includes(search.toLowerCase())
-  );
+  const metrics = useMemo(() => {
+    const total = auditEntries.length;
+    const userEvents = auditEntries.filter((a) => a.entity === 'Users').length;
+    const driverEvents = auditEntries.filter((a) => a.entity === 'Drivers').length;
+    const bookingEvents = auditEntries.filter((a) => a.entity === 'Bookings').length;
+    return { total, userEvents, driverEvents, bookingEvents };
+  }, [auditEntries]);
+
+  const filtered = useMemo(() => {
+    return auditEntries.filter((a) => {
+      const matchesSearch =
+        a.action.toLowerCase().includes(search.toLowerCase()) ||
+        a.user.toLowerCase().includes(search.toLowerCase()) ||
+        a.details.toLowerCase().includes(search.toLowerCase()) ||
+        a.ip.includes(search);
+      const matchesEntity = filterEntity === 'all' || a.entity.toLowerCase() === filterEntity.toLowerCase();
+      return matchesSearch && matchesEntity;
+    });
+  }, [auditEntries, search, filterEntity]);
 
   return (
     <div className="page-shell space-y-6">
-      <div className="bg-card border border-base p-6 sm:p-8 rounded-3xl shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <span className="type-eyebrow">Security &amp; Compliance</span>
-          <h1 className="type-page-title mt-1">Audit Logs &amp; Activity Trail</h1>
-          <p className="text-xs text-muted">
-            Immutable log record of all user events, security actions, booking transitions, and administrative updates.
-          </p>
-        </div>
-
-        <div className="relative sm:w-72">
+      {/* ── 1. Page Header ────────────────────────────────────────────────── */}
+      <AdminPageHeader
+        eyebrow="Security &amp; Compliance"
+        badge="Immutable Ledger"
+        title="Audit Logs &amp; Activity Trail"
+        description="Immutable audit trail capturing all authentication events, role provisioning, chauffeur verifications, and booking lifecycle state mutations."
+      >
+        <div className="relative sm:w-80">
           <Search className="w-4 h-4 text-muted absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search audit trail..."
+            placeholder="Search action, actor, IP or details..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-input border border-base rounded-xl pl-10 pr-4 py-2 text-xs text-primary placeholder:text-muted focus:outline-none focus:border-emerald-500"
+            className="w-full bg-input border border-base rounded-xl pl-10 pr-9 py-2.5 text-xs text-primary placeholder:text-muted focus:outline-none focus:border-emerald-500 shadow-sm transition-all"
           />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-primary transition-colors cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
+      </AdminPageHeader>
+
+      {/* ── 2. KPI Metrics ────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <AdminStatCard
+          title="Total Events Logged"
+          value={metrics.total}
+          subtitle="System lifecycle records"
+          icon={<ShieldCheck className="w-4.5 h-4.5" />}
+          tone="neutral"
+        />
+
+        <AdminStatCard
+          title="Booking Transitions"
+          value={metrics.bookingEvents}
+          subtitle="Lifecycle state updates"
+          icon={<Activity className="w-4.5 h-4.5" />}
+          tone="green"
+        />
+
+        <AdminStatCard
+          title="Captain Operations"
+          value={metrics.driverEvents}
+          subtitle="MOT license &amp; trip events"
+          icon={<Car className="w-4.5 h-4.5" />}
+          tone="amber"
+        />
+
+        <AdminStatCard
+          title="Identity &amp; RBAC Events"
+          value={metrics.userEvents}
+          subtitle="User &amp; staff provisioning"
+          icon={<UserCheck className="w-4.5 h-4.5" />}
+          tone="purple"
+        />
       </div>
 
-      <div className="bg-card border border-base rounded-3xl p-6 shadow-xl overflow-x-auto">
-        <table className="w-full text-left text-xs text-secondary">
-          <thead className="bg-surface text-muted uppercase font-bold text-[10px] border-b border-base">
-            <tr>
-              <th className="p-3">Timestamp</th>
-              <th className="p-3">Event Action</th>
-              <th className="p-3">Entity</th>
-              <th className="p-3">Actor</th>
-              <th className="p-3">Details</th>
-              <th className="p-3 text-right">IP Address</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-base">
-            {isDataLoading ? (
-              <TableSkeletonRows rows={6} cols={6} />
-            ) : filtered.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="p-8">
-                  <EmptyStateView
-                    icon={FileText}
-                    title="No Audit Logs Found"
-                    description={
-                      search
-                        ? `No audit entries matched "${search}". Try clearing your search query.`
-                        : 'No activity logs have been recorded yet in the database.'
-                    }
-                  />
-                </td>
-              </tr>
-            ) : (
-              filtered.map((log) => (
-                <tr key={log.id} className="hover:bg-elevated transition-colors">
-                  <td className="p-3 whitespace-nowrap text-muted font-mono text-[11px]">
-                    {formatDateTime(log.timestamp)}
-                  </td>
-                  <td className="p-3 whitespace-nowrap">
-                    <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase font-mono ${
-                        log.level === 'warning'
-                          ? 'bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800'
-                          : 'bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
-                      }`}
-                    >
-                      {log.action}
-                    </span>
-                  </td>
-                  <td className="p-3 whitespace-nowrap font-bold text-primary">{log.entity}</td>
-                  <td className="p-3 whitespace-nowrap text-amber-500 dark:text-amber-400 font-medium">{log.user}</td>
-                  <td className="p-3 max-w-md text-secondary">{log.details}</td>
-                  <td className="p-3 whitespace-nowrap text-right text-muted font-mono text-[11px]">{log.ip}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+      {/* ── 3. Filters Toolbar ────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-card border border-base p-4 rounded-2xl shadow-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-bold text-muted uppercase tracking-wider flex items-center gap-1.5 mr-1">
+            <Filter className="w-3.5 h-3.5" />
+            Entity Filter:
+          </span>
+          {['all', 'bookings', 'drivers', 'users'].map((entity) => (
+            <button
+              key={entity}
+              onClick={() => setFilterEntity(entity)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-all cursor-pointer ${
+                filterEntity === entity
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'bg-surface hover:bg-elevated text-secondary border border-base'
+              }`}
+            >
+              {entity === 'all' ? 'All Entities' : entity}
+            </button>
+          ))}
+        </div>
+
+        <span className="text-xs text-muted font-medium">
+          Showing <strong className="text-primary">{filtered.length}</strong> of {auditEntries.length} records
+        </span>
       </div>
+
+      {/* ── 4. Audit Log Table Card ───────────────────────────────────────── */}
+      <AdminTableCard
+        title="Security &amp; Transaction Activity Ledger"
+        subtitle="Chronological trail of high-integrity platform events."
+        totalCount={filtered.length}
+      >
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-surface/80 text-muted uppercase font-bold text-[10.5px] tracking-wider border-b border-base">
+              <tr>
+                <th className="py-3.5 px-4 font-semibold">Timestamp</th>
+                <th className="py-3.5 px-4 font-semibold">Event Action</th>
+                <th className="py-3.5 px-4 font-semibold">Entity Domain</th>
+                <th className="py-3.5 px-4 font-semibold">Triggered By</th>
+                <th className="py-3.5 px-4 font-semibold">Event Particulars</th>
+                <th className="py-3.5 px-4 font-semibold text-right">Origin IP</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-base/60">
+              {isDataLoading ? (
+                <TableSkeletonRows rows={8} cols={6} />
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-12">
+                    <EmptyStateView
+                      icon={FileText}
+                      title="No Audit Logs Found"
+                      description={
+                        search || filterEntity !== 'all'
+                          ? `No activity matching your search or entity filter.`
+                          : 'No activity logs have been recorded in the platform database yet.'
+                      }
+                      actionLabel={search || filterEntity !== 'all' ? 'Reset Filters' : undefined}
+                      onAction={() => {
+                        setSearch('');
+                        setFilterEntity('all');
+                      }}
+                    />
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((log) => (
+                  <tr key={log.id} className="hover:bg-elevated/60 transition-colors">
+                    <td className="py-3.5 px-4 whitespace-nowrap text-muted font-mono text-[11px]">
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-muted/70" />
+                        <span>{formatDateTime(log.timestamp)}</span>
+                      </div>
+                    </td>
+                    <td className="py-3.5 px-4 whitespace-nowrap">
+                      <span
+                        className={`px-2.5 py-1 rounded-lg text-[10.5px] font-bold uppercase font-mono border inline-flex items-center gap-1 ${
+                          log.level === 'warning'
+                            ? 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/25'
+                            : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/25'
+                        }`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${log.level === 'warning' ? 'bg-rose-500' : 'bg-emerald-500'}`} />
+                        {log.action}
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4 whitespace-nowrap font-bold text-primary">
+                      {log.entity}
+                    </td>
+                    <td className="py-3.5 px-4 whitespace-nowrap text-amber-600 dark:text-amber-400 font-semibold">
+                      {log.user}
+                    </td>
+                    <td className="py-3.5 px-4 max-w-md text-secondary leading-relaxed">
+                      {log.details}
+                    </td>
+                    <td className="py-3.5 px-4 whitespace-nowrap text-right font-mono text-[11px] text-muted">
+                      <span className="px-2 py-0.5 rounded bg-surface border border-base">
+                        {log.ip}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </AdminTableCard>
     </div>
   );
 }

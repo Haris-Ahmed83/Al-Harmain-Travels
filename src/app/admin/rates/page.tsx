@@ -51,6 +51,13 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { TableSkeletonRows, EmptyStateView } from '@/components/ui/DataStateSkeletons';
+import {
+  AdminPageHeader,
+  AdminStatCard,
+  AdminStatusBadge,
+  AdminActionButton,
+  AdminActionGroup,
+} from '@/components/admin/AdminUIComponents';
 
 type ActiveTab = 'rates' | 'vehicles' | 'routes_terminals' | 'services';
 
@@ -807,199 +814,139 @@ export default function AdminRatesPage() {
   return (
     <div className="page-shell space-y-7 pb-20 animate-fade-in text-slate-800 dark:text-slate-100">
       {/* ── TOP EXECUTIVE HEADER ──────────────────────────────────────────────── */}
-      <header className="bg-card border border-base rounded-3xl p-6 sm:p-7 shadow-sm transition-all">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-          <div className="space-y-1.5 max-w-2xl">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/20">
-                <ShieldCheck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                <span>Admin Console / Rate Master</span>
-              </span>
+      <AdminPageHeader
+        eyebrow="Tariff Master & Financial Policy"
+        badge="Live Rate Master"
+        title="Fixed Rates & Tariffs Master"
+        description="Standardized route pricing, vehicle capacities, and KAIA airport terminal surcharges. Fares directly power customer bookings without arbitrary distance estimation."
+      >
+        <button
+          onClick={handleRefresh}
+          disabled={isRefreshing || isDataLoading}
+          className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-base bg-surface hover:bg-elevated text-secondary hover:text-primary text-xs font-semibold transition-all cursor-pointer shadow-xs disabled:opacity-50"
+          title="Synchronize live state with database"
+        >
+          <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-emerald-500' : ''}`} />
+          <span>{isRefreshing ? 'Syncing…' : 'Sync Live'}</span>
+        </button>
 
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/25">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Live Supabase Master</span>
-              </span>
-            </div>
-
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">
-              Fixed Rates &amp; Tariffs Master
-            </h1>
-
-            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-              Standardized route pricing, vehicle capacities, and KAIA airport terminal surcharges. Fares directly power customer bookings without arbitrary distance estimation.
-            </p>
-          </div>
-
-          {/* Action Toolbar */}
-          <div className="flex flex-wrap items-center gap-2.5 pt-2 lg:pt-0">
+        {activeTab === 'rates' && (
+          <>
             <button
-              onClick={handleRefresh}
-              disabled={isRefreshing || isDataLoading}
-              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600 transition-all cursor-pointer disabled:opacity-50"
-              title="Synchronize live state with database"
+              onClick={handleExportCSV}
+              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-base bg-surface hover:bg-elevated text-secondary hover:text-primary text-xs font-semibold transition-all cursor-pointer shadow-xs"
+              title="Export rate card as CSV"
             >
-              <RefreshCw className={`w-3.5 h-3.5 text-slate-500 dark:text-slate-400 ${isRefreshing ? 'animate-spin text-blue-600 dark:text-blue-400' : ''}`} />
-              <span>{isRefreshing ? 'Syncing…' : 'Sync Live'}</span>
+              <Download className="w-4 h-4" />
+              <span>Export CSV</span>
             </button>
 
-            {activeTab === 'rates' && (
-              <>
-                <button
-                  onClick={handleExportCSV}
-                  className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600 transition-all cursor-pointer"
-                  title="Export rate card as CSV"
-                >
-                  <Download className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
-                  <span>Export CSV</span>
-                </button>
+            <button
+              onClick={() => setShowMatrix(!showMatrix)}
+              className={`inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer shadow-xs ${
+                showMatrix
+                  ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30'
+                  : 'border-base bg-surface hover:bg-elevated text-secondary hover:text-primary'
+              }`}
+              title="Toggle table versus matrix view"
+            >
+              <TableProperties className="w-4 h-4" />
+              <span>{showMatrix ? 'Table View' : 'Fleet Matrix'}</span>
+            </button>
 
-                <button
-                  onClick={() => setShowMatrix(!showMatrix)}
-                  className={`inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-                    showMatrix
-                      ? 'bg-blue-600 text-white border-blue-600 dark:bg-blue-600 dark:border-blue-500'
-                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
-                  }`}
-                  title="Toggle table versus matrix view"
-                >
-                  <TableProperties className="w-3.5 h-3.5" />
-                  <span>{showMatrix ? 'Table View' : 'Fleet Matrix'}</span>
-                </button>
+            <button
+              onClick={() => handleOpenBulkModal()}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ Set Bulk Pricing</span>
+            </button>
+          </>
+        )}
 
-                <button
-                  onClick={() => handleOpenBulkModal()}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer active:scale-95"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>+ Set Bulk Pricing</span>
-                </button>
-              </>
-            )}
+        {activeTab === 'vehicles' && (
+          <button
+            onClick={handleOpenAddVehicle}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>+ Add Vehicle Type</span>
+          </button>
+        )}
 
-            {activeTab === 'vehicles' && (
-              <button
-                onClick={handleOpenAddVehicle}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer active:scale-95"
-              >
-                <Plus className="w-4 h-4" />
-                <span>+ Add Vehicle Type</span>
-              </button>
-            )}
-
-            {activeTab === 'routes_terminals' && (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleOpenAddRoute}
-                  className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer active:scale-95"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>+ Add Route</span>
-                </button>
-                <button
-                  onClick={handleOpenAddTerminal}
-                  className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-300 text-xs font-bold hover:bg-purple-500/20 transition-all cursor-pointer active:scale-95"
-                >
-                  <Plane className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                  <span>+ Add Terminal</span>
-                </button>
-              </div>
-            )}
-
-            {activeTab === 'services' && (
-              <button
-                onClick={handleOpenAddService}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer active:scale-95"
-              >
-                <Plus className="w-4 h-4" />
-                <span>+ Add Service Category</span>
-              </button>
-            )}
+        {activeTab === 'routes_terminals' && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleOpenAddRoute}
+              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ Add Route</span>
+            </button>
+            <button
+              onClick={handleOpenAddTerminal}
+              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-300 text-xs font-bold hover:bg-purple-500/20 transition-all cursor-pointer"
+            >
+              <Plane className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+              <span>+ Add Terminal</span>
+            </button>
           </div>
-        </div>
-      </header>
+        )}
+
+        {activeTab === 'services' && (
+          <button
+            onClick={handleOpenAddService}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>+ Add Service Category</span>
+          </button>
+        )}
+      </AdminPageHeader>
 
       {/* ── METRIC STAT CARDS ────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 sm:gap-4">
         {/* Total Rates Card */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-card border border-base shadow-sm hover:border-blue-500/30 transition-colors flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
-            <span>Configured Fares</span>
-            <div className="w-7 h-7 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-600 dark:text-blue-400">
-              <Tag className="w-3.5 h-3.5" />
-            </div>
-          </div>
-          <div className="mt-2.5 text-2xl font-bold text-slate-900 dark:text-white tabular-nums">
-            {stats.total}
-          </div>
-          <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-            Total fixed tariffs
-          </span>
-        </div>
+        <AdminStatCard
+          title="Configured Fares"
+          value={stats.total}
+          subtitle="Total fixed tariffs"
+          icon={<Tag className="w-4.5 h-4.5" />}
+          tone="neutral"
+        />
 
-        {/* Active Rates Card */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-card border border-base shadow-sm hover:border-emerald-500/30 transition-colors flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
-            <span>Active Tariffs</span>
-            <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-            </div>
-          </div>
-          <div className="mt-2.5 text-2xl font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">
-            {stats.active}
-          </div>
-          <span className="text-[11px] text-emerald-700/80 dark:text-emerald-400/80 font-medium mt-1">
-            🟢 Bookable for travelers
-          </span>
-        </div>
+        <AdminStatCard
+          title="Active Tariffs"
+          value={stats.active}
+          subtitle="Bookable for travelers"
+          icon={<CheckCircle2 className="w-4.5 h-4.5" />}
+          tone="green"
+        />
 
-        {/* Vehicles Card */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-card border border-base shadow-sm hover:border-blue-500/30 transition-colors flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
-            <span>Fleet Categories</span>
-            <div className="w-7 h-7 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-600 dark:text-blue-400">
-              <Car className="w-3.5 h-3.5" />
-            </div>
-          </div>
-          <div className="mt-2.5 text-2xl font-bold text-slate-900 dark:text-white tabular-nums">
-            {stats.vehiclesCount}
-          </div>
-          <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-            Passenger vehicle types
-          </span>
-        </div>
+        <AdminStatCard
+          title="Fleet Categories"
+          value={stats.vehiclesCount}
+          subtitle="Passenger vehicle types"
+          icon={<Car className="w-4.5 h-4.5" />}
+          tone="amber"
+        />
 
-        {/* Service Corridors Card */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-card border border-base shadow-sm hover:border-indigo-500/30 transition-colors flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
-            <span>Service Corridors</span>
-            <div className="w-7 h-7 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
-              <Route className="w-3.5 h-3.5" />
-            </div>
-          </div>
-          <div className="mt-2.5 text-2xl font-bold text-slate-900 dark:text-white tabular-nums">
-            {stats.routesCount}
-          </div>
-          <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-            Intercity &amp; sacred routes
-          </span>
-        </div>
+        <AdminStatCard
+          title="Service Corridors"
+          value={stats.routesCount}
+          subtitle="Intercity & sacred routes"
+          icon={<Route className="w-4.5 h-4.5" />}
+          tone="blue"
+        />
 
-        {/* KAIA Terminals Card */}
-        <div className="col-span-2 sm:col-span-3 lg:col-span-1 p-4 sm:p-5 rounded-2xl bg-card border border-base shadow-sm hover:border-purple-500/30 transition-colors flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
-            <span>KAIA Terminals</span>
-            <div className="w-7 h-7 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-600 dark:text-purple-400">
-              <Plane className="w-3.5 h-3.5" />
-            </div>
-          </div>
-          <div className="mt-2.5 text-2xl font-bold text-slate-900 dark:text-white tabular-nums">
-            {rateTerminals.length}
-          </div>
-          <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-            Airport flight gates
-          </span>
-        </div>
+        <AdminStatCard
+          title="KAIA Terminals"
+          value={rateTerminals.length}
+          subtitle="Airport flight gates"
+          icon={<Plane className="w-4.5 h-4.5" />}
+          tone="purple"
+          className="col-span-2 sm:col-span-3 lg:col-span-1"
+        />
       </div>
 
       {/* ── TAB NAVIGATION BUTTONS ───────────────────────────────────────────── */}
@@ -1382,22 +1329,18 @@ export default function AdminRatesPage() {
                             {/* Actions (Blue Edit / Red Delete) */}
                             <td className="py-3.5 px-4 text-right">
                               <div className="flex items-center justify-end gap-1.5">
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenBulkModal(r.service_type, r.terminal)}
-                                  className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 hover:bg-blue-500/10 border border-transparent hover:border-blue-500/20 transition-all cursor-pointer"
-                                  title="Edit rates for this route corridor"
-                                >
-                                  <Pencil className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteRateClick(r)}
-                                  className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all cursor-pointer"
-                                  title="Delete this rate"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
+                                <AdminActionGroup className="justify-end">
+                                  <AdminActionButton
+                                    variant="edit"
+                                    tooltip="Edit corridor fixed tariffs"
+                                    onClick={() => handleOpenBulkModal(r.service_type, r.terminal)}
+                                  />
+                                  <AdminActionButton
+                                    variant="delete"
+                                    tooltip="Delete fixed rate entry"
+                                    onClick={() => handleDeleteRateClick(r)}
+                                  />
+                                </AdminActionGroup>
                               </div>
                             </td>
                           </tr>
@@ -1501,24 +1444,18 @@ export default function AdminRatesPage() {
                           </button>
                         </td>
                         <td className="py-3.5 px-4 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              type="button"
+                          <AdminActionGroup className="justify-end">
+                            <AdminActionButton
+                              variant="edit"
+                              tooltip="Edit vehicle specs & capacity"
                               onClick={() => handleOpenEditVehicle(v)}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 hover:bg-blue-500/10 border border-transparent hover:border-blue-500/20 transition-all cursor-pointer"
-                              title="Edit vehicle and capacity"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
+                            />
+                            <AdminActionButton
+                              variant="delete"
+                              tooltip="Delete vehicle class"
                               onClick={() => handleDeleteVehicleClick(v)}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all cursor-pointer"
-                              title="Delete vehicle type"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
+                            />
+                          </AdminActionGroup>
                         </td>
                       </tr>
                     ))
@@ -1605,24 +1542,18 @@ export default function AdminRatesPage() {
                           </button>
                         </td>
                         <td className="py-3.5 px-4 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              type="button"
+                          <AdminActionGroup className="justify-end">
+                            <AdminActionButton
+                              variant="edit"
+                              tooltip="Edit service corridor route"
                               onClick={() => handleOpenEditRoute(r)}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 hover:bg-blue-500/10 border border-transparent hover:border-blue-500/20 transition-all cursor-pointer"
-                              title="Edit Route"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
+                            />
+                            <AdminActionButton
+                              variant="delete"
+                              tooltip="Delete service corridor"
                               onClick={() => handleDeleteRouteClick(r)}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all cursor-pointer"
-                              title="Delete Route"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
+                            />
+                          </AdminActionGroup>
                         </td>
                       </tr>
                     ))}
@@ -1699,24 +1630,18 @@ export default function AdminRatesPage() {
                           </button>
                         </td>
                         <td className="py-3.5 px-4 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              type="button"
+                          <AdminActionGroup className="justify-end">
+                            <AdminActionButton
+                              variant="edit"
+                              tooltip="Edit airport flight terminal"
                               onClick={() => handleOpenEditTerminal(t)}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 hover:bg-blue-500/10 border border-transparent hover:border-blue-500/20 transition-all cursor-pointer"
-                              title="Edit Terminal"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
+                            />
+                            <AdminActionButton
+                              variant="delete"
+                              tooltip="Delete airport terminal"
                               onClick={() => handleDeleteTerminalClick(t)}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all cursor-pointer"
-                              title="Delete Terminal"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
+                            />
+                          </AdminActionGroup>
                         </td>
                       </tr>
                     ))}
@@ -1790,24 +1715,18 @@ export default function AdminRatesPage() {
                         </button>
                       </td>
                       <td className="py-3.5 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            type="button"
+                        <AdminActionGroup className="justify-end">
+                          <AdminActionButton
+                            variant="edit"
+                            tooltip="Edit service category"
                             onClick={() => handleOpenEditService(s)}
-                            className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 hover:bg-blue-500/10 border border-transparent hover:border-blue-500/20 transition-all cursor-pointer"
-                            title="Edit Service Category"
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
+                          />
+                          <AdminActionButton
+                            variant="delete"
+                            tooltip="Delete service category"
                             onClick={() => handleDeleteServiceClick(s)}
-                            className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all cursor-pointer"
-                            title="Delete Service Category"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+                          />
+                        </AdminActionGroup>
                       </td>
                     </tr>
                   ))}
