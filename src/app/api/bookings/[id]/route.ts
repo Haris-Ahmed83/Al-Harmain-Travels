@@ -20,7 +20,7 @@ export async function GET(
         rating,
         total_rides,
         profile:profiles(full_name, avatar_url),
-        vehicle:vehicles(make, model, color, plate_number, vehicle_type),
+        assigned_vehicle:rate_vehicle_types(name, category, seating_capacity),
         location:driver_locations(latitude, longitude, heading)
       )
     `);
@@ -64,12 +64,12 @@ export async function GET(
         photo: d.profile?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
         rating: Number(d.rating) || 5.0,
         totalRides: Number(d.total_rides) || 0,
-        vehicle: d.vehicle ? {
-          make: d.vehicle.make,
-          model: d.vehicle.model,
-          color: d.vehicle.color || 'Obsidian Black',
-          plateNumber: d.vehicle.plate_number,
-          vehicleType: d.vehicle.vehicle_type,
+        vehicle: d.assigned_vehicle ? {
+          make: d.assigned_vehicle.name,
+          model: `(${d.assigned_vehicle.seating_capacity} Seats)`,
+          color: 'Obsidian Black',
+          plateNumber: d.assigned_vehicle.category?.toUpperCase() || 'VIP KSA',
+          vehicleType: d.assigned_vehicle.category,
         } : null,
         location: {
           latitude: driverLat,

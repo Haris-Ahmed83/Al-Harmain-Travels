@@ -8,7 +8,6 @@ import { UserRole } from '@/types';
 import {
   Car,
   Compass,
-  LayoutDashboard,
   Bell,
   Shield,
   User,
@@ -19,23 +18,19 @@ import {
   LogOut,
   Users,
   Briefcase,
-  FileText,
   DollarSign,
   PhoneCall,
   Info,
-  ChevronDown,
   ChevronRight,
-  Star,
   Sliders,
-  Receipt,
   Phone,
-  Sparkles,
   Globe,
 } from 'lucide-react';
 
 import BrandLogo from '@/components/ui/BrandLogo';
 import CustomerMobileSidebar from '@/components/customer/CustomerMobileSidebar';
 import AdminMobileSidebar from '@/components/admin/AdminMobileSidebar';
+import UserProfileDropdown from '@/components/layout/UserProfileDropdown';
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -53,20 +48,113 @@ export default function Navbar() {
   } = useApp();
 
   const [isNotifOpen, setIsNotifOpen] = useState(false);
-  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCustomerSidebarOpen, setIsCustomerSidebarOpen] = useState(false);
   const [isAdminSidebarOpen, setIsAdminSidebarOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [isVisible, setIsVisible] = useState(true);
 
+  const isVisibleRef = useRef(true);
+  const lastScrollYRef = useRef(0);
+  const tickingRef = useRef(false);
+
+  // Synchronize 'navbar-hidden' utility class on documentElement for fluid desktop sidebar tracking
   useEffect(() => {
-    const handleScroll = () => {
-      setScrolled(window.scrollY > 16);
+    if (typeof document !== 'undefined') {
+      if (isVisible) {
+        document.documentElement.classList.remove('navbar-hidden');
+      } else {
+        document.documentElement.classList.add('navbar-hidden');
+      }
+    }
+    return () => {
+      if (typeof document !== 'undefined') {
+        document.documentElement.classList.remove('navbar-hidden');
+      }
     };
+  }, [isVisible]);
+
+  // Robust scroll-direction detection with jitter threshold & top-zone anchoring
+  useEffect(() => {
+    const TOP_SCROLL_THRESHOLD = 64; // Height of navbar: keep visible in top zone
+    const SCROLL_DELTA_THRESHOLD = 10; // Meaningful delta threshold to prevent jitter/flicker
+
+    const updateScroll = () => {
+      const currentScrollY = Math.max(0, window.scrollY);
+      const lastScrollY = lastScrollYRef.current;
+      const scrollDiff = currentScrollY - lastScrollY;
+
+      // Subtle shadow & border contrast after initial 16px scroll
+      const isScrolledNow = currentScrollY > 16;
+      setScrolled((prev) => (prev !== isScrolledNow ? isScrolledNow : prev));
+
+      // 1. Keep navbar visible at the very top of the page without animation
+      if (currentScrollY <= TOP_SCROLL_THRESHOLD) {
+        if (!isVisibleRef.current) {
+          isVisibleRef.current = true;
+          setIsVisible(true);
+        }
+        lastScrollYRef.current = currentScrollY;
+        tickingRef.current = false;
+        return;
+      }
+
+      // 2. Never hide navbar if mobile menus or sidebars are open
+      if (isMobileMenuOpen || isCustomerSidebarOpen || isAdminSidebarOpen) {
+        if (!isVisibleRef.current) {
+          isVisibleRef.current = true;
+          setIsVisible(true);
+        }
+        lastScrollYRef.current = currentScrollY;
+        tickingRef.current = false;
+        return;
+      }
+
+      // 3. Ignore downward scroll bounce at the bottom of the page
+      const maxScrollY = document.documentElement.scrollHeight - window.innerHeight;
+      if (currentScrollY >= maxScrollY - 10 && scrollDiff > 0) {
+        tickingRef.current = false;
+        return;
+      }
+
+      // 4. Meaningful scroll threshold check
+      if (Math.abs(scrollDiff) >= SCROLL_DELTA_THRESHOLD) {
+        if (scrollDiff > 0) {
+          // Scrolling DOWN: smoothly slide upward out of view
+          if (isVisibleRef.current) {
+            isVisibleRef.current = false;
+            setIsVisible(false);
+            setIsNotifOpen(false); // smoothly dismiss notification popovers
+          }
+        } else {
+          // Scrolling UP: smoothly slide downward into view
+          if (!isVisibleRef.current) {
+            isVisibleRef.current = true;
+            setIsVisible(true);
+          }
+        }
+        lastScrollYRef.current = currentScrollY;
+      }
+
+      tickingRef.current = false;
+    };
+
+    const handleScroll = () => {
+      if (!tickingRef.current) {
+        tickingRef.current = true;
+        window.requestAnimationFrame(updateScroll);
+      }
+    };
+
+    // Initialize with current scroll offset
+    lastScrollYRef.current = Math.max(0, window.scrollY);
+    setScrolled(window.scrollY > 16);
+
     window.addEventListener('scroll', handleScroll, { passive: true });
-    handleScroll();
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, [isMobileMenuOpen, isCustomerSidebarOpen, isAdminSidebarOpen]);
 
   const handleCloseCustomerSidebar = useCallback(() => {
     setIsCustomerSidebarOpen(false);
@@ -89,7 +177,6 @@ export default function Navbar() {
   const notifRef = useRef<HTMLDivElement>(null);
   const customerMobileNotifRef = useRef<HTMLDivElement>(null);
   const adminMobileNotifRef = useRef<HTMLDivElement>(null);
-  const userMenuRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const mobileMenuBtnRef = useRef<HTMLButtonElement>(null);
 
@@ -137,9 +224,6 @@ export default function Navbar() {
       if (!insideDesktopNotif && !insideMobileNotif && !insideAdminMobileNotif) {
         setIsNotifOpen(false);
       }
-      if (userMenuRef.current && !userMenuRef.current.contains(target)) {
-        setIsUserMenuOpen(false);
-      }
       if (
         mobileMenuRef.current &&
         !mobileMenuRef.current.contains(target) &&
@@ -158,7 +242,10 @@ export default function Navbar() {
     setIsCustomerSidebarOpen(false);
     setIsAdminSidebarOpen(false);
     setIsNotifOpen(false);
-    setIsUserMenuOpen(false);
+    // Ensure navbar is immediately revealed on route transition
+    setIsVisible(true);
+    isVisibleRef.current = true;
+    lastScrollYRef.current = 0;
   }, [pathname]);
 
   // Clean, minimal public navigation links (strictly 4 items)
@@ -202,13 +289,13 @@ export default function Navbar() {
   const getRoleBadgeStyle = (role: UserRole) => {
     switch (role) {
       case 'admin':
-        return 'bg-amber-50 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-700/60';
+        return 'bg-amber-50 text-amber-700 border-amber-200';
       case 'dispatcher':
-        return 'bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-700/60';
+        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
       case 'driver':
-        return 'bg-teal-50 dark:bg-teal-950/80 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-700/60';
+        return 'bg-teal-50 text-teal-700 border-teal-200';
       default:
-        return 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700';
+        return 'bg-slate-100 text-slate-600 border-slate-200';
     }
   };
 
@@ -227,14 +314,50 @@ export default function Navbar() {
 
   return (
     <>
-      <header className="sticky top-0 z-50 w-full border-b border-roseGold/10 bg-white md:bg-ivory/80 dark:bg-[#041a13]/90 dark:border-roseGold/15 backdrop-blur-md transition-all duration-300">
+      <style>{`
+        #main-content {
+          padding-top: 3.5rem !important;
+        }
+        @media (min-width: 640px) {
+          #main-content {
+            padding-top: 4rem !important;
+          }
+        }
+        aside {
+          top: 4rem !important;
+          height: calc(100vh - 4rem) !important;
+          transition: top 300ms cubic-bezier(0.4, 0, 0.2, 1), height 300ms cubic-bezier(0.4, 0, 0.2, 1), width 300ms ease-in-out;
+        }
+        html.navbar-hidden aside {
+          top: 0rem !important;
+          height: 100vh !important;
+        }
+        .customer-portal {
+          min-height: calc(100vh - 4rem) !important;
+        }
+        html.navbar-hidden .customer-portal {
+          min-height: 100vh !important;
+        }
+      `}</style>
+      {/* ─── SHARED GLASSMORPHISM HEADER ─────────────────────────────────── */}
+      <header
+        onFocusCapture={() => {
+          if (!isVisibleRef.current) {
+            isVisibleRef.current = true;
+            setIsVisible(true);
+          }
+        }}
+        className={`fixed inset-x-0 top-0 z-50 border-b border-slate-200/70 bg-white/95 backdrop-blur-xl transition-all duration-300 ease-in-out will-change-transform motion-reduce:transition-none ${
+          isVisible ? 'translate-y-0 pointer-events-auto' : '-translate-y-full pointer-events-none'
+        } ${scrolled ? 'shadow-sm shadow-slate-900/5' : ''}`}
+      >
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           {/* ─────────────────────────────────────────────────────────────
               1. CUSTOMER DASHBOARD MOBILE NAVBAR (< lg screens)
               - Preserves dedicated customer portal layout with sidebar toggle
           ───────────────────────────────────────────────────────────── */}
           {isCustomerPortal && (
-            <div className="lg:hidden relative flex items-center justify-between h-16 sm:h-20 w-full transition-all duration-300">
+            <div className="lg:hidden relative flex items-center justify-between h-14 sm:h-16 w-full transition-all duration-300">
               {/* Left corner: Hamburger menu icon */}
               <div className="flex items-center z-10 shrink-0">
                 <button
@@ -244,18 +367,18 @@ export default function Navbar() {
                     e.stopPropagation();
                     handleToggleCustomerSidebar();
                   }}
-                  className="p-2 rounded-xl text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-emerald-950/60 border border-slate-200/80 dark:border-emerald-800/40 transition-colors flex items-center justify-center w-10 h-10 shadow-xs cursor-pointer active:scale-95"
+                  className="p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 transition-all flex items-center justify-center w-10 h-10 shadow-xs cursor-pointer active:scale-95"
                   aria-label={isCustomerSidebarOpen ? 'Close navigation sidebar' : 'Open navigation sidebar'}
                   aria-expanded={isCustomerSidebarOpen}
                 >
-                  <Menu className="w-5 h-5 transition-transform" />
+                  <Menu className="w-5 h-5 text-slate-600" />
                 </button>
               </div>
 
               {/* Center: Official Al Harmain Travel Logo (centered) */}
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none z-10 select-none">
                 <div className="pointer-events-auto">
-                  <BrandLogo size="sm" href="/customer" showSubtitle={false} />
+                  <BrandLogo size="sm" href="/customer" showSubtitle={false} forceLight />
                 </div>
               </div>
 
@@ -270,13 +393,13 @@ export default function Navbar() {
                       setIsNotifOpen((prev) => !prev);
                       if (isCustomerSidebarOpen) setIsCustomerSidebarOpen(false);
                     }}
-                    className="p-2 rounded-xl text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-emerald-950/60 border border-slate-200/80 dark:border-emerald-800/40 relative transition-colors flex items-center justify-center w-10 h-10 shadow-xs cursor-pointer active:scale-95"
+                    className="p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 relative transition-all flex items-center justify-center w-10 h-10 shadow-xs cursor-pointer active:scale-95"
                     aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}
                     aria-expanded={isNotifOpen}
                   >
-                    <Bell className="w-4 h-4" />
+                    <Bell className="w-4 h-4 text-slate-600" />
                     {unreadCount > 0 && (
-                      <span className="absolute -top-1 -right-1 min-w-[1.125rem] h-[1.125rem] px-1 rounded-full bg-amber-400 text-slate-950 text-[10px] font-bold flex items-center justify-center shadow-xs">
+                      <span className="absolute -top-1 -right-1 min-w-[1.125rem] h-[1.125rem] px-1 rounded-full bg-amber-400 text-slate-900 text-[10px] font-bold flex items-center justify-center shadow-xs">
                         {unreadCount > 9 ? '9+' : unreadCount}
                       </span>
                     )}
@@ -284,7 +407,7 @@ export default function Navbar() {
 
                   {/* Mobile Notification Popover */}
                   {isNotifOpen && (
-                    <div className="fixed sm:absolute top-[70px] sm:top-full sm:mt-2 right-2 sm:right-0 w-[min(22rem,calc(100vw-1rem))] bg-white dark:bg-[#07241b] border border-slate-200 dark:border-emerald-800/40 rounded-2xl shadow-2xl overflow-hidden z-50 animate-in fade-in-50 duration-200">
+                    <div className="fixed sm:absolute top-[70px] sm:top-full sm:mt-2 right-2 sm:right-0 w-[min(22rem,calc(100vw-1rem))] bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden z-50 animate-in fade-in-50 duration-200">
                       <NotificationDropdownContent
                         notifications={notifications}
                         unreadCount={unreadCount}
@@ -294,6 +417,7 @@ export default function Navbar() {
                     </div>
                   )}
                 </div>
+                <UserProfileDropdown forceLight />
               </div>
             </div>
           )}
@@ -303,7 +427,7 @@ export default function Navbar() {
               - Mobile menu trigger, page title/breadcrumb, notifications & profile
           ───────────────────────────────────────────────────────────── */}
           {isAdminPortal && (
-            <div className="lg:hidden relative flex items-center justify-between h-16 sm:h-20 w-full transition-all duration-300">
+            <div className="lg:hidden relative flex items-center justify-between h-14 sm:h-16 w-full transition-all duration-300">
               {/* Left corner: Hamburger menu icon */}
               <div className="flex items-center z-10 shrink-0">
                 <button
@@ -313,11 +437,11 @@ export default function Navbar() {
                     e.stopPropagation();
                     handleToggleAdminSidebar();
                   }}
-                  className="p-2 rounded-xl text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-amber-950/60 border border-slate-200/80 dark:border-amber-800/40 transition-colors flex items-center justify-center w-10 h-10 shadow-xs cursor-pointer active:scale-95"
+                  className="p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 transition-colors flex items-center justify-center w-10 h-10 shadow-xs cursor-pointer active:scale-95"
                   aria-label={isAdminSidebarOpen ? 'Close navigation sidebar' : 'Open navigation sidebar'}
                   aria-expanded={isAdminSidebarOpen}
                 >
-                  <Menu className="w-5 h-5 text-amber-500" />
+                  <Menu className="w-5 h-5 text-amber-600" />
                 </button>
               </div>
 
@@ -325,7 +449,7 @@ export default function Navbar() {
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none z-10 select-none">
                 <div className="pointer-events-auto flex items-center gap-1.5">
                   <BrandLogo size="sm" href="/admin" showSubtitle={false} />
-                  <span className="hidden xs:inline-flex items-center gap-1 text-[9.5px] font-bold text-amber-700 dark:text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30">
+                  <span className="hidden xs:inline-flex items-center gap-1 text-[9.5px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
                     <Shield className="w-2.5 h-2.5 text-amber-500" />
                     HQ
                   </span>
@@ -343,13 +467,13 @@ export default function Navbar() {
                       setIsNotifOpen((prev) => !prev);
                       if (isAdminSidebarOpen) setIsAdminSidebarOpen(false);
                     }}
-                    className="p-2 rounded-xl text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-emerald-950/60 border border-slate-200/80 dark:border-emerald-800/40 relative transition-colors flex items-center justify-center w-10 h-10 shadow-xs cursor-pointer active:scale-95"
+                    className="p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 relative transition-colors flex items-center justify-center w-10 h-10 shadow-xs cursor-pointer active:scale-95"
                     aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}
                     aria-expanded={isNotifOpen}
                   >
                     <Bell className="w-4 h-4" />
                     {unreadCount > 0 && (
-                      <span className="absolute -top-1 -right-1 min-w-[1.125rem] h-[1.125rem] px-1 rounded-full bg-amber-400 text-slate-950 text-[10px] font-bold flex items-center justify-center shadow-xs">
+                      <span className="absolute -top-1 -right-1 min-w-[1.125rem] h-[1.125rem] px-1 rounded-full bg-amber-400 text-slate-900 text-[10px] font-bold flex items-center justify-center shadow-xs">
                         {unreadCount > 9 ? '9+' : unreadCount}
                       </span>
                     )}
@@ -357,7 +481,7 @@ export default function Navbar() {
 
                   {/* Mobile Notification Popover */}
                   {isNotifOpen && (
-                    <div className="fixed sm:absolute top-[70px] sm:top-full sm:mt-2 right-2 sm:right-0 w-[min(22rem,calc(100vw-1rem))] bg-white dark:bg-[#07241b] border border-slate-200 dark:border-emerald-800/40 rounded-2xl shadow-2xl overflow-hidden z-50 animate-in fade-in-50 duration-200">
+                    <div className="fixed sm:absolute top-[70px] sm:top-full sm:mt-2 right-2 sm:right-0 w-[min(22rem,calc(100vw-1rem))] bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden z-50 animate-in fade-in-50 duration-200">
                       <NotificationDropdownContent
                         notifications={notifications}
                         unreadCount={unreadCount}
@@ -367,6 +491,7 @@ export default function Navbar() {
                     </div>
                   )}
                 </div>
+                <UserProfileDropdown />
               </div>
             </div>
           )}
@@ -375,42 +500,46 @@ export default function Navbar() {
               2. DESKTOP ROW (lg+) OR PUBLIC PAGES ROW (all screens)
           ───────────────────────────────────────────────────────────── */}
           <div
-            className={`${
-              (isCustomerPortal || isAdminPortal) ? 'hidden lg:flex' : 'flex'
-            } h-16 sm:h-20 items-center justify-between gap-4 transition-all duration-300`}
+            className={`${(isCustomerPortal || isAdminPortal) ? 'hidden lg:flex' : 'flex'
+              } h-14 sm:h-16 items-center justify-between gap-4 transition-all duration-300`}
           >
             {/* Unified Official Brand Logo */}
             <BrandLogo
               size="md"
+              forceLight
               href={
                 isAdminPortal
                   ? '/admin'
                   : isDispatcherPortal
-                  ? '/dispatcher'
-                  : isDriverPortal
-                  ? '/driver'
-                  : '/'
+                    ? '/dispatcher'
+                    : isDriverPortal
+                      ? '/driver'
+                      : isCustomerPortal
+                        ? '/customer'
+                        : '/'
               }
               subtitle={
                 isAdminPortal
                   ? 'Executive Admin HQ'
                   : isDispatcherPortal
-                  ? 'Fleet Operations HQ'
-                  : isDriverPortal
-                  ? 'Captain Driver Cockpit'
-                  : 'Makkah · Madinah · Jeddah'
+                    ? 'Fleet Operations HQ'
+                    : isDriverPortal
+                      ? 'Captain Driver Cockpit'
+                      : isCustomerPortal
+                        ? 'VIP Customer Portal'
+                        : 'Makkah · Madinah · Jeddah'
               }
             />
 
             {/* Center Navigation: Portal-specific (Admin Breadcrumb, Dispatcher, Driver, Customer) or Clean Public Links */}
             {isAdminPortal ? (
-              <div className="hidden lg:flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-amber-500/10 dark:bg-amber-950/40 border border-amber-500/20 text-xs font-medium">
-                <span className="inline-flex items-center gap-1.5 text-amber-800 dark:text-amber-300 font-bold">
+              <div className="hidden lg:flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-xs font-medium">
+                <span className="inline-flex items-center gap-1.5 text-amber-800 font-bold">
                   <Shield className="w-3.5 h-3.5 text-amber-500" />
                   Executive Admin HQ
                 </span>
-                <span className="text-slate-300 dark:text-amber-800 font-mono">/</span>
-                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                <span className="text-slate-300 font-mono">/</span>
+                <span className="font-semibold text-slate-700">
                   {getAdminPageTitle(pathname)}
                 </span>
               </div>
@@ -430,18 +559,16 @@ export default function Navbar() {
                     <Link
                       key={item.href}
                       href={item.href}
-                      className={`flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-xl text-xs xl:text-sm font-semibold transition-all duration-200 ${
-                        isActive
-                          ? 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 shadow-xs'
-                          : 'text-slate-600 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-300 hover:bg-slate-100 dark:hover:bg-emerald-950/50'
-                      }`}
+                      className={`flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-xl text-xs xl:text-sm font-semibold transition-all duration-200 ${isActive
+                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-xs'
+                          : 'text-slate-600 hover:text-emerald-700 hover:bg-slate-100'
+                        }`}
                     >
                       <Icon
-                        className={`w-3.5 h-3.5 ${
-                          isActive
-                            ? 'text-emerald-600 dark:text-emerald-400'
-                            : 'text-slate-400 dark:text-slate-500'
-                        }`}
+                        className={`w-3.5 h-3.5 ${isActive
+                            ? 'text-emerald-600'
+                            : 'text-slate-400'
+                          }`}
                       />
                       <span>{item.label}</span>
                     </Link>
@@ -464,41 +591,39 @@ export default function Navbar() {
                     <Link
                       key={item.href}
                       href={item.href}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs xl:text-sm font-semibold transition-all duration-200 ${
-                        isActive
-                          ? 'bg-teal-500/15 text-teal-800 dark:text-teal-300 border border-teal-500/30 shadow-xs'
-                          : 'text-slate-600 dark:text-slate-300 hover:text-teal-700 dark:hover:text-teal-300 hover:bg-slate-100 dark:hover:bg-emerald-950/50'
-                      }`}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs xl:text-sm font-semibold transition-all duration-200 ${isActive
+                          ? 'bg-teal-50 text-teal-800 border border-teal-200 shadow-xs'
+                          : 'text-slate-600 hover:text-teal-700 hover:bg-slate-100'
+                        }`}
                     >
                       <Icon
-                        className={`w-3.5 h-3.5 ${
-                          isActive
-                            ? 'text-teal-600 dark:text-teal-400'
-                            : 'text-slate-400 dark:text-slate-500'
-                        }`}
+                        className={`w-3.5 h-3.5 ${isActive
+                            ? 'text-teal-600'
+                            : 'text-slate-400'
+                          }`}
                       />
                       <span>{item.label}</span>
                     </Link>
                   );
                 })}
               </nav>
-            ) : isCustomer && pathname.startsWith('/customer') ? (
-              <div className="hidden lg:flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-emerald-500/10 dark:bg-emerald-950/40 border border-emerald-500/20 text-xs font-medium">
-                <span className="inline-flex items-center gap-1.5 text-emerald-800 dark:text-emerald-300 font-semibold">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            ) : isCustomerPortal ? (
+              <div className="hidden lg:flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-xs font-medium shadow-xs">
+                <span className="inline-flex items-center gap-1.5 text-emerald-800 font-bold">
+                  <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
                   VIP Customer Portal
                 </span>
-                <span className="text-slate-300 dark:text-emerald-800 font-mono">/</span>
-                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                <span className="text-slate-400 font-mono">/</span>
+                <span className="font-semibold text-slate-700">
                   {pathname === '/customer'
                     ? 'Book a Ride'
                     : pathname.startsWith('/customer/bookings')
-                    ? 'My Trips & History'
-                    : pathname.startsWith('/customer/track')
-                    ? 'Live Vehicle Radar'
-                    : pathname.startsWith('/customer/profile')
-                    ? 'VIP Profile & Settings'
-                    : 'Overview'}
+                      ? 'My Trips & History'
+                      : pathname.startsWith('/customer/track')
+                        ? 'Live Vehicle Radar'
+                        : pathname.startsWith('/customer/profile')
+                          ? 'VIP Profile & Settings'
+                          : 'Overview'}
                 </span>
               </div>
             ) : (
@@ -516,11 +641,10 @@ export default function Navbar() {
                     <Link
                       key={item.href}
                       href={item.href}
-                      className={`text-sm font-body flex items-center gap-1 py-4 transition-colors duration-200 hover:text-roseGold font-semibold ${
-                        isActive
+                      className={`text-sm font-body flex items-center gap-1 py-2 sm:py-2.5 transition-colors duration-200 hover:text-roseGold font-semibold ${isActive
                           ? 'text-roseGold border-b-2 border-roseGold -mb-[2px]'
-                          : 'text-charcoal dark:text-slate-200'
-                      }`}
+                          : 'text-charcoal'
+                        }`}
                     >
                       <span>{item.label}</span>
                     </Link>
@@ -535,7 +659,7 @@ export default function Navbar() {
               {isAdminPortal && (
                 <Link
                   href="/"
-                  className="hidden xl:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-slate-100 dark:hover:bg-emerald-950/60 border border-slate-200/80 dark:border-emerald-800/40 transition-all cursor-pointer"
+                  className="hidden xl:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-slate-600 hover:text-amber-700 hover:bg-amber-50 border border-slate-200 hover:border-amber-200 transition-all cursor-pointer"
                   title="Visit Public Website"
                 >
                   <Globe className="w-3.5 h-3.5 text-amber-500" />
@@ -547,19 +671,19 @@ export default function Navbar() {
               {userRole === 'admin' && !isAdminPortal && (
                 <Link
                   href="/admin"
-                  className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 transition-all shadow-xs"
+                  className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 transition-all shadow-xs"
                 >
                   <Shield className="w-3.5 h-3.5 text-amber-500" />
                   <span>Admin HQ</span>
                 </Link>
               )}
               {/* Active Trip Tracker Badge (Customer) */}
-              {activeCustomerBooking && isCustomer && (
+              {activeCustomerBooking && (isCustomer || isCustomerPortal) && (
                 <Link
                   href="/customer/track"
-                  className="hidden md:flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-200 dark:border-emerald-600/50 text-emerald-700 dark:text-emerald-300 text-xs px-3.5 py-1.5 rounded-full hover:bg-emerald-100 dark:hover:bg-emerald-900/80 transition-colors shadow-xs"
+                  className="hidden md:flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs px-3.5 py-1.5 rounded-full hover:bg-emerald-100 hover:border-emerald-300 transition-colors shadow-xs font-semibold"
                 >
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-soft-pulse shrink-0" />
+                  <span className="w-2 h-2 rounded-full bg-emerald-600 animate-soft-pulse shrink-0" />
                   <span className="font-semibold capitalize">
                     {activeCustomerBooking.status.replace(/_/g, ' ')}
                   </span>
@@ -570,20 +694,20 @@ export default function Navbar() {
               <div className="relative" ref={notifRef}>
                 <button
                   onClick={() => setIsNotifOpen(!isNotifOpen)}
-                  className="p-2.5 rounded-xl text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-emerald-950/60 border border-slate-200/80 dark:border-emerald-800/40 relative transition-all cursor-pointer active:scale-95"
+                  className="p-2.5 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 relative transition-all cursor-pointer active:scale-95 shadow-xs"
                   aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}
                   aria-expanded={isNotifOpen}
                 >
                   <Bell className="w-4 h-4" />
                   {unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-amber-400 text-slate-950 text-[10px] font-bold flex items-center justify-center shadow-xs">
+                    <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-amber-400 text-slate-900 text-[10px] font-bold flex items-center justify-center shadow-xs">
                       {unreadCount > 9 ? '9+' : unreadCount}
                     </span>
                   )}
                 </button>
 
                 {isNotifOpen && (
-                  <div className="absolute right-0 mt-2 w-[min(22rem,calc(100vw-1.5rem))] bg-white dark:bg-[#07241b] border border-slate-200 dark:border-emerald-800/40 rounded-2xl shadow-2xl overflow-hidden z-50 animate-in fade-in-50 duration-200">
+                  <div className="absolute right-0 mt-2 w-[min(22rem,calc(100vw-1.5rem))] bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden z-50 animate-in fade-in-50 duration-200">
                     <NotificationDropdownContent
                       notifications={notifications}
                       unreadCount={unreadCount}
@@ -594,118 +718,14 @@ export default function Navbar() {
                 )}
               </div>
 
-              {/* Authenticated User Menu or Guest Sign In */}
-              {isAuthLoading ? (
-                <div className="w-8 h-8 rounded-xl bg-slate-200 dark:bg-slate-800 animate-pulse shrink-0" />
-              ) : isAuthenticated ? (
-                <div className="relative" ref={userMenuRef}>
-                  <button
-                    onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                    className="flex items-center gap-2 py-1 pl-1.5 pr-2.5 rounded-full bg-slate-100/80 dark:bg-emerald-950/60 hover:bg-slate-200/70 dark:hover:bg-emerald-900/60 border border-slate-200/80 dark:border-emerald-800/40 transition-all cursor-pointer active:scale-95"
-                    aria-expanded={isUserMenuOpen}
-                    aria-label="Account menu"
-                  >
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-700 via-emerald-800 to-teal-950 border border-[#d4af37]/40 flex items-center justify-center font-bold text-xs text-amber-300 shadow-xs shrink-0">
-                      {currentUser.full_name?.charAt(0)?.toUpperCase() || 'U'}
-                    </div>
-                    <div className="hidden sm:block text-left leading-none">
-                      <div className="text-[12px] font-bold text-slate-900 dark:text-white max-w-[95px] truncate">
-                        {currentUser.full_name}
-                      </div>
-                      <span
-                        className={`inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded-sm text-[8.5px] font-bold uppercase tracking-wider border ${getRoleBadgeStyle(
-                          userRole
-                        )}`}
-                      >
-                        {getRoleIcon(userRole)}
-                        {userRole}
-                      </span>
-                    </div>
-                    <ChevronDown
-                      className={`w-3.5 h-3.5 text-slate-500 dark:text-slate-400 transition-transform duration-200 ${
-                        isUserMenuOpen ? 'rotate-180' : ''
-                      }`}
-                    />
-                  </button>
+              {/* User Profile Dropdown */}
+              <UserProfileDropdown forceLight />
 
-                  {isUserMenuOpen && (
-                    <div className="absolute right-0 mt-2 w-60 bg-white dark:bg-[#07241b] border border-slate-200 dark:border-emerald-800/40 rounded-2xl shadow-2xl overflow-hidden z-50 animate-in fade-in-50 duration-200">
-                      <div className="px-4 py-3 bg-slate-50 dark:bg-emerald-950/60 border-b border-slate-200 dark:border-emerald-800/30">
-                        <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                          {currentUser.full_name}
-                        </p>
-                        <p className="text-[11px] text-slate-500 dark:text-emerald-300/70 truncate mt-0.5">
-                          {currentUser.email || 'Verified Account'}
-                        </p>
-                      </div>
-                      <div className="p-1.5 space-y-0.5">
-                        <Link
-                          href={getDashboardUrl(userRole)}
-                          onClick={() => setIsUserMenuOpen(false)}
-                          className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-emerald-900/50 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
-                        >
-                          <LayoutDashboard className="w-3.5 h-3.5 text-emerald-500" />
-                          My Dashboard
-                        </Link>
-                        {userRole === 'customer' && (
-                          <Link
-                            href="/customer/profile"
-                            onClick={() => setIsUserMenuOpen(false)}
-                            className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-emerald-900/50 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
-                          >
-                            <User className="w-3.5 h-3.5 text-teal-500" />
-                            Profile &amp; Settings
-                          </Link>
-                        )}
-                        {userRole === 'driver' && (
-                          <Link
-                            href="/driver/profile"
-                            onClick={() => setIsUserMenuOpen(false)}
-                            className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-emerald-900/50 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
-                          >
-                            <User className="w-3.5 h-3.5 text-teal-500" />
-                            Driver Profile
-                          </Link>
-                        )}
-                        {userRole === 'admin' && (
-                          <Link
-                            href="/admin/settings"
-                            onClick={() => setIsUserMenuOpen(false)}
-                            className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-emerald-900/50 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
-                          >
-                            <Sliders className="w-3.5 h-3.5 text-amber-500" />
-                            System Settings
-                          </Link>
-                        )}
-                        {userRole === 'dispatcher' && (
-                          <Link
-                            href="/dispatcher/queue"
-                            onClick={() => setIsUserMenuOpen(false)}
-                            className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-emerald-900/50 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
-                          >
-                            <Clock className="w-3.5 h-3.5 text-emerald-500" />
-                            Active Queue
-                          </Link>
-                        )}
-                        <div className="border-t border-slate-200 dark:border-emerald-800/30 my-1" />
-                        <button
-                          onClick={() => {
-                            setIsUserMenuOpen(false);
-                            signOut();
-                          }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-left transition-colors"
-                        >
-                          <LogOut className="w-3.5 h-3.5" />
-                          Sign Out
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
+              {/* Guest Sign In Quick Access */}
+              {!isAuthenticated && !isAuthLoading && (
                 <Link
                   href="/sign-in"
-                  className="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold text-slate-700 dark:text-slate-200 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-slate-100 dark:hover:bg-emerald-950/60 border border-slate-200/80 dark:border-emerald-800/40 transition-all cursor-pointer active:scale-95"
+                  className="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold text-slate-700 hover:text-amber-700 hover:bg-amber-50 border border-slate-200 hover:border-amber-200 transition-all cursor-pointer active:scale-95"
                 >
                   <LogIn className="w-3.5 h-3.5" />
                   <span>Sign In</span>
@@ -728,11 +748,11 @@ export default function Navbar() {
                 <button
                   ref={mobileMenuBtnRef}
                   onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                  className="lg:hidden p-2 rounded-xl text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-emerald-950/60 border border-slate-200/80 dark:border-emerald-800/40 transition-colors flex items-center justify-center w-10 h-10 shadow-xs cursor-pointer active:scale-95"
+                  className="lg:hidden p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 transition-colors flex items-center justify-center w-10 h-10 shadow-xs cursor-pointer active:scale-95"
                   aria-label="Toggle navigation menu"
                   aria-expanded={isMobileMenuOpen}
                 >
-                  {isMobileMenuOpen ? <X className="w-5 h-5 text-amber-500" /> : <Menu className="w-5 h-5" />}
+                  {isMobileMenuOpen ? <X className="w-5 h-5 text-amber-600" /> : <Menu className="w-5 h-5" />}
                 </button>
               )}
             </div>
@@ -745,18 +765,29 @@ export default function Navbar() {
         {!isCustomerPortal && !isAdminPortal && isMobileMenuOpen && (
           <div
             ref={mobileMenuRef}
-            className="lg:hidden bg-white/98 md:bg-ivory/98 dark:bg-[#041a13]/98 backdrop-blur-2xl border-t border-roseGold/10 dark:border-roseGold/15 shadow-2xl max-h-[calc(100vh-80px)] overflow-y-auto animate-in slide-in-from-top-2 fade-in-50 duration-200"
+          className="lg:hidden bg-white/98 backdrop-blur-2xl border-t border-slate-200/70 shadow-2xl max-h-[calc(100vh-80px)] overflow-y-auto animate-in slide-in-from-top-2 fade-in-50 duration-200"
           >
             <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-5">
+              {/* Top Mobile Menu Brand Identity */}
+              <div className="pb-3 border-b border-slate-200 flex items-center justify-between">
+                <BrandLogo
+                  size="sm"
+                  href="/"
+                  subtitle="VIP Makkah · Madinah Transport"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  forceLight
+                />
+              </div>
+
               {/* Authenticated User Status Bar in Mobile Menu */}
               {isAuthenticated && (
-                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-emerald-950/50 border border-slate-200 dark:border-emerald-800/30 flex items-center justify-between gap-3">
+                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-700 to-teal-950 border border-[#d4af37]/40 flex items-center justify-center font-bold text-sm text-amber-300 shrink-0">
                       {currentUser.full_name?.charAt(0)?.toUpperCase() || 'U'}
                     </div>
                     <div className="min-w-0">
-                      <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                      <p className="text-xs font-bold text-slate-900 truncate">
                         {currentUser.full_name}
                       </p>
                       <span
@@ -772,7 +803,7 @@ export default function Navbar() {
                   <Link
                     href={getDashboardUrl(userRole)}
                     onClick={() => setIsMobileMenuOpen(false)}
-                    className="shrink-0 text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-3 py-1.5 rounded-xl border border-amber-500/20 hover:bg-amber-500/20 transition-colors"
+                    className="shrink-0 text-xs font-bold text-amber-700 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200 hover:bg-amber-100 transition-colors"
                   >
                     Dashboard
                   </Link>
@@ -782,7 +813,7 @@ export default function Navbar() {
               {/* Portal or Public Navigation Links */}
               {isDispatcherPortal ? (
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-400 mb-2 px-1">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-600 mb-2 px-1">
                     Dispatcher Operations
                   </p>
                   <div className="space-y-1">
@@ -797,11 +828,10 @@ export default function Navbar() {
                           key={item.href}
                           href={item.href}
                           onClick={() => setIsMobileMenuOpen(false)}
-                          className={`flex items-center justify-between px-4 py-3 rounded-2xl text-xs font-semibold transition-all duration-200 ${
-                            isActive
-                              ? 'text-emerald-800 dark:text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 font-bold'
-                              : 'text-slate-700 dark:text-slate-200 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-emerald-950/50'
-                          }`}
+                          className={`flex items-center justify-between px-4 py-3 rounded-2xl text-xs font-semibold transition-all duration-200 ${isActive
+                              ? 'text-emerald-800 bg-emerald-50 border border-emerald-200 font-bold'
+                              : 'text-slate-700 hover:text-emerald-700 hover:bg-slate-100'
+                            }`}
                         >
                           <div className="flex items-center gap-3">
                             <Icon className={`w-4 h-4 ${isActive ? 'text-emerald-500' : 'text-slate-400'}`} />
@@ -819,7 +849,7 @@ export default function Navbar() {
                 </div>
               ) : isDriverPortal ? (
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-teal-600 dark:text-teal-400 mb-2 px-1">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-teal-600 mb-2 px-1">
                     Driver Cockpit
                   </p>
                   <div className="space-y-1">
@@ -834,11 +864,10 @@ export default function Navbar() {
                           key={item.href}
                           href={item.href}
                           onClick={() => setIsMobileMenuOpen(false)}
-                          className={`flex items-center justify-between px-4 py-3 rounded-2xl text-xs font-semibold transition-all duration-200 ${
-                            isActive
-                              ? 'text-teal-800 dark:text-teal-300 bg-teal-500/15 border border-teal-500/30 font-bold'
-                              : 'text-slate-700 dark:text-slate-200 hover:text-teal-600 dark:hover:text-teal-400 hover:bg-slate-100 dark:hover:bg-emerald-950/50'
-                          }`}
+                          className={`flex items-center justify-between px-4 py-3 rounded-2xl text-xs font-semibold transition-all duration-200 ${isActive
+                              ? 'text-teal-800 bg-teal-50 border border-teal-200 font-bold'
+                              : 'text-slate-700 hover:text-teal-700 hover:bg-slate-100'
+                            }`}
                         >
                           <div className="flex items-center gap-3">
                             <Icon className={`w-4 h-4 ${isActive ? 'text-teal-500' : 'text-slate-400'}`} />
@@ -856,7 +885,7 @@ export default function Navbar() {
                 </div>
               ) : (
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 dark:text-emerald-400/80 mb-2 px-1">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 mb-2 px-1">
                     Menu
                   </p>
                   <div className="space-y-1">
@@ -873,11 +902,10 @@ export default function Navbar() {
                           key={item.href}
                           href={item.href}
                           onClick={() => setIsMobileMenuOpen(false)}
-                          className={`flex items-center justify-between px-4 py-3.5 rounded-2xl text-sm font-body font-semibold transition-all duration-200 ${
-                            isActive
+                          className={`flex items-center justify-between px-4 py-3.5 rounded-2xl text-sm font-body font-semibold transition-all duration-200 ${isActive
                               ? 'text-roseGold bg-roseGold/10 border border-roseGold/20'
-                              : 'text-charcoal dark:text-slate-200 hover:text-roseGold hover:bg-roseGold/5'
-                          }`}
+                              : 'text-charcoal hover:text-roseGold hover:bg-roseGold/5'
+                            }`}
                         >
                           <div className="flex items-center gap-3">
                             <Icon className={`w-4 h-4 ${isActive ? 'text-roseGold' : 'text-slate-400'}`} />
@@ -896,13 +924,13 @@ export default function Navbar() {
               )}
 
               {/* Mobile Menu Footer Actions */}
-              <div className="pt-3 border-t border-slate-200 dark:border-emerald-800/30 space-y-3">
+              <div className="pt-3 border-t border-slate-200 space-y-3">
                 {/* For Admin/Staff Portals: Quick Public Site Switcher */}
                 {(isAdminPortal || isDispatcherPortal || isDriverPortal) && (
                   <Link
                     href="/"
                     onClick={() => setIsMobileMenuOpen(false)}
-                    className="flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:text-amber-600 dark:hover:text-amber-400 bg-slate-50 dark:bg-emerald-950/40 border border-slate-200 dark:border-emerald-800/30 transition-colors"
+                    className="flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold text-slate-700 hover:text-amber-700 bg-slate-50 border border-slate-200 hover:bg-amber-50 hover:border-amber-200 transition-colors"
                   >
                     <div className="flex items-center gap-2">
                       <Globe className="w-4 h-4 text-amber-500" />
@@ -916,7 +944,7 @@ export default function Navbar() {
                 <div className="flex items-center justify-center gap-2 px-1">
                   <a
                     href={`tel:${settings.support_phone}`}
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:underline"
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:underline"
                   >
                     <Phone className="w-3.5 h-3.5 text-amber-500" />
                     <span>24/7 Support: {settings.support_phone}</span>
@@ -951,7 +979,7 @@ export default function Navbar() {
                         setIsMobileMenuOpen(false);
                         signOut();
                       }}
-                      className="w-full flex items-center justify-center gap-2 py-2.5 rounded-full text-xs font-semibold text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/40 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+                      className="w-full flex items-center justify-center gap-2 py-2.5 rounded-full text-xs font-semibold text-rose-600 border border-rose-200 hover:bg-rose-50 transition-colors"
                     >
                       <LogOut className="w-3.5 h-3.5" />
                       <span>Sign Out</span>
@@ -970,7 +998,7 @@ export default function Navbar() {
                     <Link
                       href="/sign-in"
                       onClick={() => setIsMobileMenuOpen(false)}
-                      className="w-full flex items-center justify-center gap-2 py-2.5 rounded-full text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-emerald-950/60 border border-slate-200 dark:border-emerald-800/40 hover:bg-slate-200 dark:hover:bg-emerald-900/60 transition-colors"
+                      className="w-full flex items-center justify-center gap-2 py-2.5 rounded-full text-xs font-bold text-slate-700 bg-slate-100 border border-slate-200 hover:bg-slate-200 transition-colors"
                     >
                       <LogIn className="w-4 h-4" />
                       <span>Sign In</span>
@@ -1036,13 +1064,14 @@ function NotificationDropdownContent({
   clearNotifications,
 }: NotificationDropdownProps) {
   return (
-    <>
-      <div className="px-4 py-3 bg-slate-50 dark:bg-emerald-950/60 border-b border-slate-200 dark:border-emerald-800/30 flex items-center justify-between">
-        <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+    <div className="bg-white text-slate-900">
+      {/* Header */}
+      <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+        <span className="text-xs font-bold text-slate-800 flex items-center gap-2">
           <Bell className="w-3.5 h-3.5 text-amber-500" />
           Notifications
           {unreadCount > 0 && (
-            <span className="px-1.5 py-0.5 rounded-full bg-amber-400/20 text-amber-700 dark:text-amber-400 text-[10px] font-bold">
+            <span className="px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold">
               {unreadCount} new
             </span>
           )}
@@ -1050,20 +1079,22 @@ function NotificationDropdownContent({
         {notifications.length > 0 && (
           <button
             onClick={clearNotifications}
-            className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
+            className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 hover:underline cursor-pointer"
           >
             Clear all
           </button>
         )}
       </div>
-      <div className="max-h-72 overflow-y-auto divide-y divide-slate-100 dark:divide-emerald-900/30">
+
+      {/* Body */}
+      <div className="max-h-72 overflow-y-auto divide-y divide-slate-100">
         {notifications.length === 0 ? (
-          <div className="p-8 text-center">
-            <Bell className="w-8 h-8 text-slate-300 dark:text-emerald-800/60 mx-auto mb-2" />
-            <p className="text-xs font-medium text-slate-600 dark:text-slate-300">
+          <div className="p-8 text-center bg-white">
+            <Bell className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+            <p className="text-xs font-semibold text-slate-700">
               You&apos;re all caught up
             </p>
-            <p className="text-[11px] text-slate-400 dark:text-emerald-400/60 mt-1">
+            <p className="text-[11px] text-slate-500 mt-1">
               Trip updates will appear here
             </p>
           </div>
@@ -1075,28 +1106,28 @@ function NotificationDropdownContent({
               onClick={() => markNotificationAsRead(n.id)}
               className={`w-full text-left px-4 py-3 text-xs transition-colors cursor-pointer ${
                 n.read
-                  ? 'bg-white dark:bg-transparent text-slate-500 dark:text-slate-400'
-                  : 'bg-emerald-50/70 dark:bg-emerald-950/40 text-slate-800 dark:text-slate-200'
-              } hover:bg-slate-50 dark:hover:bg-emerald-900/30`}
+                  ? 'bg-white text-slate-600 hover:bg-slate-50'
+                  : 'bg-emerald-50/70 text-slate-900 hover:bg-emerald-50 font-medium'
+              }`}
             >
               <div className="flex items-center justify-between mb-0.5 gap-2">
-                <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                <span className={`font-semibold ${n.read ? 'text-slate-700' : 'text-emerald-800'}`}>
                   {n.title}
                 </span>
-                <span className="text-[10px] text-slate-400 shrink-0">
+                <span className="text-[10px] text-slate-500 shrink-0">
                   {new Date(n.timestamp).toLocaleTimeString([], {
                     hour: '2-digit',
                     minute: '2-digit',
                   })}
                 </span>
               </div>
-              <p className="line-clamp-2 text-slate-500 dark:text-slate-400 text-[11px] leading-relaxed">
+              <p className="line-clamp-2 text-slate-600 text-[11px] leading-relaxed">
                 {n.message}
               </p>
             </button>
           ))
         )}
       </div>
-    </>
+    </div>
   );
 }

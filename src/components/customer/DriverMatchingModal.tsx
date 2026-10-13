@@ -373,13 +373,13 @@ export default function DriverMatchingModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
-      <div className="bg-card border border-base rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden transition-all duration-300">
+    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-fade-in">
+      <div className="bg-card border border-base rounded-2xl w-full max-w-md shadow-2xl overflow-hidden transition-all duration-300">
 
         {/* Header Ribbon */}
-        <div className="px-6 py-4 border-b border-base flex items-center justify-between bg-surface/50">
+        <div className="px-4 sm:px-5 py-3 sm:py-3.5 border-b border-base flex items-center justify-between bg-surface/50">
           <div className="flex items-center gap-2">
-            <span className={`w-2.5 h-2.5 rounded-full ${
+            <span className={`w-2 h-2 rounded-full ${
               phase === 'assigned' ? 'bg-emerald-500' :
               phase === 'awaiting_driver' ? 'bg-amber-400 animate-pulse' :
               phase === 'searching' ? 'bg-amber-500 animate-ping' :
@@ -391,7 +391,7 @@ export default function DriverMatchingModal({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-xl text-muted hover:text-primary hover:bg-elevated transition-colors"
+            className="p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated transition-colors"
             title="Close modal"
           >
             <X className="w-4 h-4" />
@@ -399,61 +399,61 @@ export default function DriverMatchingModal({
         </div>
 
         {/* Modal Content Based on Phase */}
-        <div className="p-6 sm:p-8 space-y-6">
+        <div className="p-4 sm:p-5 space-y-4 sm:space-y-5">
 
           {/* ========================================================= */}
           {/* PHASE 1: SEARCHING FOR DRIVER                             */}
           {/* ========================================================= */}
           {phase === 'searching' && (
-            <div className="space-y-6 text-center">
+            <div className="space-y-4 text-center">
               {/* Radar Scanner */}
-              <div className="relative w-36 h-36 mx-auto flex items-center justify-center">
+              <div className="relative w-28 h-28 sm:w-32 sm:h-32 mx-auto flex items-center justify-center">
                 <div className="absolute inset-0 rounded-full border border-emerald-500/20 animate-ping opacity-40" />
-                <div className="absolute inset-2 rounded-full border-2 border-dashed border-emerald-500/40 animate-spin" style={{ animationDuration: '10s' }} />
-                <div className="absolute inset-6 rounded-full bg-emerald-500/10 border border-emerald-500/30" />
-                <div className="relative z-10 w-16 h-16 rounded-full bg-gradient-to-tr from-emerald-600 to-emerald-500 text-white flex items-center justify-center shadow-xl border-2 border-white/20">
-                  <Car className="w-8 h-8 animate-pulse" />
+                <div className="absolute inset-1.5 rounded-full border-2 border-dashed border-emerald-500/40 animate-spin" style={{ animationDuration: '10s' }} />
+                <div className="absolute inset-4 rounded-full bg-emerald-500/10 border border-emerald-500/30" />
+                <div className="relative z-10 w-12 h-12 rounded-full bg-gradient-to-tr from-emerald-600 to-emerald-500 text-white flex items-center justify-center shadow-lg border-2 border-white/20">
+                  <Car className="w-6 h-6 animate-pulse" />
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <h3 className="type-card-title text-xl text-primary">Searching for a Captain...</h3>
-                <p className="text-xs text-amber-600 dark:text-amber-400 font-medium h-5 transition-all">
+              <div className="space-y-1">
+                <h3 className="text-base sm:text-lg font-bold text-primary">Searching for a Captain...</h3>
+                <p className="text-xs text-amber-600 dark:text-amber-400 font-medium h-4 transition-all">
                   {searchMessages[statusMessageIndex]}
                 </p>
-                <p className="text-[11px] text-muted">
+                <p className="text-[10px] text-muted">
                   Scanning nearby executive drivers ({secondsElapsed}s / {maxSearchSeconds}s)
                 </p>
               </div>
 
               {/* Booking info pill */}
-              <div className="p-4 rounded-2xl bg-surface border border-base space-y-2.5 text-left text-xs">
+              <div className="p-3 sm:p-3.5 rounded-xl bg-surface border border-base space-y-2 text-left text-xs">
                 {bookingReference && (
-                  <div className="flex items-center justify-between pb-2 border-b border-base/60">
-                    <span className="text-muted">Booking Reference:</span>
-                    <button onClick={handleCopyRef} className="font-mono font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1 hover:underline">
+                  <div className="flex items-center justify-between pb-1.5 border-b border-base/60">
+                    <span className="text-muted text-[11px]">Booking Reference:</span>
+                    <button onClick={handleCopyRef} className="font-mono font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1 hover:underline text-xs">
                       <span>{bookingReference}</span>
                       {copiedRef ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
                     </button>
                   </div>
                 )}
                 <div className="flex items-start gap-2">
-                  <MapPin className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                  <MapPin className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
                   <div className="flex-1 min-w-0">
-                    <span className="text-[10px] uppercase font-bold text-muted block">Pickup</span>
-                    <span className="text-primary font-medium truncate block">{pickupAddress || 'Current Pinned Location'}</span>
+                    <span className="text-[9px] uppercase font-bold text-muted block">Pickup</span>
+                    <span className="text-primary font-medium truncate block text-xs">{pickupAddress || 'Current Pinned Location'}</span>
                   </div>
                 </div>
                 {destinationAddress && (
                   <div className="flex items-start gap-2">
-                    <Navigation className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                    <Navigation className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
                     <div className="flex-1 min-w-0">
-                      <span className="text-[10px] uppercase font-bold text-muted block">Destination</span>
-                      <span className="text-primary font-medium truncate block">{destinationAddress}</span>
+                      <span className="text-[9px] uppercase font-bold text-muted block">Destination</span>
+                      <span className="text-primary font-medium truncate block text-xs">{destinationAddress}</span>
                     </div>
                   </div>
                 )}
-                <div className="flex items-center justify-between pt-1 text-[11px]">
+                <div className="flex items-center justify-between pt-0.5 text-[11px]">
                   <span className="text-muted">Vehicle Class:</span>
                   <span className="font-semibold text-emerald-700 dark:text-emerald-300 uppercase">{vehicleType.replace(/_/g, ' ')}</span>
                 </div>
@@ -467,8 +467,8 @@ export default function DriverMatchingModal({
                 />
               </div>
 
-              <div className="pt-2">
-                <button type="button" onClick={handleCancelSearch} className="text-xs font-semibold text-rose-500 hover:text-rose-600 dark:hover:text-rose-400 transition-colors py-1">
+              <div className="pt-1">
+                <button type="button" onClick={handleCancelSearch} className="text-xs font-semibold text-rose-500 hover:text-rose-600 dark:hover:text-rose-400 transition-colors py-0.5">
                   Cancel Search
                 </button>
               </div>
@@ -479,12 +479,12 @@ export default function DriverMatchingModal({
           {/* PHASE 2: AWAITING DRIVER ACCEPTANCE                       */}
           {/* ========================================================= */}
           {phase === 'awaiting_driver' && matchedDriver && matchedVehicle && (
-            <div className="space-y-5 animate-fade-up">
+            <div className="space-y-4 animate-fade-up">
 
               {/* Banner: Captain Notified */}
-              <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/50 border border-amber-400/50 text-amber-800 dark:text-amber-200">
-                <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                  <Bell className="w-5 h-5" />
+              <div className="flex items-center gap-2.5 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-400/50 text-amber-800 dark:text-amber-200">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                  <Bell className="w-4 h-4" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <h4 className="text-xs font-bold uppercase tracking-wider">Captain Notified — Awaiting Acceptance</h4>
@@ -495,27 +495,25 @@ export default function DriverMatchingModal({
                 <Loader2 className="w-4 h-4 text-amber-500 animate-spin shrink-0" />
               </div>
 
-
-
               {/* Driver preview card (greyed until confirmed) */}
-              <div className="p-4 rounded-2xl bg-surface border border-base space-y-4 opacity-80">
-                <div className="flex items-center gap-3.5">
+              <div className="p-3.5 rounded-xl bg-surface border border-base space-y-3 opacity-80">
+                <div className="flex items-center gap-3">
                   <div className="relative">
                     <img
                       src={matchedDriver.photo || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
                       alt={matchedDriver.name}
-                      className="w-14 h-14 rounded-2xl object-cover border-2 border-amber-400/60 shadow-md grayscale-[30%]"
+                      className="w-12 h-12 rounded-xl object-cover border-2 border-amber-400/60 shadow-sm grayscale-[30%]"
                     />
                     <span className="absolute -bottom-1 -right-1 bg-amber-500 text-white rounded-full p-0.5 border border-white">
-                      <Clock className="w-3.5 h-3.5" />
+                      <Clock className="w-3 h-3" />
                     </span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <span className="text-[10px] uppercase font-bold text-amber-600 dark:text-amber-400 tracking-wider">Assigned Captain</span>
-                    <h3 className="type-card-title text-base truncate">{matchedDriver.name}</h3>
+                    <h3 className="text-sm font-bold text-primary truncate">{matchedDriver.name}</h3>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 font-bold">
-                        <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                        <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
                         {matchedDriver.rating.toFixed(2)}
                       </span>
                       <span className="text-muted text-xs">&bull;</span>
@@ -524,10 +522,10 @@ export default function DriverMatchingModal({
                   </div>
                 </div>
 
-                <div className="p-3 rounded-xl bg-card border border-base/80 space-y-2">
+                <div className="p-2.5 rounded-lg bg-card border border-base/80 space-y-1.5">
                   <div className="flex items-center justify-between">
                     <div>
-                      <span className="text-[10px] uppercase text-muted font-bold block">Vehicle</span>
+                      <span className="text-[9px] uppercase text-muted font-bold block">Vehicle</span>
                       <span className="text-xs font-bold text-primary">{matchedVehicle.make} {matchedVehicle.model}</span>
                     </div>
                     {matchedVehicle.color && (
@@ -535,15 +533,15 @@ export default function DriverMatchingModal({
                     )}
                   </div>
                   <div className="flex items-center justify-between pt-1 border-t border-base/60">
-                    <span className="text-[11px] text-muted">Plate Number:</span>
-                    <div className="px-3 py-1 rounded-md bg-white text-slate-950 font-mono font-black text-xs tracking-wider border-2 border-slate-900 shadow-sm flex items-center gap-2">
+                    <span className="text-[10px] text-muted">Plate Number:</span>
+                    <div className="px-2 py-0.5 rounded-md bg-white text-slate-950 font-mono font-black text-xs tracking-wider border border-slate-900 shadow-xs flex items-center gap-1.5">
                       <span className="text-[9px] text-emerald-700 font-bold">KSA</span>
                       <span>{matchedVehicle.plateNumber}</span>
                     </div>
                   </div>
                 </div>
 
-                <p className="text-[11px] text-center text-muted italic">
+                <p className="text-[10px] text-center text-muted italic">
                   Ride details will be confirmed once the captain accepts
                 </p>
               </div>
@@ -559,7 +557,7 @@ export default function DriverMatchingModal({
                 Waiting for captain acceptance ({awaitingSeconds}s / {maxAwaitSeconds}s)
               </p>
 
-              <button type="button" onClick={handleCancelSearch} className="w-full text-xs font-semibold text-rose-500 hover:text-rose-600 dark:hover:text-rose-400 transition-colors py-1">
+              <button type="button" onClick={handleCancelSearch} className="w-full text-xs font-semibold text-rose-500 hover:text-rose-600 dark:hover:text-rose-400 transition-colors py-0.5">
                 Cancel and find another captain
               </button>
             </div>
@@ -569,12 +567,12 @@ export default function DriverMatchingModal({
           {/* PHASE 3: DRIVER ACCEPTED — CONFIRMED SUCCESS              */}
           {/* ========================================================= */}
           {phase === 'assigned' && matchedDriver && matchedVehicle && (
-            <div className="space-y-5 animate-fade-up">
+            <div className="space-y-4 animate-fade-up">
 
               {/* Success Banner */}
-              <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-500/40 text-emerald-800 dark:text-emerald-200">
-                <div className="w-9 h-9 rounded-xl bg-emerald-500 text-slate-950 flex items-center justify-center font-bold shrink-0">
-                  <UserCheck className="w-5 h-5" />
+              <div className="flex items-center gap-2.5 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-500/40 text-emerald-800 dark:text-emerald-200">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500 text-slate-950 flex items-center justify-center font-bold shrink-0">
+                  <UserCheck className="w-4 h-4" />
                 </div>
                 <div>
                   <h4 className="text-xs font-bold uppercase tracking-wider">Captain Accepted & Confirmed</h4>
@@ -585,14 +583,14 @@ export default function DriverMatchingModal({
               </div>
 
               {/* ETA Card */}
-              <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/30 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center">
-                    <Clock className="w-5 h-5" />
+              <div className="p-3 sm:p-3.5 rounded-xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/30 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                    <Clock className="w-4 h-4" />
                   </div>
                   <div>
                     <span className="text-[10px] uppercase font-bold text-muted block">Estimated Arrival</span>
-                    <span className="text-base font-black text-amber-600 dark:text-amber-400">
+                    <span className="text-sm sm:text-base font-black text-amber-600 dark:text-amber-400">
                       {etaFormatted || `${etaMinutes || 5} mins`}
                     </span>
                   </div>
@@ -607,39 +605,39 @@ export default function DriverMatchingModal({
               </div>
 
               {/* Driver Profile */}
-              <div className="p-4 rounded-2xl bg-surface border border-base space-y-4">
-                <div className="flex items-center gap-3.5">
+              <div className="p-3.5 rounded-xl bg-surface border border-base space-y-3">
+                <div className="flex items-center gap-3">
                   <div className="relative">
                     <img
                       src={matchedDriver.photo || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
                       alt={matchedDriver.name}
-                      className="w-14 h-14 rounded-2xl object-cover border-2 border-emerald-500 shadow-md"
+                      className="w-12 h-12 rounded-xl object-cover border-2 border-emerald-500 shadow-sm"
                     />
                     <span className="absolute -bottom-1 -right-1 bg-emerald-600 text-white rounded-full p-0.5 border border-white">
-                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <ShieldCheck className="w-3 h-3" />
                     </span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 tracking-wider">Executive Chauffeur</span>
                     </div>
-                    <h3 className="type-card-title text-base truncate">{matchedDriver.name}</h3>
+                    <h3 className="text-sm font-bold text-primary truncate">{matchedDriver.name}</h3>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 font-bold">
-                        <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                        <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
                         {matchedDriver.rating.toFixed(2)}
                       </span>
                       <span className="text-muted text-xs">&bull;</span>
-                      <span className="text-xs text-secondary">{matchedDriver.totalRides}+ Completed Trips</span>
+                      <span className="text-xs text-secondary">{matchedDriver.totalRides}+ Trips</span>
                     </div>
                   </div>
                 </div>
 
                 {/* Vehicle Details */}
-                <div className="p-3 rounded-xl bg-card border border-base/80 space-y-2">
+                <div className="p-2.5 rounded-lg bg-card border border-base/80 space-y-1.5">
                   <div className="flex items-center justify-between">
                     <div>
-                      <span className="text-[10px] uppercase text-muted font-bold block">Vehicle</span>
+                      <span className="text-[9px] uppercase text-muted font-bold block">Vehicle</span>
                       <span className="text-xs font-bold text-primary">{matchedVehicle.make} {matchedVehicle.model}</span>
                     </div>
                     {matchedVehicle.color && (
@@ -647,8 +645,8 @@ export default function DriverMatchingModal({
                     )}
                   </div>
                   <div className="flex items-center justify-between pt-1 border-t border-base/60">
-                    <span className="text-[11px] text-muted">Plate Number:</span>
-                    <div className="px-3 py-1 rounded-md bg-white text-slate-950 font-mono font-black text-xs tracking-wider border-2 border-slate-900 shadow-sm flex items-center gap-2">
+                    <span className="text-[10px] text-muted">Plate Number:</span>
+                    <div className="px-2 py-0.5 rounded-md bg-white text-slate-950 font-mono font-black text-xs tracking-wider border border-slate-900 shadow-xs flex items-center gap-1.5">
                       <span className="text-[9px] text-emerald-700 font-bold">KSA</span>
                       <span>{matchedVehicle.plateNumber}</span>
                     </div>
@@ -657,19 +655,19 @@ export default function DriverMatchingModal({
               </div>
 
               {/* CTA Buttons */}
-              <div className="flex flex-col sm:flex-row items-center gap-2.5 pt-1">
+              <div className="flex flex-col sm:flex-row items-center gap-2 pt-1">
                 <Link
                   href="/customer/track"
                   onClick={onClose}
-                  className="btn-primary w-full py-3 text-xs flex items-center justify-center gap-2"
+                  className="btn-primary w-full py-2.5 text-xs flex items-center justify-center gap-1.5 rounded-xl"
                 >
-                  <Navigation className="w-4 h-4" />
+                  <Navigation className="w-3.5 h-3.5" />
                   <span>Open Live Radar Tracking</span>
                 </Link>
                 <Link
                   href="/customer/bookings"
                   onClick={onClose}
-                  className="btn-secondary w-full py-3 text-xs flex items-center justify-center gap-2"
+                  className="btn-secondary w-full py-2.5 text-xs flex items-center justify-center gap-1.5 rounded-xl"
                 >
                   <span>View All Bookings</span>
                 </Link>
@@ -681,13 +679,13 @@ export default function DriverMatchingModal({
           {/* PHASE 4: NO DRIVER / TIMEOUT / ERROR                      */}
           {/* ========================================================= */}
           {(phase === 'no_driver' || phase === 'error') && (
-            <div className="space-y-5 text-center animate-fade-up">
-              <div className="w-16 h-16 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto border-2 border-amber-500/30">
-                <AlertCircle className="w-8 h-8" />
+            <div className="space-y-4 text-center animate-fade-up">
+              <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto border border-amber-500/30">
+                <AlertCircle className="w-6 h-6" />
               </div>
 
               <div className="space-y-1">
-                <h3 className="type-card-title text-lg text-primary">
+                <h3 className="text-sm sm:text-base font-bold text-primary">
                   {phase === 'error' ? 'Matching Error' : 'No Captains Immediately Available'}
                 </h3>
                 <p className="text-xs text-secondary max-w-sm mx-auto">
@@ -696,31 +694,31 @@ export default function DriverMatchingModal({
               </div>
 
               {bookingReference && (
-                <div className="p-3.5 rounded-2xl bg-surface border border-base text-xs flex items-center justify-between">
-                  <span className="text-muted">Booking Reference:</span>
+                <div className="p-2.5 rounded-xl bg-surface border border-base text-xs flex items-center justify-between">
+                  <span className="text-muted text-[11px]">Booking Reference:</span>
                   <span className="font-mono font-bold text-amber-500">{bookingReference}</span>
                 </div>
               )}
 
-              <div className="flex flex-col gap-2 pt-2">
+              <div className="flex flex-col gap-2 pt-1">
                 <button
                   type="button"
                   onClick={runMatching}
-                  className="btn-primary w-full py-3 text-xs flex items-center justify-center gap-2"
+                  className="btn-primary w-full py-2.5 text-xs flex items-center justify-center gap-1.5 rounded-xl"
                 >
-                  <RotateCcw className="w-4 h-4" />
+                  <RotateCcw className="w-3.5 h-3.5" />
                   <span>Retry Driver Search</span>
                 </button>
 
                 <Link
                   href="/customer/bookings"
                   onClick={onClose}
-                  className="btn-secondary w-full py-2.5 text-xs text-center"
+                  className="btn-secondary w-full py-2 text-xs text-center rounded-xl"
                 >
                   Keep in Queue &amp; View Bookings
                 </Link>
 
-                <button type="button" onClick={handleCancelSearch} className="text-xs text-rose-500 hover:text-rose-600 py-1">
+                <button type="button" onClick={handleCancelSearch} className="text-xs text-rose-500 hover:text-rose-600 py-0.5">
                   Cancel Booking
                 </button>
               </div>

@@ -422,6 +422,11 @@ textarea {
     @apply w-full max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 py-6 sm:py-8;
   }
 
+  /* Scoped Customer Portal Shell: compact, balanced proportions at 100% zoom */
+  .customer-portal .page-shell {
+    @apply max-w-7xl px-3 sm:px-4 lg:px-6 py-4 sm:py-5;
+  }
+
   /* ─────────────────────────────────────────────────
      PREMIUM BUTTONS
   ───────────────────────────────────────────────── */
@@ -1211,15 +1216,7 @@ h2.font-extrabold,
   font-weight: 700;
 }
 
-/* Keep dark: Tailwind variants from breaking portal UIs */
-.dark\:text-white,
-.dark\:text-slate-200,
-.dark\:text-slate-300,
-.dark\:text-emerald-400,
-.dark\:text-amber-400,
-.dark\:text-amber-300 {
-  /* these classes become no-ops in light-only mode */
-}
+/* dark: Tailwind variant classes are intentional no-ops in light-only mode */
 
 /* ─────────────────────────────────────────────────
    NAV GLASS — scrolled navbar state

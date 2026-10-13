@@ -162,9 +162,9 @@ export default function IntroAnimation() {
 
       {/* ── 3. Center Cinematic Stage ── */}
       <div className="intro-stage">
-        {/* Sacred Geometric Emblem (Rub el Hizb with Arabic Monogram) */}
+        {/* Sacred Geometric Emblem Framing the Official Al Harmain Travels Logo */}
         <div className="intro-emblem-wrap">
-          <svg className="intro-emblem-svg" viewBox="0 0 100 100" fill="none">
+          <svg className="intro-emblem-svg absolute inset-0 w-full h-full" viewBox="0 0 100 100" fill="none">
             {/* Outer Rotating Dotted Halo */}
             <circle
               cx="50"
@@ -200,34 +200,24 @@ export default function IntroAnimation() {
               className="intro-star-2"
             />
 
-            {/* Inner Sacred Circle */}
-            <circle
-              cx="50"
-              cy="50"
-              r="27"
-              stroke="url(#introEmeraldGrad)"
-              strokeWidth="1.2"
-              opacity="0.8"
-            />
-
-            {/* Central Glowing Core */}
-            <circle cx="50" cy="50" r="3.5" fill="url(#introGoldGrad)" className="intro-core-dot" />
-
             <defs>
               <linearGradient id="introGoldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" stopColor="#d4af37" />
                 <stop offset="50%" stopColor="#b8922a" />
                 <stop offset="100%" stopColor="#f5edd9" />
               </linearGradient>
-              <linearGradient id="introEmeraldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#0b4736" />
-                <stop offset="100%" stopColor="#059669" />
-              </linearGradient>
             </defs>
           </svg>
 
-          {/* Central Calligraphic Text */}
-          <div className="intro-emblem-text">الحرمين</div>
+          {/* Central Official Logo with Golden Halo */}
+          <div className="relative z-10 w-[72%] h-[72%] flex items-center justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/logo.png"
+              alt="Al Harmain Travels"
+              className="w-full h-full object-contain filter drop-shadow-[0_0_18px_rgba(212,175,55,0.7)] select-none"
+            />
+          </div>
         </div>
 
         {/* Brand Title: Al Harmain Travels with Kinetic Letter Stagger */}

@@ -4,6 +4,7 @@ import React, { useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { EmergencyContact, Profile } from '@/types';
+import { isBookingForCustomer } from '@/lib/assignment-utils';
 import {
   User,
   Mail,
@@ -54,7 +55,7 @@ export default function CustomerProfilePage() {
 
   // Personal Info Form State
   const [fullName, setFullName] = useState(currentUser.full_name);
-  const [dateOfBirth, setDateOfBirth] = useState(currentUser.date_of_birth || '1985-06-15');
+  const [dateOfBirth, setDateOfBirth] = useState(currentUser.date_of_birth || '');
   const [gender, setGender] = useState<'male' | 'female' | 'other'>(currentUser.gender || 'male');
   const [preferredLang, setPreferredLang] = useState('en');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
@@ -130,8 +131,8 @@ export default function CustomerProfilePage() {
   const completedRidesCount = useMemo(() => {
     return bookings.filter(
       (b) =>
-        (b.customer_id === currentUser.id || b.passenger_phone === currentUser.phone) &&
-        (b.status === 'trip_completed' || b.status === 'ride_completed' || b.status === 'payment_completed')
+        isBookingForCustomer(b, currentUser) &&
+        (b.status === 'completed' || b.status === 'trip_completed' || b.status === 'ride_completed' || b.status === 'payment_completed')
     ).length;
   }, [bookings, currentUser]);
 
@@ -299,30 +300,30 @@ export default function CustomerProfilePage() {
   };
 
   return (
-    <div className="page-shell space-y-8 animate-fade-up">
+    <div className="page-shell space-y-4 sm:space-y-5 animate-fade-up">
       {/* Header Banner */}
-      <div className="bg-card border border-base p-6 sm:p-7 rounded-3xl shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
-        <div className="flex items-center gap-4 sm:gap-5">
+      <div className="bg-card border border-base p-4 sm:p-5 rounded-2xl shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4 relative overflow-hidden">
+        <div className="flex items-center gap-3 sm:gap-4">
           {/* Avatar with Camera Overlay */}
           <div className="relative group shrink-0">
             {currentUser.avatar_url ? (
               <img
                 src={currentUser.avatar_url}
                 alt={currentUser.full_name}
-                className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl sm:rounded-3xl object-cover border-2 border-emerald-500/50 shadow-lg"
+                className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl object-cover border-2 border-emerald-500/50 shadow-md"
               />
             ) : (
-              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl sm:rounded-3xl bg-gradient-to-br from-emerald-600 to-teal-900 text-amber-400 font-bold text-3xl sm:text-4xl flex items-center justify-center border-2 border-emerald-500/50 shadow-lg">
+              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-900 text-amber-400 font-bold text-xl sm:text-2xl flex items-center justify-center border-2 border-emerald-500/50 shadow-md">
                 {currentUser.full_name.charAt(0).toUpperCase()}
               </div>
             )}
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="absolute -bottom-1.5 -right-1.5 p-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md transition-transform group-hover:scale-110 cursor-pointer"
+              className="absolute -bottom-1 -right-1 p-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md transition-transform group-hover:scale-110 cursor-pointer"
               title="Change Profile Photo"
             >
-              <Camera className="w-3.5 h-3.5" />
+              <Camera className="w-3 h-3" />
             </button>
             <input
               type="file"
@@ -333,21 +334,21 @@ export default function CustomerProfilePage() {
             />
           </div>
 
-          <div className="space-y-1">
+          <div className="space-y-0.5">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-xl sm:text-2xl font-bold text-primary">{currentUser.full_name}</h1>
-              <span className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 text-[10px] uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-full">
+              <h1 className="text-base sm:text-lg font-bold text-primary">{currentUser.full_name}</h1>
+              <span className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full">
                 Verified Pilgrim
               </span>
             </div>
-            <p className="text-xs sm:text-sm text-muted">{currentUser.email || 'Verified Customer'}</p>
-            <p className="text-xs text-secondary font-mono pt-0.5">{currentUser.phone || 'No phone set'}</p>
+            <p className="text-xs text-muted">{currentUser.email || 'Verified Customer'}</p>
+            <p className="text-[11px] text-secondary font-mono pt-0.5">{currentUser.phone || 'No phone set'}</p>
           </div>
         </div>
 
         {/* Quick Action Badges */}
-        <div className="flex flex-row md:flex-col items-center md:items-end gap-2 shrink-0">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface border border-base text-xs font-semibold text-secondary">
+        <div className="flex flex-row md:flex-col items-center md:items-end gap-1.5 shrink-0">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface border border-base text-[11px] font-semibold text-secondary">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
             <span>Customer ID: #{currentUser.id.slice(-6).toUpperCase()}</span>
           </div>
@@ -365,96 +366,96 @@ export default function CustomerProfilePage() {
       </div>
 
       {/* Tabs Navigation */}
-      <div className="flex items-center gap-2 border-b border-base overflow-x-auto pb-2 text-xs font-semibold scrollbar-none">
+      <div className="flex items-center gap-1.5 border-b border-base overflow-x-auto pb-1.5 text-xs font-semibold scrollbar-none">
         <button
           onClick={() => setActiveTab('profile')}
-          className={`whitespace-nowrap px-4 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
+          className={`whitespace-nowrap px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shrink-0 text-xs ${
             activeTab === 'profile'
               ? 'bg-emerald-600 text-white font-bold shadow-sm'
               : 'bg-card text-secondary hover:text-primary hover:bg-elevated border border-base'
           }`}
         >
-          <User className="w-4 h-4" />
+          <User className="w-3.5 h-3.5" />
           <span>Personal Information</span>
         </button>
 
         <button
           onClick={() => setActiveTab('emergency')}
-          className={`whitespace-nowrap px-4 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
+          className={`whitespace-nowrap px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shrink-0 text-xs ${
             activeTab === 'emergency'
               ? 'bg-emerald-600 text-white font-bold shadow-sm'
               : 'bg-card text-secondary hover:text-primary hover:bg-elevated border border-base'
           }`}
         >
-          <Phone className="w-4 h-4" />
+          <Phone className="w-3.5 h-3.5" />
           <span>Emergency Contacts ({emergencyContacts.length})</span>
         </button>
 
         <button
           onClick={() => setActiveTab('security')}
-          className={`whitespace-nowrap px-4 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
+          className={`whitespace-nowrap px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shrink-0 text-xs ${
             activeTab === 'security'
               ? 'bg-emerald-600 text-white font-bold shadow-sm'
               : 'bg-card text-secondary hover:text-primary hover:bg-elevated border border-base'
           }`}
         >
-          <Lock className="w-4 h-4" />
+          <Lock className="w-3.5 h-3.5" />
           <span>Security &amp; Password</span>
         </button>
 
         <button
           onClick={() => setActiveTab('status')}
-          className={`whitespace-nowrap px-4 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
+          className={`whitespace-nowrap px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shrink-0 text-xs ${
             activeTab === 'status'
               ? 'bg-emerald-600 text-white font-bold shadow-sm'
               : 'bg-card text-secondary hover:text-primary hover:bg-elevated border border-base'
           }`}
         >
-          <Sparkles className="w-4 h-4" />
+          <Sparkles className="w-3.5 h-3.5" />
           <span>Account &amp; Pilgrim Tier</span>
         </button>
       </div>
 
       {/* TAB 1: PERSONAL INFORMATION */}
       {activeTab === 'profile' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
           {/* Verification Cards */}
-          <div className="lg:col-span-4 space-y-5">
-            <div className="surface-card p-5 space-y-4">
-              <h3 className="text-sm font-bold text-primary flex items-center gap-2">
+          <div className="lg:col-span-4 space-y-4">
+            <div className="surface-card p-4 sm:p-5 rounded-2xl space-y-3 sm:space-y-3.5">
+              <h3 className="text-xs sm:text-sm font-bold text-primary flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-emerald-500" />
                 <span>Verification Badges</span>
               </h3>
 
-              <div className="space-y-3 text-xs">
+              <div className="space-y-2.5 text-xs">
                 {/* Email Verification Card */}
-                <div className="p-3.5 rounded-2xl bg-surface border border-base space-y-1.5">
+                <div className="p-3 rounded-xl bg-surface border border-base space-y-1">
                   <div className="flex items-center justify-between">
-                    <span className="text-secondary font-semibold flex items-center gap-1.5">
+                    <span className="text-secondary font-semibold flex items-center gap-1.5 text-[11px]">
                       <Mail className="w-3.5 h-3.5 text-emerald-500" />
                       Email Status
                     </span>
                     {currentUser.email_verified !== false ? (
-                      <span className="text-emerald-500 font-bold flex items-center gap-1 text-[11px]">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span className="text-emerald-500 font-bold flex items-center gap-1 text-[10px]">
+                        <CheckCircle2 className="w-3 h-3" />
                         Verified
                       </span>
                     ) : (
-                      <span className="text-amber-500 font-bold text-[11px]">Unverified</span>
+                      <span className="text-amber-500 font-bold text-[10px]">Unverified</span>
                     )}
                   </div>
                   <p className="text-[11px] text-muted truncate">{currentUser.email || 'Verified Customer'}</p>
                 </div>
 
                 {/* Phone Card */}
-                <div className="p-3.5 rounded-2xl bg-surface border border-base space-y-2">
+                <div className="p-3 rounded-xl bg-surface border border-base space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-secondary font-semibold flex items-center gap-1.5">
+                    <span className="text-secondary font-semibold flex items-center gap-1.5 text-[11px]">
                       <Phone className="w-3.5 h-3.5 text-amber-500" />
                       Contact Phone
                     </span>
-                    <span className="text-emerald-500 font-bold flex items-center gap-1 text-[11px]">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span className="text-emerald-500 font-bold flex items-center gap-1 text-[10px]">
+                      <CheckCircle2 className="w-3 h-3" />
                       Active
                     </span>
                   </div>
@@ -463,7 +464,7 @@ export default function CustomerProfilePage() {
                   <button
                     type="button"
                     onClick={handleStartPhoneChange}
-                    className="w-full py-2 px-3 rounded-xl bg-card hover:bg-elevated border border-base text-amber-500 dark:text-amber-400 font-bold text-[11px] transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    className="w-full py-1.5 px-3 rounded-xl bg-card hover:bg-elevated border border-base text-amber-600 dark:text-amber-400 font-bold text-[11px] transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                   >
                     <Edit2 className="w-3 h-3" />
                     <span>Change Phone Number</span>
@@ -473,8 +474,8 @@ export default function CustomerProfilePage() {
             </div>
 
             {/* Language & Preferences Card */}
-            <div className="surface-card p-5 space-y-3 text-xs">
-              <h3 className="text-sm font-bold text-primary flex items-center gap-2">
+            <div className="surface-card p-4 sm:p-5 rounded-2xl space-y-3 text-xs">
+              <h3 className="text-xs sm:text-sm font-bold text-primary flex items-center gap-2">
                 <Globe className="w-4 h-4 text-teal-500" />
                 <span>Preferred Language</span>
               </h3>
@@ -492,9 +493,9 @@ export default function CustomerProfilePage() {
                       setPreferredLang(l.id);
                       toast.success(`Language preference set to ${l.label}`);
                     }}
-                    className={`py-2 px-2.5 rounded-xl border text-center font-bold transition-colors cursor-pointer ${
+                    className={`py-1.5 px-2 rounded-xl border text-center text-xs font-bold transition-colors cursor-pointer ${
                       preferredLang === l.id
-                        ? 'bg-emerald-600 text-white border-emerald-500 shadow-md'
+                        ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
                         : 'bg-surface border-base text-secondary hover:bg-elevated'
                     }`}
                   >
@@ -506,25 +507,25 @@ export default function CustomerProfilePage() {
           </div>
 
           {/* Right Form: Personal Details */}
-          <div className="lg:col-span-8 surface-card p-6 sm:p-8 space-y-6">
-            <div className="border-b border-base pb-4">
-              <h2 className="text-base sm:text-lg font-bold text-primary">Edit Personal Details</h2>
+          <div className="lg:col-span-8 surface-card p-4 sm:p-6 space-y-4 sm:space-y-5 rounded-2xl">
+            <div className="border-b border-base pb-3">
+              <h2 className="text-sm sm:text-base font-bold text-primary">Edit Personal Details</h2>
               <p className="text-xs text-muted">Keep your pilgrim profile information accurate for airport clearance.</p>
             </div>
 
-            <form onSubmit={handleSavePersonalInfo} className="space-y-5 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <form onSubmit={handleSavePersonalInfo} className="space-y-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4">
                 {/* Legal Name */}
                 <div>
                   <label className="type-label">Full Legal Name *</label>
                   <div className="relative">
-                    <User className="w-4 h-4 text-muted absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <User className="w-3.5 h-3.5 text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <input
                       type="text"
                       required
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
-                      className="field-input pl-10"
+                      className="field-input pl-9 h-8.5 sm:h-9 py-1.5 px-3 text-xs rounded-xl"
                       placeholder="e.g. Dr. Abdullah Rahman"
                     />
                   </div>
@@ -540,12 +541,12 @@ export default function CustomerProfilePage() {
                     </span>
                   </div>
                   <div className="relative">
-                    <Mail className="w-4 h-4 text-muted absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <Mail className="w-3.5 h-3.5 text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <input
                       type="email"
                       disabled
                       value={currentUser.email || ''}
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-surface border border-base text-muted cursor-not-allowed text-xs font-mono"
+                      className="w-full pl-9 pr-3 py-1.5 h-8.5 sm:h-9 rounded-xl bg-surface border border-base text-muted cursor-not-allowed text-xs font-mono"
                     />
                   </div>
                   <span className="text-[10px] text-muted mt-1 block">
@@ -555,16 +556,16 @@ export default function CustomerProfilePage() {
               </div>
 
               {/* Date of Birth & Gender Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4">
                 <div>
                   <label className="type-label">Date of Birth</label>
                   <div className="relative">
-                    <Calendar className="w-4 h-4 text-muted absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <Calendar className="w-3.5 h-3.5 text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <input
                       type="date"
                       value={dateOfBirth}
                       onChange={(e) => setDateOfBirth(e.target.value)}
-                      className="field-input pl-10"
+                      className="field-input pl-9 h-8.5 sm:h-9 py-1.5 px-3 text-xs rounded-xl"
                     />
                   </div>
                 </div>
@@ -574,7 +575,7 @@ export default function CustomerProfilePage() {
                   <select
                     value={gender}
                     onChange={(e) => setGender(e.target.value as 'male' | 'female' | 'other')}
-                    className="field-input"
+                    className="field-input h-8.5 sm:h-9 py-1.5 px-3 text-xs rounded-xl"
                   >
                     <option value="male">Male (ذكر)</option>
                     <option value="female">Female (أنثى)</option>
@@ -584,20 +585,20 @@ export default function CustomerProfilePage() {
               </div>
 
               {/* Submit Save Button */}
-              <div className="pt-2">
+              <div className="pt-1">
                 <button
                   type="submit"
                   disabled={isSavingProfile}
-                  className="btn-brand py-3 px-6 cursor-pointer"
+                  className="btn-brand py-2.5 px-5 text-xs rounded-xl cursor-pointer"
                 >
                   {isSavingProfile ? (
                     <>
-                      <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                      <span className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
                       <span>Saving Details…</span>
                     </>
                   ) : (
                     <>
-                      <Save className="w-4 h-4" />
+                      <Save className="w-3.5 h-3.5" />
                       <span>Save Profile Changes</span>
                     </>
                   )}
@@ -610,12 +611,12 @@ export default function CustomerProfilePage() {
 
       {/* TAB 2: EMERGENCY CONTACTS */}
       {activeTab === 'emergency' && (
-        <div className="space-y-6">
-          <div className="surface-card p-6 sm:p-7 space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-base pb-4">
+        <div className="space-y-4 sm:space-y-5">
+          <div className="surface-card p-4 sm:p-5 rounded-2xl space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-base pb-3">
               <div>
-                <h2 className="text-base sm:text-lg font-bold text-primary flex items-center gap-2">
-                  <Phone className="w-5 h-5 text-amber-500" />
+                <h2 className="text-sm sm:text-base font-bold text-primary flex items-center gap-2">
+                  <Phone className="w-4 h-4 text-amber-500" />
                   <span>Emergency Contacts</span>
                 </h2>
                 <p className="text-xs text-muted mt-0.5">
@@ -626,20 +627,20 @@ export default function CustomerProfilePage() {
               <button
                 type="button"
                 onClick={openAddContactModal}
-                className="btn-brand py-2.5 px-4 text-xs shrink-0 flex items-center gap-1.5"
+                className="btn-brand py-2 px-3.5 text-xs shrink-0 flex items-center gap-1.5 rounded-xl"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-3.5 h-3.5" />
                 <span>Add Emergency Contact</span>
               </button>
             </div>
 
             {/* Contacts List */}
             {isDataLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
                 {Array.from({ length: 3 }).map((_, idx) => (
                   <div
                     key={idx}
-                    className="p-5 rounded-2xl border border-base bg-surface animate-pulse space-y-3"
+                    className="p-4 rounded-xl border border-base bg-surface animate-pulse space-y-3"
                   >
                     <div className="flex items-center justify-between">
                       <div className="h-4 w-28 bg-surface rounded-md" />
@@ -653,89 +654,89 @@ export default function CustomerProfilePage() {
                 ))}
               </div>
             ) : emergencyContacts.length === 0 ? (
-              <div className="p-8 text-center space-y-3 bg-surface/50 rounded-2xl border border-dashed border-base">
-                <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center mx-auto">
-                  <Phone className="w-6 h-6" />
+              <div className="p-6 text-center space-y-2.5 bg-surface/50 rounded-xl border border-dashed border-base">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center mx-auto">
+                  <Phone className="w-5 h-5" />
                 </div>
-                <h4 className="text-sm font-bold text-primary">No Emergency Contacts Registered</h4>
+                <h4 className="text-xs sm:text-sm font-bold text-primary">No Emergency Contacts Registered</h4>
                 <p className="text-xs text-muted max-w-sm mx-auto">
                   Add at least one family member or guardian for trip safety during your Umrah and intercity transfers.
                 </p>
                 <button
                   type="button"
                   onClick={openAddContactModal}
-                  className="btn-secondary py-2 px-4 text-xs inline-flex items-center gap-1.5 cursor-pointer"
+                  className="btn-secondary py-1.5 px-3.5 text-xs inline-flex items-center gap-1.5 rounded-xl cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Add First Contact</span>
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
                 {emergencyContacts.map((contact) => (
                   <div
                     key={contact.id}
-                    className={`p-5 rounded-2xl border transition-all ${
+                    className={`p-3.5 sm:p-4 rounded-xl border transition-all ${
                       contact.is_primary
-                        ? 'bg-elevated/70 border-amber-500/40 shadow-md'
+                        ? 'bg-elevated/70 border-amber-500/40 shadow-sm'
                         : 'bg-surface border-base hover:border-emerald-500/30'
-                    } space-y-3 relative`}
+                    } space-y-2.5 relative`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="space-y-0.5">
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-bold text-primary">{contact.name}</h4>
+                        <div className="flex items-center gap-1.5">
+                          <h4 className="text-xs sm:text-sm font-bold text-primary">{contact.name}</h4>
                           {contact.is_primary && (
-                            <span className="px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-400/40 text-amber-500 dark:text-amber-400 text-[10px] font-bold flex items-center gap-1">
+                            <span className="px-1.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-400/40 text-amber-600 dark:text-amber-400 text-[9px] font-bold flex items-center gap-1">
                               <Star className="w-2.5 h-2.5 fill-current" />
-                              Primary Contact
+                              Primary
                             </span>
                           )}
                         </div>
-                        <span className="text-xs text-secondary font-medium">{contact.relationship}</span>
+                        <span className="text-[11px] text-secondary font-medium">{contact.relationship}</span>
                       </div>
 
                       <div className="flex items-center gap-1">
                         <button
                           type="button"
                           onClick={() => openEditContactModal(contact)}
-                          className="p-1.5 rounded-lg text-muted hover:text-primary hover:bg-card border border-transparent hover:border-base transition-colors"
+                          className="p-1 rounded-lg text-muted hover:text-primary hover:bg-card border border-transparent hover:border-base transition-colors"
                           title="Edit Contact"
                         >
-                          <Edit2 className="w-3.5 h-3.5" />
+                          <Edit2 className="w-3 h-3" />
                         </button>
                         <button
                           type="button"
                           onClick={() => setContactToDelete(contact)}
-                          className="p-1.5 rounded-lg text-muted hover:text-rose-500 hover:bg-card border border-transparent hover:border-base transition-colors"
+                          className="p-1 rounded-lg text-muted hover:text-rose-500 hover:bg-card border border-transparent hover:border-base transition-colors"
                           title="Delete Contact"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 className="w-3 h-3" />
                         </button>
                       </div>
                     </div>
 
                     <div className="space-y-1 text-xs">
-                      <div className="flex items-center gap-2 text-secondary font-mono">
-                        <Phone className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                      <div className="flex items-center gap-2 text-secondary font-mono text-[11px]">
+                        <Phone className="w-3 h-3 text-amber-500 shrink-0" />
                         <span>{contact.phone}</span>
                       </div>
                       {contact.email && (
-                        <div className="flex items-center gap-2 text-muted truncate">
-                          <Mail className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                        <div className="flex items-center gap-2 text-muted truncate text-[11px]">
+                          <Mail className="w-3 h-3 text-emerald-500 shrink-0" />
                           <span className="truncate">{contact.email}</span>
                         </div>
                       )}
                     </div>
 
                     {!contact.is_primary && (
-                      <div className="pt-2 border-t border-base/60">
+                      <div className="pt-1.5 border-t border-base/60">
                         <button
                           type="button"
                           onClick={() => setPrimaryEmergencyContact(contact.id)}
-                          className="text-[11px] font-bold text-amber-500 dark:text-amber-400 hover:underline inline-flex items-center gap-1 cursor-pointer"
+                          className="text-[10px] font-bold text-amber-600 dark:text-amber-400 hover:underline inline-flex items-center gap-1 cursor-pointer"
                         >
-                          <Star className="w-3 h-3" />
+                          <Star className="w-2.5 h-2.5" />
                           <span>Set as Primary Contact</span>
                         </button>
                       </div>
@@ -750,20 +751,20 @@ export default function CustomerProfilePage() {
 
       {/* TAB 3: SECURITY & PASSWORD */}
       {activeTab === 'security' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
           {/* Active Sessions Overview */}
-          <div className="lg:col-span-4 space-y-5">
-            <div className="surface-card p-5 sm:p-6 space-y-4 text-xs">
-              <h3 className="text-sm font-bold text-primary flex items-center gap-2">
+          <div className="lg:col-span-4 space-y-4">
+            <div className="surface-card p-4 sm:p-5 rounded-2xl space-y-3.5 text-xs">
+              <h3 className="text-xs sm:text-sm font-bold text-primary flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-emerald-500" />
                 <span>Security Overview</span>
               </h3>
 
-              <div className="space-y-3">
-                <div className="p-3.5 rounded-2xl bg-surface border border-base space-y-2">
+              <div className="space-y-2.5">
+                <div className="p-3 rounded-xl bg-surface border border-base space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-primary flex items-center gap-1.5">
-                      <Laptop className="w-4 h-4 text-emerald-500" />
+                    <span className="font-bold text-primary flex items-center gap-1.5 text-xs">
+                      <Laptop className="w-3.5 h-3.5 text-emerald-500" />
                       Current Active Session
                     </span>
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
@@ -775,10 +776,10 @@ export default function CustomerProfilePage() {
                   <span className="text-[10px] text-emerald-500 font-semibold block">Active right now</span>
                 </div>
 
-                <div className="p-3.5 rounded-2xl bg-surface border border-base space-y-2">
+                <div className="p-3 rounded-xl bg-surface border border-base space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-primary flex items-center gap-1.5">
-                      <Smartphone className="w-4 h-4 text-muted" />
+                    <span className="font-bold text-primary flex items-center gap-1.5 text-xs">
+                      <Smartphone className="w-3.5 h-3.5 text-muted" />
                       Mobile App Session
                     </span>
                     <span className="text-[10px] text-muted">2 days ago</span>
@@ -790,7 +791,7 @@ export default function CustomerProfilePage() {
               <button
                 type="button"
                 onClick={() => toast.success('All other remote devices logged out.')}
-                className="w-full py-2.5 px-3 rounded-xl bg-surface hover:bg-elevated border border-base text-rose-500 font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                className="w-full py-2 px-3 rounded-xl bg-surface hover:bg-elevated border border-base text-rose-500 font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <LogOut className="w-3.5 h-3.5" />
                 <span>Sign Out All Other Sessions</span>
@@ -799,16 +800,16 @@ export default function CustomerProfilePage() {
           </div>
 
           {/* Change Password Form */}
-          <div className="lg:col-span-8 surface-card p-6 sm:p-8 space-y-6">
+          <div className="lg:col-span-8 surface-card p-4 sm:p-6 space-y-4 rounded-2xl">
             <div className="border-b border-base pb-3">
-              <h2 className="text-base sm:text-lg font-bold text-primary flex items-center gap-2">
-                <Lock className="w-5 h-5 text-amber-500" />
+              <h2 className="text-sm sm:text-base font-bold text-primary flex items-center gap-2">
+                <Lock className="w-4 h-4 text-amber-500" />
                 <span>Change Password</span>
               </h2>
               <p className="text-xs text-muted">Protect your account with a secure, confidential password.</p>
             </div>
 
-            <form onSubmit={handleChangePasswordSubmit} className="space-y-4 text-xs">
+            <form onSubmit={handleChangePasswordSubmit} className="space-y-3.5 text-xs">
               <div>
                 <label className="type-label">Current Password *</label>
                 <input
@@ -817,7 +818,7 @@ export default function CustomerProfilePage() {
                   placeholder="••••••••"
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
-                  className="field-input"
+                  className="field-input h-8.5 sm:h-9 py-1.5 px-3 text-xs rounded-xl"
                 />
               </div>
 
@@ -829,7 +830,7 @@ export default function CustomerProfilePage() {
                   placeholder="Min. 8 characters with upper, lower &amp; numbers"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="field-input"
+                  className="field-input h-8.5 sm:h-9 py-1.5 px-3 text-xs rounded-xl"
                 />
               </div>
 
@@ -841,24 +842,24 @@ export default function CustomerProfilePage() {
                   placeholder="Re-enter new password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="field-input"
+                  className="field-input h-8.5 sm:h-9 py-1.5 px-3 text-xs rounded-xl"
                 />
               </div>
 
-              <div className="pt-2">
+              <div className="pt-1">
                 <button
                   type="submit"
                   disabled={isChangingPassword}
-                  className="btn-brand py-3 px-6"
+                  className="btn-brand py-2.5 px-5 text-xs rounded-xl"
                 >
                   {isChangingPassword ? (
                     <>
-                      <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                      <span className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
                       <span>Updating Password…</span>
                     </>
                   ) : (
                     <>
-                      <Lock className="w-4 h-4" />
+                      <Lock className="w-3.5 h-3.5" />
                       <span>Update Password</span>
                     </>
                   )}
@@ -867,15 +868,15 @@ export default function CustomerProfilePage() {
             </form>
 
             {/* Danger Zone: Account Deletion */}
-            <div className="pt-6 border-t border-rose-500/20">
-              <div className="p-5 rounded-2xl bg-rose-950/20 border border-rose-500/30 space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <h4 className="text-sm font-bold text-rose-400 flex items-center gap-1.5">
-                      <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+            <div className="pt-4 border-t border-rose-500/20">
+              <div className="p-3.5 sm:p-4 rounded-xl bg-rose-950/20 border border-rose-500/30 space-y-2.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <h4 className="text-xs sm:text-sm font-bold text-rose-400 flex items-center gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
                       <span>Danger Zone: Delete Account</span>
                     </h4>
-                    <p className="text-xs text-muted max-w-lg">
+                    <p className="text-[11px] text-muted max-w-lg">
                       Permanently delete your account, saved preferences, and auth credentials. This action is irreversible.
                     </p>
                   </div>
@@ -885,9 +886,9 @@ export default function CustomerProfilePage() {
                       setDeleteConfirmationInput('');
                       setIsDeleteAccountModalOpen(true);
                     }}
-                    className="px-4 py-2.5 rounded-xl bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/40 text-xs font-bold transition-all duration-200 shrink-0 cursor-pointer flex items-center gap-2"
+                    className="px-3.5 py-2 rounded-xl bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/40 text-xs font-bold transition-all duration-200 shrink-0 cursor-pointer flex items-center gap-1.5"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-3.5 h-3.5" />
                     <span>Delete Account</span>
                   </button>
                 </div>
@@ -899,41 +900,41 @@ export default function CustomerProfilePage() {
 
       {/* TAB 4: ACCOUNT STATUS & PILGRIM TIER */}
       {activeTab === 'status' && (
-        <div className="surface-card p-6 sm:p-7 space-y-6">
-          <div className="border-b border-base pb-4">
-            <h2 className="text-base sm:text-lg font-bold text-primary flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-amber-500" />
+        <div className="surface-card p-4 sm:p-5 rounded-2xl space-y-4 sm:space-y-5">
+          <div className="border-b border-base pb-3">
+            <h2 className="text-sm sm:text-base font-bold text-primary flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-500" />
               <span>Customer Account &amp; Pilgrim Tier</span>
             </h2>
             <p className="text-xs text-muted">Review your verified privileges, lifetime rides, and booking tier.</p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="p-5 rounded-2xl bg-surface border border-base space-y-1">
-              <span className="text-[11px] font-bold text-muted uppercase tracking-wider">Membership Tier</span>
-              <div className="text-xl font-bold text-amber-500 dark:text-amber-400">VIP Pilgrim Gold</div>
-              <p className="text-[10px] text-secondary pt-1">Direct Haram drop-off priority included.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+            <div className="p-3.5 sm:p-4 rounded-xl bg-surface border border-base space-y-1">
+              <span className="text-[10px] font-bold text-muted uppercase tracking-wider">Membership Tier</span>
+              <div className="text-base sm:text-lg font-bold text-amber-600 dark:text-amber-400">VIP Pilgrim Gold</div>
+              <p className="text-[10px] text-secondary pt-0.5">Direct Haram drop-off priority included.</p>
             </div>
 
-            <div className="p-5 rounded-2xl bg-surface border border-base space-y-1">
-              <span className="text-[11px] font-bold text-muted uppercase tracking-wider">Completed Transfers</span>
-              <div className="text-xl font-bold text-primary">{completedRidesCount} Journeys</div>
-              <p className="text-[10px] text-secondary pt-1">Across Makkah, Madinah &amp; Jeddah.</p>
+            <div className="p-3.5 sm:p-4 rounded-xl bg-surface border border-base space-y-1">
+              <span className="text-[10px] font-bold text-muted uppercase tracking-wider">Completed Transfers</span>
+              <div className="text-base sm:text-lg font-bold text-primary">{completedRidesCount} Journeys</div>
+              <p className="text-[10px] text-secondary pt-0.5">Across Makkah, Madinah &amp; Jeddah.</p>
             </div>
 
-            <div className="p-5 rounded-2xl bg-surface border border-base space-y-1">
-              <span className="text-[11px] font-bold text-muted uppercase tracking-wider">Account State</span>
-              <div className="text-xl font-bold text-emerald-500 flex items-center gap-1.5">
-                <CheckCircle2 className="w-5 h-5" />
+            <div className="p-3.5 sm:p-4 rounded-xl bg-surface border border-base space-y-1">
+              <span className="text-[10px] font-bold text-muted uppercase tracking-wider">Account State</span>
+              <div className="text-base sm:text-lg font-bold text-emerald-500 flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4" />
                 Active &amp; In Good Standing
               </div>
-              <p className="text-[10px] text-secondary pt-1">Protected by Two-Factor OTP.</p>
+              <p className="text-[10px] text-secondary pt-0.5">Protected by Two-Factor OTP.</p>
             </div>
           </div>
 
-          <div className="p-5 rounded-2xl bg-surface/60 border border-base text-xs text-secondary leading-relaxed space-y-2">
-            <h4 className="font-bold text-primary flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-500" />
+          <div className="p-3.5 sm:p-4 rounded-xl bg-surface/60 border border-base text-xs text-secondary leading-relaxed space-y-1.5">
+            <h4 className="font-bold text-primary flex items-center gap-1.5 text-xs">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
               <span>Data Protection &amp; Saudi Transport Authority (TGA) Compliance</span>
             </h4>
             <p className="text-muted text-[11px]">
@@ -946,9 +947,9 @@ export default function CustomerProfilePage() {
       {/* PHOTO PREVIEW & CONFIRM MODAL */}
       {isCropModalOpen && previewPhotoUrl && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 animate-fade-in backdrop-blur-sm">
-          <div className="w-full max-w-sm surface-card p-6 space-y-5 rounded-3xl shadow-2xl">
-            <h3 className="text-base font-bold text-primary text-center">Preview Profile Photo</h3>
-            <div className="w-40 h-40 rounded-3xl overflow-hidden mx-auto border-2 border-amber-500 shadow-xl">
+          <div className="w-full max-w-xs sm:max-w-sm surface-card p-4 sm:p-5 space-y-4 rounded-2xl shadow-xl">
+            <h3 className="text-sm sm:text-base font-bold text-primary text-center">Preview Profile Photo</h3>
+            <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-2xl overflow-hidden mx-auto border-2 border-amber-500 shadow-md">
               <img src={previewPhotoUrl} alt="Preview" className="w-full h-full object-cover" />
             </div>
             <p className="text-xs text-muted text-center">
@@ -962,7 +963,7 @@ export default function CustomerProfilePage() {
                   setPendingFile(null);
                   setPreviewPhotoUrl(null);
                 }}
-                className="btn-secondary flex-1 py-2.5 text-xs cursor-pointer"
+                className="btn-secondary flex-1 py-2 text-xs rounded-xl cursor-pointer"
               >
                 Cancel
               </button>
@@ -970,7 +971,7 @@ export default function CustomerProfilePage() {
                 type="button"
                 disabled={isUploadingPhoto}
                 onClick={handleConfirmPhotoUpload}
-                className="btn-brand flex-1 py-2.5 text-xs cursor-pointer"
+                className="btn-brand flex-1 py-2 text-xs rounded-xl cursor-pointer"
               >
                 {isUploadingPhoto ? 'Uploading…' : 'Save Photo'}
               </button>
@@ -982,9 +983,9 @@ export default function CustomerProfilePage() {
       {/* CHANGE PHONE MODAL */}
       {isPhoneModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 animate-fade-in backdrop-blur-sm">
-          <div className="w-full max-w-md surface-card p-6 space-y-5 rounded-3xl shadow-2xl">
-            <div className="flex items-center justify-between border-b border-base pb-3">
-              <h3 className="text-base font-bold text-primary flex items-center gap-2">
+          <div className="w-full max-w-sm sm:max-w-md surface-card p-4 sm:p-5 space-y-4 rounded-2xl shadow-xl">
+            <div className="flex items-center justify-between border-b border-base pb-2.5">
+              <h3 className="text-sm sm:text-base font-bold text-primary flex items-center gap-2">
                 <Phone className="w-4 h-4 text-amber-500" />
                 <span>Update Contact Phone</span>
               </h3>
@@ -997,7 +998,7 @@ export default function CustomerProfilePage() {
               </button>
             </div>
 
-            <form onSubmit={handleSavePhone} className="space-y-4 text-xs">
+            <form onSubmit={handleSavePhone} className="space-y-3.5 text-xs">
               <div>
                 <label className="type-label">Phone Number (with Country Code)</label>
                 <input
@@ -1006,25 +1007,25 @@ export default function CustomerProfilePage() {
                   placeholder="+966 50 123 4567"
                   value={newPhoneNumber}
                   onChange={(e) => setNewPhoneNumber(e.target.value)}
-                  className="field-input"
+                  className="field-input h-8.5 sm:h-9 py-1.5 px-3 text-xs rounded-xl"
                 />
                 <span className="text-[10px] text-muted mt-1 block">
                   Used by dispatchers and captains for coordinating Umrah transfers.
                 </span>
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex justify-end gap-2 pt-1 border-t border-base">
                 <button
                   type="button"
                   onClick={() => setIsPhoneModalOpen(false)}
-                  className="btn-secondary py-2.5 px-4 text-xs cursor-pointer"
+                  className="btn-secondary py-2 px-3.5 text-xs rounded-xl cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isUpdatingPhone}
-                  className="btn-brand py-2.5 px-5 text-xs cursor-pointer"
+                  className="btn-brand py-2 px-4 text-xs rounded-xl cursor-pointer"
                 >
                   {isUpdatingPhone ? 'Saving…' : 'Update Phone'}
                 </button>
@@ -1037,9 +1038,9 @@ export default function CustomerProfilePage() {
       {/* EMERGENCY CONTACT ADD/EDIT MODAL */}
       {isContactModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 animate-fade-in backdrop-blur-sm">
-          <div className="w-full max-w-md surface-card p-6 space-y-5 rounded-3xl shadow-2xl">
-            <div className="flex items-center justify-between border-b border-base pb-3">
-              <h3 className="text-base font-bold text-primary flex items-center gap-2">
+          <div className="w-full max-w-sm sm:max-w-md surface-card p-4 sm:p-5 space-y-4 rounded-2xl shadow-xl">
+            <div className="flex items-center justify-between border-b border-base pb-2.5">
+              <h3 className="text-sm sm:text-base font-bold text-primary flex items-center gap-2">
                 <Phone className="w-4 h-4 text-amber-500" />
                 <span>{editingContact ? 'Edit Emergency Contact' : 'Add Emergency Contact'}</span>
               </h3>
@@ -1052,7 +1053,7 @@ export default function CustomerProfilePage() {
               </button>
             </div>
 
-            <form onSubmit={handleSaveContact} className="space-y-4 text-xs">
+            <form onSubmit={handleSaveContact} className="space-y-3.5 text-xs">
               <div>
                 <label className="type-label">Contact Full Name *</label>
                 <input
@@ -1061,17 +1062,17 @@ export default function CustomerProfilePage() {
                   placeholder="e.g. Mariam Rahman"
                   value={contactName}
                   onChange={(e) => setContactName(e.target.value)}
-                  className="field-input"
+                  className="field-input h-8.5 sm:h-9 py-1.5 px-3 text-xs rounded-xl"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2.5">
                 <div>
                   <label className="type-label">Relationship *</label>
                   <select
                     value={contactRelation}
                     onChange={(e) => setContactRelation(e.target.value)}
-                    className="field-input"
+                    className="field-input h-8.5 sm:h-9 py-1.5 px-3 text-xs rounded-xl"
                   >
                     <option value="Spouse">Spouse (زوج / زوجة)</option>
                     <option value="Parent">Parent (والد / والدة)</option>
@@ -1092,7 +1093,7 @@ export default function CustomerProfilePage() {
                     placeholder="+966 50 123 4567"
                     value={contactPhone}
                     onChange={(e) => setContactPhone(e.target.value)}
-                    className="field-input"
+                    className="field-input h-8.5 sm:h-9 py-1.5 px-3 text-xs rounded-xl"
                   />
                 </div>
               </div>
@@ -1104,34 +1105,34 @@ export default function CustomerProfilePage() {
                   placeholder="contact@example.com"
                   value={contactEmail}
                   onChange={(e) => setContactEmail(e.target.value)}
-                  className="field-input"
+                  className="field-input h-8.5 sm:h-9 py-1.5 px-3 text-xs rounded-xl"
                 />
               </div>
 
-              <div className="pt-1">
+              <div>
                 <label className="flex items-center gap-2 cursor-pointer text-xs text-secondary">
                   <input
                     type="checkbox"
                     checked={contactIsPrimary}
                     onChange={(e) => setContactIsPrimary(e.target.checked)}
-                    className="w-4 h-4 rounded border-base text-amber-500 focus:ring-amber-400"
+                    className="w-3.5 h-3.5 rounded border-base text-amber-500 focus:ring-amber-400"
                   />
                   <span>Mark as Primary Emergency Contact</span>
                 </label>
               </div>
 
-              <div className="flex justify-end gap-2 pt-2 border-t border-base">
+              <div className="flex justify-end gap-2 pt-1 border-t border-base">
                 <button
                   type="button"
                   onClick={() => setIsContactModalOpen(false)}
-                  className="btn-secondary py-2.5 px-4 text-xs cursor-pointer"
+                  className="btn-secondary py-2 px-3.5 text-xs rounded-xl cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSavingContact}
-                  className="btn-brand py-2.5 px-5 text-xs cursor-pointer"
+                  className="btn-brand py-2 px-4 text-xs rounded-xl cursor-pointer"
                 >
                   {isSavingContact ? 'Saving…' : editingContact ? 'Save Changes' : 'Add Contact'}
                 </button>
@@ -1144,26 +1145,26 @@ export default function CustomerProfilePage() {
       {/* DELETE CONTACT CONFIRMATION MODAL */}
       {contactToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 animate-fade-in backdrop-blur-sm">
-          <div className="w-full max-w-sm surface-card p-6 space-y-4 rounded-3xl shadow-2xl text-center">
-            <div className="w-12 h-12 rounded-2xl bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto">
-              <Trash2 className="w-6 h-6" />
+          <div className="w-full max-w-xs sm:max-w-sm surface-card p-4 sm:p-5 space-y-3.5 rounded-2xl shadow-xl text-center">
+            <div className="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto">
+              <Trash2 className="w-5 h-5" />
             </div>
-            <h3 className="text-base font-bold text-primary">Remove Emergency Contact?</h3>
+            <h3 className="text-sm sm:text-base font-bold text-primary">Remove Emergency Contact?</h3>
             <p className="text-xs text-muted">
               Are you sure you want to remove <strong className="text-primary">{contactToDelete.name}</strong> ({contactToDelete.relationship})?
             </p>
-            <div className="flex gap-2 pt-2">
+            <div className="flex gap-2 pt-1">
               <button
                 type="button"
                 onClick={() => setContactToDelete(null)}
-                className="btn-secondary flex-1 py-2.5 text-xs cursor-pointer"
+                className="btn-secondary flex-1 py-2 text-xs rounded-xl cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleConfirmDeleteContact}
-                className="px-4 py-2.5 rounded-xl font-bold bg-rose-600 hover:bg-rose-500 text-white flex-1 text-xs cursor-pointer"
+                className="px-3 py-2 rounded-xl font-bold bg-rose-600 hover:bg-rose-500 text-white flex-1 text-xs cursor-pointer"
               >
                 Delete
               </button>
@@ -1175,30 +1176,30 @@ export default function CustomerProfilePage() {
       {/* DELETE ACCOUNT CONFIRMATION MODAL */}
       {isDeleteAccountModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 animate-fade-in backdrop-blur-sm">
-          <div className="w-full max-w-md surface-card p-6 sm:p-7 space-y-5 rounded-3xl shadow-2xl border border-rose-500/30">
-            <div className="w-12 h-12 rounded-2xl bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto">
-              <Trash2 className="w-6 h-6" />
+          <div className="w-full max-w-sm sm:max-w-md surface-card p-4 sm:p-5 space-y-4 rounded-2xl shadow-xl border border-rose-500/30">
+            <div className="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto">
+              <Trash2 className="w-5 h-5" />
             </div>
 
-            <div className="text-center space-y-1.5">
-              <h3 className="text-lg font-bold text-primary">Delete Account Permanently?</h3>
+            <div className="text-center space-y-1">
+              <h3 className="text-base sm:text-lg font-bold text-primary">Delete Account Permanently?</h3>
               <p className="text-xs text-muted leading-relaxed">
-                This will delete your login credentials from Supabase Auth, your customer profile, and remove all personal data. If you wish to use Al Harmain Travels in the future, you will need to register as a new customer.
+                This will delete your login credentials from Supabase Auth, your customer profile, and remove all personal data.
               </p>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-rose-950/25 border border-rose-500/20 text-xs text-rose-300 space-y-1">
-              <p className="font-semibold">⚠️ Type <span className="font-mono font-bold text-white bg-rose-900/60 px-1.5 py-0.5 rounded">DELETE</span> to confirm:</p>
+            <div className="p-3 rounded-xl bg-rose-950/25 border border-rose-500/20 text-xs text-rose-300 space-y-1">
+              <p className="font-semibold text-[11px]">⚠️ Type <span className="font-mono font-bold text-white bg-rose-900/60 px-1 py-0.5 rounded">DELETE</span> to confirm:</p>
               <input
                 type="text"
                 value={deleteConfirmationInput}
                 onChange={(e) => setDeleteConfirmationInput(e.target.value)}
                 placeholder="DELETE"
-                className="field-input mt-2 border-rose-500/40 focus:border-rose-400 font-mono text-center tracking-widest text-sm"
+                className="field-input mt-1.5 h-8.5 py-1 px-3 border-rose-500/40 focus:border-rose-400 font-mono text-center tracking-widest text-xs"
               />
             </div>
 
-            <div className="flex gap-3 pt-1">
+            <div className="flex gap-2.5 pt-1">
               <button
                 type="button"
                 disabled={isDeletingAccount}
@@ -1206,7 +1207,7 @@ export default function CustomerProfilePage() {
                   setIsDeleteAccountModalOpen(false);
                   setDeleteConfirmationInput('');
                 }}
-                className="btn-secondary flex-1 py-2.5 text-xs cursor-pointer"
+                className="btn-secondary flex-1 py-2 text-xs rounded-xl cursor-pointer"
               >
                 Cancel
               </button>
@@ -1214,16 +1215,16 @@ export default function CustomerProfilePage() {
                 type="button"
                 disabled={deleteConfirmationInput !== 'DELETE' || isDeletingAccount}
                 onClick={handleDeleteAccount}
-                className="px-5 py-2.5 rounded-xl font-bold bg-rose-600 hover:bg-rose-500 disabled:opacity-40 disabled:cursor-not-allowed text-white flex-1 text-xs cursor-pointer transition-all flex items-center justify-center gap-2"
+                className="px-4 py-2 rounded-xl font-bold bg-rose-600 hover:bg-rose-500 disabled:opacity-40 disabled:cursor-not-allowed text-white flex-1 text-xs cursor-pointer transition-all flex items-center justify-center gap-1.5"
               >
                 {isDeletingAccount ? (
                   <>
-                    <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                    <span className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
                     <span>Deleting…</span>
                   </>
                 ) : (
                   <>
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <Trash2 className="w-3 h-3" />
                     <span>Confirm Delete</span>
                   </>
                 )}

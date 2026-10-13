@@ -32,8 +32,11 @@ export const metadata: Metadata = {
     telephone: true,
   },
   icons: {
-    icon: '/icons/icon-192.svg',
-    apple: '/icons/icon-192.svg',
+    icon: [
+      { url: '/logo.png', type: 'image/png' },
+    ],
+    shortcut: '/logo.png',
+    apple: '/logo.png',
   },
 };
 
@@ -55,7 +58,7 @@ export default function RootLayout({
             Skip to main content
           </a>
           <Navbar />
-          <main id="main-content" className="flex-1 w-full">
+          <main id="main-content" className="flex-1 w-full pt-16 sm:pt-20">
             {children}
           </main>
           <Footer />

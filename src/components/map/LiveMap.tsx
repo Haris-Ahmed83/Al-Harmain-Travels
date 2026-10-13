@@ -727,7 +727,7 @@ export default function LiveMap({
     : `${center[0].toFixed(4)}° N, ${center[1].toFixed(4)}° E`;
 
   return (
-    <div className={`relative overflow-hidden ${className}`}>
+    <div className={`relative z-10 isolate overflow-hidden ${className}`}>
       {/* Map Canvas Mount */}
       <div ref={mapContainerRef} className="w-full h-full" />
 

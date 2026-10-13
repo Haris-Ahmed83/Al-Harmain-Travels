@@ -100,6 +100,26 @@ export function isBookingCancelled(status: BookingStatus): boolean {
 }
 
 /**
+ * Reliably checks if a booking belongs to a given customer profile.
+ * Performs direct user ID match, normalized phone match, or email match.
+ */
+export function isBookingForCustomer(
+  booking: Booking | Partial<Booking>,
+  user?: import('@/types').Profile | null
+): boolean {
+  if (!user || !booking || !user.id || user.id === 'guest') return false;
+  // 1. Strict customer_id match
+  if (booking.customer_id) {
+    return booking.customer_id === user.id;
+  }
+  // 2. Only for legacy records without customer_id, fallback to matching customer email
+  if (user.email && (booking as any)?.customer?.email) {
+    return (booking as any).customer.email.trim().toLowerCase() === user.email.trim().toLowerCase();
+  }
+  return false;
+}
+
+/**
  * Standard 6-Stage Assignment Workflow
  * 1. Assigned -> 2. Accepted -> 3. Heading to Pickup -> 4. Arrived at Pickup -> 5. Trip Started -> 6. Trip Completed
  */

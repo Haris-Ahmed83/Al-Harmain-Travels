@@ -16,7 +16,6 @@ import {
   MapPin,
   Bell,
   ShieldCheck,
-  User,
   Calendar,
   Lock,
   ArrowRight,
@@ -38,14 +37,19 @@ import {
 } from '@/lib/assignment-utils';
 import { isValidCoordinate } from '@/lib/maps/location-service';
 
-const LiveMap = dynamic(() => import('@/components/map/LiveMap'), {
-  ssr: false,
-  loading: () => (
-    <div className="h-64 w-full rounded-2xl bg-surface animate-pulse flex items-center justify-center text-muted text-xs">
-      Loading Driver Cockpit Navigation...
-    </div>
-  ),
-});
+
+
+const ChauffeurTerritoryRadar = dynamic(
+  () => import('@/components/driver/ChauffeurTerritoryRadar'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-[540px] w-full rounded-3xl bg-white border border-slate-200 animate-pulse flex items-center justify-center text-slate-400 text-xs shadow-xl">
+        Loading Chauffeur Positioning & Territory Radar...
+      </div>
+    ),
+  }
+);
 
 type AssignmentTab = 'today' | 'tomorrow' | 'upcoming' | 'completed';
 
@@ -128,6 +132,7 @@ export default function DriverCockpitPage() {
     return null;
   });
   const isTracking = gpsActive && driverPos !== null;
+  const [showFleetRadar, setShowFleetRadar] = useState<boolean>(false);
 
   // Continuously stream driver GPS position with high accuracy and fresh readings (maximumAge: 0)
   useEffect(() => {
@@ -376,27 +381,8 @@ export default function DriverCockpitPage() {
             </div>
           </div>
 
-          {/* Quick Chauffeur Controls: Switcher, GPS share, & Duty status */}
+          {/* Quick Chauffeur Controls: GPS share, & Duty status */}
           <div className="flex flex-wrap items-center gap-3">
-            {/* Driver switcher (useful for multi-driver fleet management) */}
-            {drivers.length > 1 && (
-              <div className="flex items-center gap-2 bg-surface px-3 py-2 rounded-xl border border-base shadow-sm">
-                <User className="w-3.5 h-3.5 text-muted shrink-0" />
-                <span className="text-[11px] font-semibold text-secondary hidden sm:inline">Chauffeur:</span>
-                <select
-                  value={currentDriver.id}
-                  onChange={(e) => setSelectedDriverId(e.target.value)}
-                  className="bg-transparent text-xs text-primary font-bold focus:outline-none cursor-pointer pr-1"
-                >
-                  {drivers.map((d) => (
-                    <option key={d.id} value={d.id} className="bg-card text-primary">
-                      {d.profile?.full_name || d.full_name || 'Captain'}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
             {/* GPS Refresh / Status Button */}
             <button
               onClick={refreshGps}
@@ -575,113 +561,75 @@ export default function DriverCockpitPage() {
             </div>
           </div>
 
-          {/* Route, Passenger Details & Live Cockpit Map */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-            {/* Route Details & Action utilities */}
-            <div className="lg:col-span-7 space-y-4">
-              <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-base space-y-3 text-xs shadow-sm">
-                <div className="flex items-start gap-3">
-                  <MapPin className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
-                  <div className="space-y-0.5">
-                    <span className="text-[10px] uppercase font-bold text-muted block tracking-wider">
-                      Pickup Address
-                    </span>
-                    <span className="font-semibold text-primary text-sm leading-snug block">
-                      {activeAssignment.pickup_address}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3 pt-3 border-t border-base">
-                  <Navigation className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-                  <div className="space-y-0.5">
-                    <span className="text-[10px] uppercase font-bold text-muted block tracking-wider">
-                      Destination Dropoff
-                    </span>
-                    <span className="font-semibold text-primary text-sm leading-snug block">
-                      {activeAssignment.destination_address}
-                    </span>
-                  </div>
+          {/* Route & Passenger Details */}
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 sm:p-5 rounded-2xl bg-surface border border-base text-xs shadow-sm">
+              <div className="flex items-start gap-3">
+                <MapPin className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <span className="text-[10px] uppercase font-bold text-muted block tracking-wider">
+                    Pickup Address
+                  </span>
+                  <span className="font-semibold text-primary text-sm leading-snug block">
+                    {activeAssignment.pickup_address}
+                  </span>
                 </div>
               </div>
-
-              {activeAssignment.notes && (
-                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-900 dark:text-amber-200">
-                  <strong className="font-bold">Passenger Notes:</strong> {activeAssignment.notes}
+              <div className="flex items-start gap-3 md:border-l md:border-t-0 border-t border-base md:pl-4 md:pt-0 pt-3">
+                <Navigation className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <span className="text-[10px] uppercase font-bold text-muted block tracking-wider">
+                    Destination Dropoff
+                  </span>
+                  <span className="font-semibold text-primary text-sm leading-snug block">
+                    {activeAssignment.destination_address}
+                  </span>
                 </div>
-              )}
-
-              {/* Action buttons */}
-              <div className="flex flex-wrap items-center gap-2.5 pt-1">
-                <a
-                  href={`https://www.google.com/maps/dir/?api=1&origin=${activeAssignment.pickup_latitude},${activeAssignment.pickup_longitude}&destination=${activeAssignment.destination_latitude},${activeAssignment.destination_longitude}&travelmode=driving`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="py-2.5 px-4 rounded-xl bg-surface hover:bg-elevated text-primary text-xs font-bold flex items-center gap-2 border border-base shadow-sm transition-all"
-                >
-                  <Navigation className="w-4 h-4 text-emerald-500" /> Google Maps Navigation
-                  <ExternalLink className="w-3 h-3 text-muted" />
-                </a>
-
-                {activeAssignment.passenger_phone && (
-                  <a
-                    href={`tel:${activeAssignment.passenger_phone}`}
-                    className="py-2.5 px-4 rounded-xl bg-surface hover:bg-elevated text-primary text-xs font-bold flex items-center gap-2 border border-base shadow-sm transition-all"
-                  >
-                    <Phone className="w-4 h-4 text-amber-500" /> Call Passenger
-                  </a>
-                )}
-
-                <button
-                  onClick={() => setChargeModalOpen(true)}
-                  className="py-2.5 px-4 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 text-xs font-bold flex items-center gap-2 border border-amber-500/30 transition-all"
-                >
-                  <PlusCircle className="w-4 h-4" /> Add Toll / Parking Fee
-                </button>
               </div>
             </div>
 
-            {/* Embedded Live Cockpit Map */}
-            <div className="lg:col-span-5">
-              <div className="rounded-2xl overflow-hidden border border-emerald-500/40 shadow-xl">
-                <LiveMap
-                  center={
-                    driverPos
-                      ? [driverPos.lat, driverPos.lng]
-                      : [activeAssignment.pickup_latitude, activeAssignment.pickup_longitude]
-                  }
-                  zoom={12}
-                  markers={[
-                    ...(driverPos
-                      ? [
-                          {
-                            lat: driverPos.lat,
-                            lng: driverPos.lng,
-                            label: 'Your Vehicle',
-                            type: 'driver' as const,
-                            subText: currentDriver.vehicle?.plate_number || 'VIP Chauffeur',
-                            heading: heading || 0,
-                          },
-                        ]
-                      : []),
-                    {
-                      lat: activeAssignment.pickup_latitude,
-                      lng: activeAssignment.pickup_longitude,
-                      label: 'Pickup',
-                      type: 'pickup',
-                      subText: activeAssignment.pickup_address,
-                    },
-                    {
-                      lat: activeAssignment.destination_latitude,
-                      lng: activeAssignment.destination_longitude,
-                      label: 'Destination',
-                      type: 'destination',
-                      subText: activeAssignment.destination_address,
-                    },
-                  ]}
-                  showRoute={true}
-                  className="h-72 sm:h-80 w-full"
-                />
+            {activeAssignment.notes && (
+              <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-900 dark:text-amber-200">
+                <strong className="font-bold">Passenger Notes:</strong> {activeAssignment.notes}
               </div>
+            )}
+
+            {/* Action buttons */}
+            <div className="flex flex-wrap items-center gap-2.5 pt-1">
+              <a
+                href={`https://www.google.com/maps/dir/?api=1&origin=${activeAssignment.pickup_latitude},${activeAssignment.pickup_longitude}&destination=${activeAssignment.destination_latitude},${activeAssignment.destination_longitude}&travelmode=driving`}
+                target="_blank"
+                rel="noreferrer"
+                className="py-2.5 px-4 rounded-xl bg-surface hover:bg-elevated text-primary text-xs font-bold flex items-center gap-2 border border-base shadow-sm transition-all"
+              >
+                <Navigation className="w-4 h-4 text-emerald-500" /> Google Maps Navigation
+                <ExternalLink className="w-3 h-3 text-muted" />
+              </a>
+
+              {activeAssignment.passenger_phone && (
+                <a
+                  href={`tel:${activeAssignment.passenger_phone}`}
+                  className="py-2.5 px-4 rounded-xl bg-surface hover:bg-elevated text-primary text-xs font-bold flex items-center gap-2 border border-base shadow-sm transition-all"
+                >
+                  <Phone className="w-4 h-4 text-amber-500" /> Call Passenger
+                </a>
+              )}
+
+              <button
+                onClick={() => setChargeModalOpen(true)}
+                className="py-2.5 px-4 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 text-xs font-bold flex items-center gap-2 border border-amber-500/30 transition-all"
+              >
+                <PlusCircle className="w-4 h-4" /> Add Toll / Parking Fee
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowFleetRadar((prev) => !prev)}
+                className="py-2.5 px-4 rounded-xl bg-surface hover:bg-elevated text-primary text-xs font-bold flex items-center gap-2 border border-base shadow-sm transition-all"
+              >
+                <Compass className="w-4 h-4 text-emerald-500" />
+                <span>{showFleetRadar ? 'Hide Fleet Radar' : 'Fleet Territory Radar'}</span>
+              </button>
             </div>
           </div>
 
@@ -742,132 +690,19 @@ export default function DriverCockpitPage() {
       )}
 
       {/* ─────────────────────────────────────────────────────────────
-          3.5 CHAUFFEUR RADAR & LIVE TELEMETRY COCKPIT MAP (STANDBY)
+          3.5 CHAUFFEUR RADAR & LIVE TELEMETRY COCKPIT MAP
       ───────────────────────────────────────────────────────────── */}
-      {!activeAssignment && (
-        <div className="bg-card border border-base rounded-3xl p-6 sm:p-7 shadow-xl space-y-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-base pb-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span className="text-[11px] uppercase tracking-wider font-extrabold text-emerald-600 dark:text-emerald-400">
-                  Live Chauffeur Radar & GPS Telemetry
-                </span>
-              </div>
-              <h2 className="text-xl sm:text-2xl font-bold text-primary tracking-tight">
-                Chauffeur Positioning & Territory Radar
-              </h2>
-              <p className="text-xs text-secondary">
-                Real-time satellite positioning broadcasting your vehicle coordinates to Al Harmain Central Dispatch.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2.5 flex-wrap">
-              {driverPos && (
-                <div className="bg-surface px-3 py-1.5 rounded-xl border border-base text-xs font-mono text-secondary flex items-center gap-2">
-                  <Radio className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
-                  <span className="text-primary font-bold">{driverPos.lat.toFixed(4)}° N, {driverPos.lng.toFixed(4)}° E</span>
-                </div>
-              )}
-              <span className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider ${
-                driverPos
-                  ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
-                  : gpsError
-                  ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/30'
-                  : 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30'
-              }`}>
-                {driverPos ? 'Broadcasting Live GPS' : gpsError ? 'GPS Permission Needed' : 'Acquiring GPS...'}
-              </span>
-            </div>
-          </div>
-
-          {/* Interactive Map Component */}
-          <div className="rounded-2xl overflow-hidden border border-base shadow-lg relative">
-            {gpsError && !driverPos && (
-              <div className="p-3.5 bg-rose-500/10 border-b border-rose-500/20 text-rose-300 text-xs flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-                  <span>{gpsError}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={refreshGps}
-                  className="px-3 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 font-bold border border-rose-500/40 text-[11px] cursor-pointer"
-                >
-                  Retry GPS
-                </button>
-              </div>
-            )}
-            <LiveMap
-              center={
-                viewCenter
-                  ? viewCenter
-                  : driverPos
-                  ? [driverPos.lat, driverPos.lng]
-                  : [21.4225, 39.8262]
-              }
-              zoom={driverPos ? 13 : 11}
-              markers={
-                driverPos
-                  ? [
-                      {
-                        lat: driverPos.lat,
-                        lng: driverPos.lng,
-                        label: currentDriver?.profile?.full_name || currentDriver?.full_name || 'Captain Chauffeur',
-                        type: 'driver',
-                        subText: `${currentDriver?.vehicle?.plate_number || 'VIP KSA 7788'} • Active Chauffeur`,
-                        heading: heading || 0,
-                      },
-                    ]
-                  : []
-              }
-              showRoute={false}
-              className="h-80 sm:h-96 w-full"
-            />
-          </div>
-
-          {/* Quick Hub Territory Presets (Pan view only - never spoof actual GPS) */}
-          <div className="flex items-center justify-between gap-3 flex-wrap text-xs text-secondary pt-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-semibold text-primary">Territory View:</span>
-              <button
-                type="button"
-                onClick={() => setViewCenter([21.4225, 39.8262])}
-                className="px-2.5 py-1 rounded-lg bg-surface hover:bg-elevated border border-base text-secondary hover:text-primary transition-colors font-medium text-[11px]"
-              >
-                Makkah Haram
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewCenter([21.6796, 39.1565])}
-                className="px-2.5 py-1 rounded-lg bg-surface hover:bg-elevated border border-base text-secondary hover:text-primary transition-colors font-medium text-[11px]"
-              >
-                Jeddah Airport (KAIA)
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewCenter([24.4672, 39.6111])}
-                className="px-2.5 py-1 rounded-lg bg-surface hover:bg-elevated border border-base text-secondary hover:text-primary transition-colors font-medium text-[11px]"
-              >
-                Madinah Haram
-              </button>
-              {viewCenter && driverPos && (
-                <button
-                  type="button"
-                  onClick={() => setViewCenter(null)}
-                  className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 transition-colors font-bold text-[11px] flex items-center gap-1 cursor-pointer"
-                >
-                  <Crosshair className="w-3 h-3" /> Snap to My Vehicle
-                </button>
-              )}
-            </div>
-
-            <div className="text-[11px] text-muted flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-              <span>Chauffeur telemetry synced to Supabase Realtime</span>
-            </div>
-          </div>
-        </div>
+      {(!activeAssignment || showFleetRadar) && (
+        <ChauffeurTerritoryRadar
+          currentDriver={currentDriver}
+          driverPos={driverPos}
+          heading={heading}
+          gpsActive={gpsActive}
+          gpsError={gpsError}
+          refreshGps={refreshGps}
+          drivers={drivers}
+          bookings={bookings}
+        />
       )}
 
       {/* ─────────────────────────────────────────────────────────────

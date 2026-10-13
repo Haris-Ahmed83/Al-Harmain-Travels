@@ -19,7 +19,6 @@ export interface BookingMapProps {
   destination?: { latitude: number; longitude: number; address?: string } | null;
   stops?: { latitude: number; longitude: number; address?: string }[];
   userLocation?: { latitude: number; longitude: number; accuracy?: number } | null;
-  driverLocation?: { latitude: number; longitude: number; heading?: number; label?: string; subText?: string } | null;
   routeCoords?: [number, number][];
   distanceKm?: number;
   durationMinutes?: number;
@@ -199,23 +198,6 @@ const USER_GPS_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="38" height=
   <circle cx="19" cy="19" r="2.2" fill="#ffffff"/>
 </svg>`;
 
-function getDriverSvg(heading: number = 0): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="46" height="46" viewBox="0 0 46 46">
-    <defs>
-      <filter id="car-glow" x="-30%" y="-30%" width="160%" height="160%">
-        <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#059669" flood-opacity="0.6"/>
-      </filter>
-    </defs>
-    <circle cx="23" cy="23" r="21" fill="#047857" fill-opacity="0.3" stroke="#10b981" stroke-width="1.5"/>
-    <circle cx="23" cy="23" r="16" fill="#0f172a" stroke="#f59e0b" stroke-width="2.5" filter="url(#car-glow)"/>
-    <g transform="translate(15, 15) rotate(${heading}, 8, 8)">
-      <path d="M4 1 L12 1 L13 6 L14 8 L14 13 L12 13 L12 15 L10 15 L10 13 L6 13 L6 15 L4 15 L4 13 L2 13 L2 8 L3 6 Z" fill="#fbbf24"/>
-      <rect x="4.5" y="3" width="7" height="3" rx="0.5" fill="#0f172a"/>
-      <circle cx="4.5" cy="11.5" r="1" fill="#ffffff"/>
-      <circle cx="11.5" cy="11.5" r="1" fill="#ffffff"/>
-    </g>
-  </svg>`;
-}
 
 function getStopSvg(stopIndex: number): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="34" height="44" viewBox="0 0 34 44">
@@ -244,7 +226,6 @@ export default function BookingMap({
   destination,
   stops = [],
   userLocation,
-  driverLocation,
   routeCoords = [],
   distanceKm,
   durationMinutes,
@@ -273,7 +254,6 @@ export default function BookingMap({
   const gDestMarkerRef = useRef<any>(null);
   const gStopMarkersRef = useRef<any[]>([]);
   const gUserMarkerRef = useRef<any>(null);
-  const gDriverMarkerRef = useRef<any>(null);
   const gUserAccuracyCircleRef = useRef<any>(null);
   const gRoutePolylineRef = useRef<any>(null);
   const gRouteGlowPolylineRef = useRef<any>(null);
@@ -458,7 +438,6 @@ export default function BookingMap({
           gPickupMarkerRef.current = null;
           gDestMarkerRef.current = null;
           gUserMarkerRef.current = null;
-          gDriverMarkerRef.current = null;
           gUserAccuracyCircleRef.current = null;
           gRoutePolylineRef.current = null;
           gRouteGlowPolylineRef.current = null;
@@ -515,10 +494,6 @@ export default function BookingMap({
       if (gUserMarkerRef.current) {
         gUserMarkerRef.current.map = null;
         gUserMarkerRef.current = null;
-      }
-      if (gDriverMarkerRef.current) {
-        gDriverMarkerRef.current.map = null;
-        gDriverMarkerRef.current = null;
       }
 
       if (gUserAccuracyCircleRef.current) gUserAccuracyCircleRef.current.setMap(null);
@@ -683,48 +658,6 @@ export default function BookingMap({
       gUserAccuracyCircleRef.current = null;
     }
 
-    // A2. Driver Live Location Marker (active ride telemetry)
-    const hasValidDriverLoc = isValidCoordinate(driverLocation?.latitude, driverLocation?.longitude);
-    if (hasValidDriverLoc && driverLocation) {
-      const driverPos = { lat: driverLocation.latitude, lng: driverLocation.longitude };
-      bounds.extend(driverPos);
-      hasPoints = true;
-
-      const driverSvg = getDriverSvg(driverLocation.heading || 0);
-
-      if (!gDriverMarkerRef.current) {
-        const el = createMarkerDiv(driverSvg);
-        const marker = new AdvancedMarkerElement({
-          position: driverPos,
-          map,
-          content: el,
-          title: driverLocation.label || 'Assigned Chauffeur',
-          gmpClickable: true,
-          zIndex: 150,
-        });
-
-        marker.addEventListener('gmp-click', () => {
-          showMarkerInfo(
-            marker,
-            driverLocation.label || 'Assigned Chauffeur',
-            driverLocation.subText || 'Live Chauffeur Vehicle Location',
-            '#f59e0b'
-          );
-        });
-
-        gDriverMarkerRef.current = marker;
-      } else {
-        gDriverMarkerRef.current.position = driverPos;
-        // Swap SVG innerHTML in-place for smooth heading updates (avoids re-creating the element)
-        if (gDriverMarkerRef.current.content) {
-          (gDriverMarkerRef.current.content as HTMLElement).innerHTML = driverSvg.trim();
-        }
-        gDriverMarkerRef.current.map = map;
-      }
-    } else if (gDriverMarkerRef.current) {
-      gDriverMarkerRef.current.map = null;
-      gDriverMarkerRef.current = null;
-    }
 
     // B. Pickup Marker (Draggable via gmpDraggable)
     if (hasValidPickup && pickup) {
@@ -933,7 +866,7 @@ export default function BookingMap({
         }
       }
     }
-  }, [engine, pickup, destination, stops, userLocation, driverLocation, routeCoords, onPickupAdjust, onDestinationAdjust, onLocationPick]);
+  }, [engine, pickup, destination, stops, userLocation, routeCoords, onPickupAdjust, onDestinationAdjust, onLocationPick]);
 
 
   // 4. Leaflet Fallback Layer Updates
@@ -971,26 +904,6 @@ export default function BookingMap({
           .addTo(layerGroup);
       }
 
-      // Driver location (Leaflet)
-      if (driverLocation && isValidCoordinate(driverLocation.latitude, driverLocation.longitude)) {
-        boundsLatLngs.push([driverLocation.latitude, driverLocation.longitude]);
-        const driverIcon = L.divIcon({
-          html: `
-            <div class="relative flex items-center justify-center">
-              <span class="animate-ping absolute inline-flex h-9 w-9 rounded-full bg-emerald-400 opacity-75"></span>
-              <div class="w-10 h-10 rounded-2xl bg-slate-900 border-2 border-amber-500 shadow-2xl flex items-center justify-center text-amber-400">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C2.1 10.9 2 11.2 2 11.5V16c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>
-              </div>
-            </div>
-          `,
-          className: 'custom-driver-marker',
-          iconSize: [40, 40],
-          iconAnchor: [20, 20],
-        });
-        L.marker([driverLocation.latitude, driverLocation.longitude], { icon: driverIcon })
-          .bindPopup(`<strong>🚘 ${driverLocation.label || 'Assigned Chauffeur'}</strong><br/><span style="font-size: 11px; color: #047857;">${driverLocation.subText || 'Live Chauffeur Vehicle Location'}</span>`)
-          .addTo(layerGroup);
-      }
 
       // Pickup
       if (pickup && isValidCoordinate(pickup.latitude, pickup.longitude)) {
@@ -1110,7 +1023,7 @@ export default function BookingMap({
     return () => {
       isMounted = false;
     };
-  }, [engine, pickup, destination, stops, userLocation, driverLocation, routeCoords, onPickupAdjust, onDestinationAdjust, onLocationPick]);
+  }, [engine, pickup, destination, stops, userLocation, routeCoords, onPickupAdjust, onDestinationAdjust, onLocationPick]);
 
   // Recenter Handler (Centering on accurate live GPS location)
   const handleCurrentLocation = useCallback(async () => {

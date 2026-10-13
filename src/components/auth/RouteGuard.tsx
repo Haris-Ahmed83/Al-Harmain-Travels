@@ -27,7 +27,8 @@ export default function RouteGuard({ children, allowedRoles }: RouteGuardProps) 
     // 2. Check if user is authenticated
     if (!isAuthenticated) {
       toast.error('Authentication required. Please sign in.');
-      router.replace(`/sign-in?redirect=${encodeURIComponent(pathname)}`);
+      const fullPath = typeof window !== 'undefined' && window.location.search ? `${pathname}${window.location.search}` : pathname;
+      router.replace(`/sign-in?redirect=${encodeURIComponent(fullPath)}`);
       return;
     }
 

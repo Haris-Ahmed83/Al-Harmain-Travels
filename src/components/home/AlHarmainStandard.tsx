@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Award, Plane, ShieldCheck, Headphones } from 'lucide-react';
 import CinematicTexture from '@/components/cinematic/CinematicTexture';
+import { BrandEmblem } from '@/components/ui/BrandLogo';
 
 interface FeatureCardProps {
   icon: React.ElementType;
@@ -246,8 +247,13 @@ export default function AlHarmainStandard() {
       />
 
       <div className="relative z-10 py-10 sm:py-14">
-        {/* ── Section Header with Letter-Spacing Animation & Shimmer Sweep ── */}
+        {/* ── Section Header with Brand Logo, Letter-Spacing Animation & Shimmer Sweep ── */}
         <div className="text-center max-w-3xl mx-auto mb-10 sm:mb-14 space-y-3 px-2">
+          {/* Centered Brand Emblem */}
+          <div className="flex justify-center mb-1">
+            <BrandEmblem size="sm" />
+          </div>
+
           {/* Eyebrow Label with Animated Letter-Spacing */}
           <div
             style={{

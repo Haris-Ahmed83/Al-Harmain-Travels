@@ -1,54 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 512 512" width="512" height="512">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+    <linearGradient id="bg512" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#07261d" />
       <stop offset="50%" stop-color="#0b4736" />
       <stop offset="100%" stop-color="#041812" />
     </linearGradient>
-    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#f3df93" />
-      <stop offset="50%" stop-color="#d4af37" />
-      <stop offset="100%" stop-color="#9a7b21" />
-    </linearGradient>
-    <radialGradient id="aura" cx="50%" cy="40%" r="50%">
-      <stop offset="0%" stop-color="#d4af37" stop-opacity="0.25" />
-      <stop offset="100%" stop-color="#d4af37" stop-opacity="0" />
-    </radialGradient>
   </defs>
 
-  <!-- Background Base -->
-  <rect width="512" height="512" rx="108" fill="url(#bg)" />
-
-  <!-- Aura Glow -->
-  <circle cx="256" cy="220" r="180" fill="url(#aura)" />
-
-  <!-- Outer Luxury Gold Ring -->
-  <circle cx="256" cy="220" r="148" fill="none" stroke="url(#gold)" stroke-width="3" stroke-dasharray="6 4" opacity="0.6" />
-  <circle cx="256" cy="220" r="138" fill="none" stroke="url(#gold)" stroke-width="1.5" opacity="0.8" />
-
-  <!-- Eight-pointed Star Emblem -->
-  <g transform="translate(256, 220)">
-    <!-- Rotating subtle outer diamonds -->
-    <path d="M0,-115 L22,-22 L115,0 L22,22 L0,115 L-22,22 L-115,0 L-22,-22 Z" fill="none" stroke="url(#gold)" stroke-width="2.5" />
-    <path d="M-81,-81 L0,-32 L81,-81 L32,0 L81,81 L0,32 L-81,81 L-32,0 Z" fill="none" stroke="url(#gold)" stroke-width="2.5" opacity="0.6" />
-
-    <!-- Center Compass / Kaaba Gateway -->
-    <circle cx="0" cy="0" r="44" fill="#07261d" stroke="url(#gold)" stroke-width="3" />
-    
-    <!-- North Diamond Needle -->
-    <polygon points="0,-40 10,0 0,-8 -10,0" fill="url(#gold)" />
-    <!-- South Diamond Needle -->
-    <polygon points="0,40 10,0 0,8 -10,0" fill="#ffffff" opacity="0.85" />
-    <!-- East & West needles -->
-    <polygon points="40,0 0,-7 8,0 0,7" fill="url(#gold)" opacity="0.7" />
-    <polygon points="-40,0 0,-7 -8,0 0,7" fill="url(#gold)" opacity="0.7" />
-
-    <!-- Center Gold Pivot -->
-    <circle cx="0" cy="0" r="8" fill="url(#gold)" />
-    <circle cx="0" cy="0" r="4" fill="#07261d" />
-  </g>
-
-  <!-- Typography: AL HARMAIN -->
-  <text x="256" y="420" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-size="28" font-weight="700" letter-spacing="9" fill="url(#gold)" text-anchor="middle">AL HARMAIN</text>
-  <text x="256" y="445" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-size="13" font-weight="600" letter-spacing="4" fill="#ffffff" opacity="0.7" text-anchor="middle">TRAVELS &amp; CHAUFFEUR</text>
+  <rect width="512" height="512" rx="112" fill="url(#bg512)" />
+  <image href="/logo.png" x="42" y="42" width="428" height="428" preserveAspectRatio="xMidYMid meet" />
 </svg>

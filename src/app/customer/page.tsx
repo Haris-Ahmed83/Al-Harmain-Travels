@@ -45,6 +45,7 @@ import {
   isAirportRoute,
 } from '@/lib/fixed-fare';
 import { formatCurrency } from '@/lib/utils';
+import { isBookingForCustomer } from '@/lib/assignment-utils';
 import {
   MapPin,
   Search,
@@ -150,9 +151,9 @@ const VEHICLE_CATEGORIES: VehicleCategory[] = ['sedan', 'staria', 'gmc', 'hiroof
 
 // Map VehicleCategory → existing VehicleType for booking insert compatibility
 const CATEGORY_TO_VEHICLE_TYPE: Record<VehicleCategory, VehicleType> = {
-  sedan:  'sedan',
+  sedan: 'sedan',
   staria: 'van',
-  gmc:    'vip_gmc',
+  gmc: 'vip_gmc',
   hiroof: 'van',
 };
 
@@ -160,7 +161,7 @@ export default function CustomerHomePage() {
   const {
     currentUser,
     activeCustomerBooking,
-    drivers,
+    bookings,
     savedPlaces,
     recentLocations,
     addSavedPlace,
@@ -181,26 +182,15 @@ export default function CustomerHomePage() {
   const [pickup, setPickup] = useState<LocationPoint | null>(null);
   const [destination, setDestination] = useState<LocationPoint | null>(null);
 
-  // Active assigned driver for live in-journey tracking
-  const activeDriver = useMemo(() => {
-    if (!activeCustomerBooking?.assigned_driver_id) return activeCustomerBooking?.driver || null;
-    return (
-      drivers.find((d) => d.id === activeCustomerBooking.assigned_driver_id) ||
-      activeCustomerBooking.driver ||
-      null
-    );
-  }, [activeCustomerBooking, drivers]);
+  // Active assigned driver info for active trip card (if available)
+  const activeDriver = activeCustomerBooking?.driver || null;
 
-  const liveDriverLocation = useMemo(() => {
-    if (!activeDriver?.location?.latitude || !activeDriver?.location?.longitude) return null;
-    return {
-      latitude: activeDriver.location.latitude,
-      longitude: activeDriver.location.longitude,
-      heading: activeDriver.location.heading || 0,
-      label: activeDriver.profile?.full_name || activeDriver.full_name || 'Assigned VIP Chauffeur',
-      subText: `${activeDriver.assigned_vehicle?.plate_number || activeDriver.vehicle?.plate_number || 'VIP Chauffeur'} • Live GPS`,
-    };
-  }, [activeDriver]);
+  // Real-time recent bookings for current authenticated customer
+  const customerRecentBookings = useMemo(() => {
+    return bookings
+      .filter((b) => isBookingForCustomer(b, currentUser))
+      .slice(0, 4);
+  }, [bookings, currentUser]);
 
   const {
     status: gpsStatus,
@@ -268,7 +258,7 @@ export default function CustomerHomePage() {
 
   // Additional Passenger Details
   const [passengerName, setPassengerName] = useState<string>(currentUser.full_name || 'Al Harmain Guest');
-  const [passengerPhone, setPassengerPhone] = useState<string>(currentUser.phone || '+966 50 123 4567');
+  const [passengerPhone, setPassengerPhone] = useState<string>(currentUser.phone || '');
   const [passengerCount, setPassengerCount] = useState<number>(3);
   const [journeyDate, setJourneyDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [journeyTime, setJourneyTime] = useState<string>('15:00');
@@ -340,6 +330,20 @@ export default function CustomerHomePage() {
       localStorage.removeItem('alharmain_customer_pickup');
     } catch { }
   }, []);
+
+  // Sync passenger name/phone with the authenticated user's profile whenever
+  // the currentUser changes (e.g. after auth loads or profile is updated).
+  // This prevents stale initial-render values being used in submitted bookings.
+  useEffect(() => {
+    if (currentUser && currentUser.id && currentUser.id !== 'guest') {
+      if (currentUser.full_name) {
+        setPassengerName(currentUser.full_name);
+      }
+      if (currentUser.phone) {
+        setPassengerPhone(currentUser.phone);
+      }
+    }
+  }, [currentUser.id, currentUser.full_name, currentUser.phone]);
 
   // Debounced Place Search
   useEffect(() => {
@@ -951,41 +955,35 @@ export default function CustomerHomePage() {
   // ─── Render ────────────────────────────────────────────────────────────
 
   return (
-    <div className="page-shell space-y-6 pb-24 sm:pb-8">
+    <div className="page-shell space-y-4 sm:space-y-5 pb-20 sm:pb-6">
 
       {/* ── Active Journey Banner ──────────────────────────────────────── */}
       {activeCustomerBooking && (
-        <div className="p-5 rounded-3xl bg-gradient-to-r from-emerald-800 via-emerald-900 to-slate-900 border-2 border-emerald-500/50 shadow-2xl relative overflow-hidden animate-fade-up">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="space-y-1.5">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-700/80 text-emerald-200 text-xs font-bold border border-emerald-500/40">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+        <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-emerald-800 via-emerald-900 to-slate-900 border border-emerald-500/50 shadow-lg relative overflow-hidden animate-fade-up">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-700/80 text-emerald-200 text-[11px] font-bold border border-emerald-500/40">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
                 <span>ACTIVE JOURNEY: {activeCustomerBooking.status.replace(/_/g, ' ').toUpperCase()}</span>
               </div>
-              <div className="text-white font-semibold text-sm">
+              <div className="text-white font-semibold text-xs sm:text-sm">
                 Ref: <span className="text-amber-300 font-mono">{activeCustomerBooking.booking_reference}</span> &bull; {activeCustomerBooking.pickup_address} &rarr; {activeCustomerBooking.destination_address}
               </div>
               {activeDriver && (
-                <div className="text-emerald-200 text-xs flex flex-wrap items-center gap-2 pt-0.5">
+                <div className="text-emerald-200 text-xs flex flex-wrap items-center gap-1.5 pt-0.5">
                   <Car className="w-3.5 h-3.5 text-amber-400" />
                   <span>
                     Chauffeur: <strong className="text-white font-bold">{activeDriver.profile?.full_name || activeDriver.full_name || 'Assigned Chauffeur'}</strong>
                     {(activeDriver.assigned_vehicle?.plate_number || activeDriver.vehicle?.plate_number) ? ` (${activeDriver.assigned_vehicle?.plate_number || activeDriver.vehicle?.plate_number})` : ''}
                   </span>
-                  {liveDriverLocation && (
-                    <span className="inline-flex items-center gap-1 text-[11px] text-emerald-300 bg-emerald-950/70 px-2.5 py-0.5 rounded-full border border-emerald-500/30 font-semibold">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                      Live Radar Synced
-                    </span>
-                  )}
                 </div>
               )}
             </div>
             <Link
               href="/customer/track"
-              className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs shadow-md transition-all self-start md:self-center"
+              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs shadow-sm transition-all self-start md:self-center shrink-0"
             >
-              <Navigation className="w-4 h-4" />
+              <Navigation className="w-3.5 h-3.5" />
               <span>Open Live Tracking Radar</span>
             </Link>
           </div>
@@ -993,13 +991,13 @@ export default function CustomerHomePage() {
       )}
 
       {/* ── Welcome Bar ────────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
         <div>
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 text-xs font-semibold mb-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 text-[11px] font-semibold mb-1">
+            <Sparkles className="w-3 h-3 text-amber-500" />
             Al Harmain Fixed-Fare Booking
           </span>
-          <h1 className="type-section-title text-primary">
+          <h1 className="text-lg sm:text-xl font-bold tracking-tight text-primary">
             Where would you like to go, <span className="text-amber-600 dark:text-amber-400">{currentUser.full_name.split(' ')[0]}</span>?
           </h1>
         </div>
@@ -1010,18 +1008,18 @@ export default function CustomerHomePage() {
             <button
               type="button"
               onClick={handleUseCurrentLocation}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-xs font-semibold transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-xs font-semibold transition-colors cursor-pointer"
             >
-              <Crosshair className="w-3.5 h-3.5 text-emerald-500" />
+              <Crosshair className="w-3 h-3 text-emerald-500" />
               <span>Live GPS Active</span>
             </button>
           ) : (
             <button
               type="button"
               onClick={handleUseCurrentLocation}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-semibold transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-semibold transition-colors cursor-pointer"
             >
-              <Crosshair className="w-3.5 h-3.5 text-amber-500" />
+              <Crosshair className="w-3 h-3 text-amber-500" />
               <span>Use GPS</span>
             </button>
           )}
@@ -1030,7 +1028,7 @@ export default function CustomerHomePage() {
             <button
               type="button"
               onClick={resetBooking}
-              className="text-xs font-semibold text-muted hover:text-rose-500 px-3 py-1.5 rounded-full border border-base bg-card hover:bg-elevated transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+              className="text-xs font-semibold text-muted hover:text-rose-500 px-2.5 py-1 rounded-full border border-base bg-card hover:bg-elevated transition-colors inline-flex items-center gap-1.5 cursor-pointer"
             >
               <RotateCcw className="w-3 h-3" />
               <span>Reset</span>
@@ -1040,33 +1038,31 @@ export default function CustomerHomePage() {
       </div>
 
       {/* ── Booking Mode Switcher ────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-card/60 p-2 rounded-2xl border border-base shadow-sm">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-card/60 p-1.5 rounded-xl border border-base shadow-sm">
         <button
           type="button"
           onClick={() => setBookingMethod('fixed')}
-          className={`p-3.5 rounded-xl border text-left transition-all flex items-start gap-3 cursor-pointer ${
-            bookingMethod === 'fixed'
+          className={`p-2.5 sm:p-3 rounded-lg border text-left transition-all flex items-start gap-2.5 cursor-pointer ${bookingMethod === 'fixed'
               ? 'bg-gradient-to-r from-emerald-500/15 to-emerald-500/5 border-emerald-500/50 shadow-sm text-primary'
               : 'bg-surface/50 border-transparent hover:bg-surface text-secondary hover:text-primary'
-          }`}
+            }`}
         >
           <div
-            className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-              bookingMethod === 'fixed'
+            className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center shrink-0 ${bookingMethod === 'fixed'
                 ? 'bg-emerald-500 text-slate-950 font-bold'
                 : 'bg-surface text-muted border border-base'
-            }`}
+              }`}
           >
-            <Route className="w-5 h-5" />
+            <Route className="w-4 h-4" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <span className="font-bold text-xs">Fixed Fare Booking</span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+              <span className="px-1.5 py-0.2 rounded-full text-[9.5px] font-bold bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
                 Predefined Rates
               </span>
             </div>
-            <p className="text-[11px] text-muted mt-0.5">
+            <p className="text-[10.5px] text-muted mt-0.5 leading-snug">
               Predefined routes (Jeddah, Makkah, Madinah, Ziyarat) with guaranteed fixed prices.
             </p>
           </div>
@@ -1075,29 +1071,27 @@ export default function CustomerHomePage() {
         <button
           type="button"
           onClick={() => setBookingMethod('custom')}
-          className={`p-3.5 rounded-xl border text-left transition-all flex items-start gap-3 cursor-pointer ${
-            bookingMethod === 'custom'
+          className={`p-2.5 sm:p-3 rounded-lg border text-left transition-all flex items-start gap-2.5 cursor-pointer ${bookingMethod === 'custom'
               ? 'bg-gradient-to-r from-amber-500/15 to-amber-500/5 border-amber-500/50 shadow-sm text-primary'
               : 'bg-surface/50 border-transparent hover:bg-surface text-secondary hover:text-primary'
-          }`}
+            }`}
         >
           <div
-            className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-              bookingMethod === 'custom'
+            className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center shrink-0 ${bookingMethod === 'custom'
                 ? 'bg-amber-500 text-slate-950 font-bold'
                 : 'bg-surface text-muted border border-base'
-            }`}
+              }`}
           >
-            <Navigation className="w-5 h-5" />
+            <Navigation className="w-4 h-4" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <span className="font-bold text-xs">Custom Route Booking</span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+              <span className="px-1.5 py-0.2 rounded-full text-[9.5px] font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30">
                 Dispatcher Confirmed
               </span>
             </div>
-            <p className="text-[11px] text-muted mt-0.5">
+            <p className="text-[10.5px] text-muted mt-0.5 leading-snug">
               Choose your own pickup &amp; destination with optional stops. Fare confirmed by dispatcher.
             </p>
           </div>
@@ -1105,10 +1099,10 @@ export default function CustomerHomePage() {
       </div>
 
       {/* ── Main Layout: Booking Panel + Map ──────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-start">
 
         {/* ── Booking Panel (left / top on mobile) ──────────────────── */}
-        <div className="order-1 lg:order-1 lg:col-span-6 xl:col-span-5 space-y-5">
+        <div className="order-1 lg:order-1 lg:col-span-6 xl:col-span-5 space-y-4">
           {bookingMethod === 'custom' ? (
             <CustomRouteBookingPanel
               pickup={customPickup}
@@ -1214,13 +1208,12 @@ export default function CustomerHomePage() {
         </div>
 
         {/* ── Interactive Map (right / bottom on mobile) ───────────────── */}
-        <div className="order-2 lg:order-2 lg:col-span-6 xl:col-span-7 h-[300px] sm:h-[380px] lg:h-[620px] relative lg:sticky lg:top-20 rounded-3xl overflow-hidden shadow-2xl border border-base">
+        <div className="order-2 lg:order-2 lg:col-span-6 xl:col-span-7 h-[280px] sm:h-[340px] lg:h-[500px] xl:h-[520px] relative lg:sticky lg:top-20 rounded-2xl overflow-hidden shadow-xl border border-base">
           <BookingMap
             pickup={bookingMethod === 'custom' ? customPickup : pickup}
             destination={bookingMethod === 'custom' ? customDestination : destination}
             stops={bookingMethod === 'custom' ? customStops : undefined}
             userLocation={userLocation}
-            driverLocation={liveDriverLocation}
             routeCoords={bookingMethod === 'custom' ? customRouteCoords : routeCoords}
             distanceKm={bookingMethod === 'custom' ? customDistanceKm : distanceKm}
             durationMinutes={bookingMethod === 'custom' ? customDurationMinutes : durationMinutes}
@@ -1229,17 +1222,123 @@ export default function CustomerHomePage() {
             onPickupAdjust={bookingMethod === 'custom' ? handleCustomPickupAdjust : handlePickupAdjust}
             onDestinationAdjust={bookingMethod === 'custom' ? handleCustomDestinationAdjust : handleDestinationAdjust}
             onRecenterClick={bookingMethod === 'custom' ? handleCustomUseCurrentLocation : handleUseCurrentLocation}
-            className="h-full w-full rounded-3xl"
+            className="h-full w-full rounded-2xl"
           />
         </div>
       </div>
 
+      {/* ── Customer Recent & Active Rides Card ─────────────────────── */}
+      {customerRecentBookings.length > 0 && (
+        <div className="rounded-2xl bg-card border border-base p-4 sm:p-5 shadow-lg space-y-3 animate-fade-up">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                <Clock className="w-3.5 h-3.5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-primary text-sm sm:text-base">Your Recent &amp; Active Bookings</h3>
+                <p className="text-[11px] text-muted">Real-time status updates from our VIP dispatch radar</p>
+              </div>
+            </div>
+            <Link
+              href="/customer/bookings"
+              className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1"
+            >
+              <span>View All Trips</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {customerRecentBookings.map((b) => {
+              const isDone =
+                b.status === 'trip_completed' ||
+                b.status === 'ride_completed' ||
+                b.status === 'payment_completed' ||
+                b.status === 'completed';
+              const isCancelled =
+                b.status === 'cancelled' || b.status === 'rejected' || b.status === 'payment_rejected';
+              const isActive = !isDone && !isCancelled;
+
+              return (
+                <div
+                  key={b.id || b.booking_reference}
+                  className="rounded-xl bg-surface border border-base/80 hover:border-emerald-500/40 p-3 sm:p-3.5 transition-all shadow-sm flex flex-col justify-between gap-2.5"
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-xs text-primary">{b.booking_reference}</span>
+                        {isActive && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[9px] font-extrabold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                            LIVE
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[9.5px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider bg-elevated text-secondary border border-base/60">
+                        {b.status.replace(/_/g, ' ')}
+                      </span>
+                    </div>
+
+                    <div className="text-xs text-secondary space-y-1">
+                      <div className="flex items-start gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 mt-1 shrink-0" />
+                        <span className="truncate">{b.pickup_address}</span>
+                      </div>
+                      <div className="flex items-start gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-amber-500 mt-1 shrink-0" />
+                        <span className="truncate">{b.destination_address}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-base/60 text-xs">
+                    <div className="text-muted text-[11px]">
+                      {b.final_fare || b.confirmed_fare || b.estimated_fare ? (
+                        <span className="font-bold text-primary">
+                          SAR {b.final_fare || b.confirmed_fare || b.estimated_fare}
+                        </span>
+                      ) : (
+                        <span className="italic text-amber-500">Fare pending review</span>
+                      )}
+                      {b.driver?.profile?.full_name && (
+                        <span className="block text-[10px] text-muted">
+                          Chauffeur: {b.driver.profile.full_name}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {isActive && (
+                        <Link
+                          href="/customer/track"
+                          className="px-2 py-1 rounded-lg bg-emerald-600 text-white text-[10.5px] font-semibold hover:bg-emerald-700 transition-colors shadow-sm flex items-center gap-1"
+                        >
+                          <Navigation className="w-3 h-3" />
+                          <span>Track Live</span>
+                        </Link>
+                      )}
+                      <Link
+                        href="/customer/bookings"
+                        className="px-2 py-1 rounded-lg bg-elevated hover:bg-surface text-secondary text-[10.5px] font-semibold transition-colors"
+                      >
+                        Details
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* ── Address Search Modal ─────────────────────────────────────── */}
       {activeSearchField && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-start justify-center p-4 pt-16 sm:pt-24 animate-fade-up">
-          <div className="bg-card border border-base rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
-            <div className="p-4 sm:p-5 border-b border-base flex items-center gap-3">
-              <Search className="w-5 h-5 text-emerald-500 shrink-0" />
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-start justify-center p-4 pt-16 sm:pt-20 animate-fade-up">
+          <div className="bg-card border border-base rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="p-3 sm:p-4 border-b border-base flex items-center gap-2.5">
+              <Search className="w-4 h-4 text-emerald-500 shrink-0" />
               <input
                 type="text"
                 autoFocus
@@ -1249,8 +1348,8 @@ export default function CustomerHomePage() {
                   activeSearchField === 'pickup' || activeSearchField === 'custom_pickup'
                     ? 'Search pickup address, hotel, or landmark…'
                     : typeof activeSearchField === 'string' && activeSearchField.startsWith('stop_')
-                    ? 'Search intermediate stop address, mosque, or landmark…'
-                    : 'Search destination, airport, market, or city…'
+                      ? 'Search intermediate stop address, mosque, or landmark…'
+                      : 'Search destination, airport, market, or city…'
                 }
                 className="w-full bg-transparent text-primary text-sm sm:text-base placeholder:text-muted focus:outline-none"
               />
@@ -1342,26 +1441,26 @@ export default function CustomerHomePage() {
       {/* ── Manage Saved Places Modal ─────────────────────────────────── */}
       {isSavedPlacesModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-up">
-          <div className="bg-card border border-base rounded-3xl w-full max-w-md shadow-2xl p-6 space-y-5">
+          <div className="bg-card border border-base rounded-2xl w-full max-w-sm shadow-xl p-4 sm:p-5 space-y-3.5">
             <div className="flex items-center justify-between">
-              <h3 className="type-card-title text-lg">{editingPlace ? 'Edit Saved Place' : 'Save a New Place'}</h3>
-              <button type="button" onClick={() => setIsSavedPlacesModalOpen(false)} className="p-1 rounded-xl text-muted hover:text-primary hover:bg-elevated">
+              <h3 className="font-bold text-base text-primary">{editingPlace ? 'Edit Saved Place' : 'Save a New Place'}</h3>
+              <button type="button" onClick={() => setIsSavedPlacesModalOpen(false)} className="p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSavePlaceSubmit} className="space-y-4 text-xs">
+            <form onSubmit={handleSavePlaceSubmit} className="space-y-3 text-xs">
               <div>
-                <label className="type-label">Place Type</label>
-                <div className="grid grid-cols-3 gap-2">
+                <label className="type-label block text-[11px] mb-1">Place Type</label>
+                <div className="grid grid-cols-3 gap-1.5">
                   {(['home', 'work', 'custom'] as SavedPlaceType[]).map((t) => (
                     <button
                       key={t}
                       type="button"
                       onClick={() => { setPlaceType(t); if (t === 'home') setPlaceName('Home'); else if (t === 'work') setPlaceName('Work'); }}
-                      className={`py-2 px-3 rounded-xl border font-semibold capitalize text-xs flex items-center justify-center gap-1.5 ${placeType === t ? 'bg-emerald-50 dark:bg-emerald-950 border-emerald-500 text-emerald-700 dark:text-emerald-300' : 'bg-surface border-base text-secondary'}`}
+                      className={`py-1.5 px-2.5 rounded-lg border font-semibold capitalize text-xs flex items-center justify-center gap-1.5 ${placeType === t ? 'bg-emerald-50 dark:bg-emerald-950 border-emerald-500 text-emerald-700 dark:text-emerald-300' : 'bg-surface border-base text-secondary'}`}
                     >
-                      {t === 'home' ? <Home className="w-3.5 h-3.5" /> : t === 'work' ? <Briefcase className="w-3.5 h-3.5" /> : <Bookmark className="w-3.5 h-3.5" />}
+                      {t === 'home' ? <Home className="w-3 h-3" /> : t === 'work' ? <Briefcase className="w-3 h-3" /> : <Bookmark className="w-3 h-3" />}
                       <span>{t}</span>
                     </button>
                   ))}
@@ -1369,13 +1468,13 @@ export default function CustomerHomePage() {
               </div>
 
               <div>
-                <label className="type-label">Label Name *</label>
-                <input type="text" required value={placeName} onChange={(e) => setPlaceName(e.target.value)} placeholder="e.g. Home, Work, Hotel" className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-emerald-500" />
+                <label className="type-label block text-[11px] mb-1">Label Name *</label>
+                <input type="text" required value={placeName} onChange={(e) => setPlaceName(e.target.value)} placeholder="e.g. Home, Work, Hotel" className="w-full px-3 py-2 rounded-lg bg-input border border-base text-primary text-xs focus:outline-none focus:border-emerald-500" />
               </div>
 
               <div>
-                <label className="type-label">Full Address *</label>
-                <input type="text" required value={placeAddress} onChange={(e) => setPlaceAddress(e.target.value)} placeholder="Street, City, Landmark" className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-emerald-500" />
+                <label className="type-label block text-[11px] mb-1">Full Address *</label>
+                <input type="text" required value={placeAddress} onChange={(e) => setPlaceAddress(e.target.value)} placeholder="Street, City, Landmark" className="w-full px-3 py-2 rounded-lg bg-input border border-base text-primary text-xs focus:outline-none focus:border-emerald-500" />
               </div>
 
               <button
@@ -1392,19 +1491,19 @@ export default function CustomerHomePage() {
                 }}
                 className="text-[11px] text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
               >
-                <Crosshair className="w-3.5 h-3.5" />
+                <Crosshair className="w-3 h-3" />
                 Use Current Location
               </button>
 
-              <div className="flex items-center justify-between gap-3 pt-3 border-t border-base">
+              <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-base">
                 {editingPlace && (
-                  <button type="button" onClick={async () => { await deleteSavedPlace(editingPlace.id); setIsSavedPlacesModalOpen(false); }} className="p-2.5 rounded-xl text-rose-500 hover:bg-rose-500/10 transition-colors" title="Delete place">
-                    <Trash2 className="w-4 h-4" />
+                  <button type="button" onClick={async () => { await deleteSavedPlace(editingPlace.id); setIsSavedPlacesModalOpen(false); }} className="p-2 rounded-lg text-rose-500 hover:bg-rose-500/10 transition-colors" title="Delete place">
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 )}
                 <div className="flex items-center gap-2 ml-auto">
-                  <button type="button" onClick={() => setIsSavedPlacesModalOpen(false)} className="btn-secondary py-2.5 px-4 text-xs">Cancel</button>
-                  <button type="submit" className="btn-primary py-2.5 px-5 text-xs">Save Place</button>
+                  <button type="button" onClick={() => setIsSavedPlacesModalOpen(false)} className="btn-secondary py-2 px-3 text-xs">Cancel</button>
+                  <button type="submit" className="btn-primary py-2 px-4 text-xs font-bold">Save Place</button>
                 </div>
               </div>
             </form>

@@ -46,6 +46,7 @@ import {
   isBookingActive,
   isBookingCompleted,
   isBookingCancelled,
+  isBookingForCustomer,
 } from '@/lib/assignment-utils';
 
 export interface NotificationItem {
@@ -381,11 +382,48 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // Notifications
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
-  // Sync data from Supabase without falling back to mock records
-  const fetchRemoteData = useCallback(async () => {
+  // Sync data from Supabase without falling back to mock records.
+  // Accepts an optional authenticatedUserId so customer-scoped queries
+  // (emergency_contacts, saved_places, recent_locations) are always filtered
+  // to the currently signed-in user rather than fetching all rows.
+  const fetchRemoteData = useCallback(async (authenticatedUserId?: string) => {
     setIsDataLoading(true);
     setDataError(null);
     try {
+      // Resolve the effective user ID: prefer the explicitly passed value,
+      // then fall back to the session (handles fresh sign-in where React state
+      // may not yet reflect the new user ID due to closure staleness).
+      let effectiveUserId = authenticatedUserId;
+      if (!effectiveUserId || effectiveUserId === 'guest') {
+        try {
+          const { data: sess } = await supabase.auth.getSession();
+          if (sess?.session?.user?.id) {
+            effectiveUserId = sess.session.user.id;
+          }
+        } catch { /* non-fatal: fall through to unfiltered queries */ }
+      }
+
+      const isValidUser = !!effectiveUserId && effectiveUserId !== 'guest';
+
+      // Build customer-scoped queries only when we have a real user ID.
+      // Without a valid user, return empty arrays so the UI correctly shows
+      // an empty state rather than either erroring or leaking other users' data.
+      const contactsQuery = isValidUser
+        ? supabase.from('emergency_contacts').select('*').eq('customer_id', effectiveUserId)
+        : Promise.resolve({ data: [], error: null });
+
+      const placesQuery = isValidUser
+        ? supabase.from('saved_places').select('*').eq('customer_id', effectiveUserId).order('created_at', { ascending: false })
+        : Promise.resolve({ data: [], error: null });
+
+      const recentsQuery = isValidUser
+        ? supabase.from('recent_locations').select('*').eq('customer_id', effectiveUserId).order('last_used_at', { ascending: false }).limit(8)
+        : Promise.resolve({ data: [], error: null });
+
+      const notifsQuery = isValidUser
+        ? supabase.from('notifications').select('*').or(`user_id.eq.${effectiveUserId},user_id.is.null`).order('created_at', { ascending: false }).limit(40)
+        : supabase.from('notifications').select('*').is('user_id', null).order('created_at', { ascending: false }).limit(40);
+
       const [
         { data: dbServices, error: errServices },
         { data: dbProfiles, error: errProfiles },
@@ -394,6 +432,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         { data: dbVehicles, error: errVehicles },
         { data: dbPlaces, error: errPlaces },
         { data: dbRecents, error: errRecents },
+        { data: dbNotifs },
         { data: dbDrivers, error: errDrivers },
         { data: dbBookings, error: errBookings },
         { data: dbFixedRates, error: errFixedRates },
@@ -404,20 +443,21 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       ] = await Promise.all([
         supabase.from('services').select('*').order('display_order', { ascending: true }),
         supabase.from('profiles').select('*'),
-        supabase.from('emergency_contacts').select('*'),
+        contactsQuery,
         supabase.from('system_settings').select('*').maybeSingle(),
         supabase.from('vehicles').select('*'),
-        supabase.from('saved_places').select('*').order('created_at', { ascending: false }),
-        supabase.from('recent_locations').select('*').order('last_used_at', { ascending: false }).limit(8),
+        placesQuery,
+        recentsQuery,
+        notifsQuery,
         supabase.from('drivers').select(`
           *,
           profile:profiles(*),
-          assigned_vehicle:vehicles(*),
+          assigned_vehicle:rate_vehicle_types(*),
           location:driver_locations(*)
         `),
         supabase.from('bookings').select(`
           *,
-          driver:drivers(*, profile:profiles(*), assigned_vehicle:vehicles(*), location:driver_locations(*))
+          driver:drivers(*, profile:profiles(*), assigned_vehicle:rate_vehicle_types(*), location:driver_locations(*))
         `).order('created_at', { ascending: false }),
         supabase.from('fixed_fare_rates').select('*').order('created_at', { ascending: true }),
         supabase.from('rate_vehicle_types').select('*').order('display_order', { ascending: true }),
@@ -485,6 +525,19 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       if (dbVehicles) setVehicles(dbVehicles as Vehicle[]);
       if (dbPlaces) setSavedPlaces(dbPlaces as SavedPlace[]);
       if (dbRecents) setRecentLocations(dbRecents as RecentLocation[]);
+      if (dbNotifs && dbNotifs.length > 0) {
+        setNotifications(
+          (dbNotifs as any[]).map((n) => ({
+            id: n.id,
+            title: n.title,
+            message: n.message,
+            timestamp: n.created_at,
+            read: n.read ?? false,
+            type: (n.type as any) || 'info',
+            role: n.role as UserRole | undefined,
+          }))
+        );
+      }
       if (dbDrivers) {
         const currentRateVehs: RateVehicleType[] = (dbRateVehicles && dbRateVehicles.length > 0)
           ? (dbRateVehicles as RateVehicleType[])
@@ -633,24 +686,91 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         if (payload.new && 'id' in payload.new) {
           const updated = payload.new as any;
           setBookings((prev) => {
-            const exists = prev.some(
+            const existingIndex = prev.findIndex(
               (b) => b.id === updated.id || (updated.booking_reference && b.booking_reference === updated.booking_reference)
             );
-            if (exists) {
-              return prev.map((b) =>
-                b.id === updated.id || (updated.booking_reference && b.booking_reference === updated.booking_reference)
-                  ? {
-                    ...b,
-                    ...updated,
-                    id: updated.id,
-                    updated_at: updated.updated_at || new Date().toISOString(),
-                  }
-                  : b
-              );
+            if (existingIndex >= 0) {
+              const existing = prev[existingIndex];
+              // Keep driver and vehicle relations intact or resolve driver
+              let attachedDriver = existing.driver;
+              if (updated.assigned_driver_id && (!attachedDriver || attachedDriver.id !== updated.assigned_driver_id)) {
+                attachedDriver = drivers.find((d) => d.id === updated.assigned_driver_id) || attachedDriver;
+              } else if (updated.assigned_driver_id === null) {
+                attachedDriver = null as any;
+              }
+              const merged: Booking = {
+                ...existing,
+                ...updated,
+                id: updated.id,
+                driver: attachedDriver,
+                updated_at: updated.updated_at || new Date().toISOString(),
+              };
+              const copy = [...prev];
+              copy[existingIndex] = merged;
+              return copy;
             } else {
-              return [updated as Booking, ...prev];
+              let attachedDriver = null;
+              if (updated.assigned_driver_id) {
+                attachedDriver = drivers.find((d) => d.id === updated.assigned_driver_id) || null;
+              }
+              const newBookingRecord: Booking = {
+                ...(updated as Booking),
+                driver: attachedDriver as any,
+              };
+              return [newBookingRecord, ...prev];
             }
           });
+        }
+      })
+      .subscribe();
+
+    // Listen to real-time driver updates (status, vehicle assignment)
+    const driversChannel = supabase
+      .channel('public:drivers')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'drivers' }, (payload) => {
+        if (payload.eventType === 'DELETE') {
+          const deletedId = (payload.old as any)?.id;
+          if (deletedId) setDrivers((prev) => prev.filter((d) => d.id !== deletedId));
+          return;
+        }
+        if (payload.new && 'id' in payload.new) {
+          const updatedD = payload.new as any;
+          setDrivers((prev) =>
+            prev.map((d) => (d.id === updatedD.id ? { ...d, ...updatedD } : d))
+          );
+        }
+      })
+      .subscribe();
+
+    // Listen to real-time payments updates
+    const paymentsChannel = supabase
+      .channel('public:payments')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, (payload) => {
+        if (payload.new && 'booking_id' in payload.new) {
+          const p = payload.new as any;
+          setBookings((prev) =>
+            prev.map((b) => {
+              if (b.id === p.booking_id) {
+                return {
+                  ...b,
+                  payment_status: p.status === 'paid' ? 'paid' : (p.status === 'failed' ? 'failed' : b.payment_status),
+                  payment: {
+                    id: p.id,
+                    booking_id: p.booking_id,
+                    customer_id: p.customer_id,
+                    amount: p.amount,
+                    method: p.method,
+                    status: p.status,
+                    transaction_reference: p.transaction_reference,
+                    collected_by: p.collected_by,
+                    created_at: p.created_at,
+                    updated_at: p.updated_at,
+                  },
+                };
+              }
+              return b;
+            })
+          );
         }
       })
       .subscribe();
@@ -751,12 +871,48 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       })
       .subscribe();
 
+    // Listen to real-time notifications
+    const notifsChannel = supabase
+      .channel('public:notifications')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, (payload) => {
+        if (payload.eventType === 'INSERT' && payload.new) {
+          const n = payload.new as any;
+          setNotifications((prev) => [
+            {
+              id: n.id,
+              title: n.title,
+              message: n.message,
+              timestamp: n.created_at,
+              read: n.read ?? false,
+              type: n.type || 'info',
+              role: n.role,
+            },
+            ...prev,
+          ]);
+        } else if (payload.eventType === 'UPDATE' && payload.new) {
+          const n = payload.new as any;
+          setNotifications((prev) =>
+            prev.map((item) => (item.id === n.id ? { ...item, read: n.read ?? item.read } : item))
+          );
+        } else if (payload.eventType === 'DELETE' && payload.old) {
+          const delId = (payload.old as any).id;
+          setNotifications((prev) => prev.filter((item) => item.id !== delId));
+        }
+      })
+      .subscribe();
+
     return () => {
       supabase.removeChannel(locationChannel);
       supabase.removeChannel(bookingsChannel);
+      supabase.removeChannel(driversChannel);
+      supabase.removeChannel(paymentsChannel);
       supabase.removeChannel(profilesChannel);
       supabase.removeChannel(ratesChannel);
+      supabase.removeChannel(notifsChannel);
     };
+    // Empty dependency array: channels are set up once on mount and torn down
+    // on unmount. Using [drivers] here caused re-subscriptions (and channel
+    // leaks) on every driver location update, which is incorrect.
   }, []);
 
   // Helper to sync role cookie for Next.js middleware and SSR
@@ -810,6 +966,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             setUserRole(updatedProfile.role as UserRole);
             setIsAuthenticated(true);
             syncRoleCookie(updatedProfile.role as UserRole);
+            fetchRemoteData(updatedProfile.id);
           } else if (isMounted) {
             // Profile does NOT exist in Supabase profiles table.
             // If user has role metadata in auth.users, upsert into profiles
@@ -832,6 +989,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
               setUserRole(newProfile.role);
               setIsAuthenticated(true);
               syncRoleCookie(newProfile.role);
+              fetchRemoteData(newProfile.id);
             } else {
               await supabase.auth.signOut().catch(() => { });
               setIsAuthenticated(false);
@@ -900,6 +1058,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             setUserRole(updatedProfile.role as UserRole);
             setIsAuthenticated(true);
             syncRoleCookie(updatedProfile.role as UserRole);
+            fetchRemoteData(updatedProfile.id);
           }
         } else if (isMounted) {
           // Profile was deleted from Supabase: force sign out immediately
@@ -917,7 +1076,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       isMounted = false;
       authListener.subscription.unsubscribe();
     };
-  }, []);
+  }, [fetchRemoteData]);
 
   // Safe role switching: only available to authenticated administrators
   const switchRole = (role: UserRole) => {
@@ -1517,12 +1676,40 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // Emergency Contacts CRUD
   const addEmergencyContact = async (contact: Omit<EmergencyContact, 'id' | 'customer_id' | 'created_at' | 'updated_at'>): Promise<boolean> => {
     try {
+      const now = new Date().toISOString();
+      let assignedId = 'emg-' + Date.now();
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentUser.id);
+
+      if (isUuid) {
+        const { data, error } = await supabase
+          .from('emergency_contacts')
+          .insert({
+            customer_id: currentUser.id,
+            name: contact.name,
+            relationship: contact.relationship,
+            phone: contact.phone,
+            email: contact.email || null,
+            is_primary: contact.is_primary ?? false,
+          })
+          .select()
+          .single();
+
+        if (error) {
+          console.error('Failed to add emergency contact to Supabase:', error);
+          toast.error('Failed to save emergency contact to database.');
+          return false;
+        }
+        if (data?.id) {
+          assignedId = data.id;
+        }
+      }
+
       const newContact: EmergencyContact = {
         ...contact,
-        id: 'emg-' + Date.now(),
+        id: assignedId,
         customer_id: currentUser.id,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        created_at: now,
+        updated_at: now,
       };
 
       setEmergencyContacts((prev) => {
@@ -1533,7 +1720,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         return [newContact, ...updated];
       });
 
-      await supabase.from('emergency_contacts').insert(newContact);
       toast.success('Emergency contact added successfully.');
       return true;
     } catch (err) {
@@ -1545,10 +1731,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const updateEmergencyContact = async (id: string, updates: Partial<EmergencyContact>): Promise<boolean> => {
     try {
+      const now = new Date().toISOString();
       setEmergencyContacts((prev) =>
         prev.map((c) => {
           if (c.id === id) {
-            return { ...c, ...updates, updated_at: new Date().toISOString() };
+            return { ...c, ...updates, updated_at: now };
           }
           if (updates.is_primary && c.id !== id) {
             return { ...c, is_primary: false };
@@ -1557,10 +1744,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         })
       );
 
-      await supabase.from('emergency_contacts').update({
-        ...updates,
-        updated_at: new Date().toISOString(),
-      }).eq('id', id);
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+      if (isUuid) {
+        await supabase.from('emergency_contacts').update({
+          ...updates,
+          updated_at: now,
+        }).eq('id', id);
+      }
 
       toast.success('Emergency contact updated.');
       return true;
@@ -1574,7 +1764,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const deleteEmergencyContact = async (id: string): Promise<boolean> => {
     try {
       setEmergencyContacts((prev) => prev.filter((c) => c.id !== id));
-      await supabase.from('emergency_contacts').delete().eq('id', id);
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+      if (isUuid) {
+        await supabase.from('emergency_contacts').delete().eq('id', id);
+      }
       toast.success('Emergency contact removed.');
       return true;
     } catch (err) {
@@ -1592,35 +1785,60 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const addSavedPlace = async (
     place: Omit<SavedPlace, 'id' | 'customer_id' | 'created_at' | 'updated_at'>
   ): Promise<SavedPlace> => {
+    const now = new Date().toISOString();
+    let assignedId = 'sp-' + Date.now();
+    const isUserUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentUser.id);
+
+    if (isUserUuid) {
+      try {
+        const { data, error } = await supabase
+          .from('saved_places')
+          .insert({
+            customer_id: currentUser.id,
+            name: place.name,
+            type: place.type,
+            address: place.address,
+            latitude: place.latitude,
+            longitude: place.longitude,
+            place_id: place.place_id || null,
+          })
+          .select()
+          .single();
+
+        if (data?.id) {
+          assignedId = data.id;
+        }
+      } catch (err) {
+        console.warn('Supabase addSavedPlace error:', err);
+      }
+    }
+
     const newPlace: SavedPlace = {
       ...place,
-      id: 'sp-' + Date.now(),
+      id: assignedId,
       customer_id: currentUser.id,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      created_at: now,
+      updated_at: now,
     };
 
     setSavedPlaces((prev) => [newPlace, ...prev]);
-
-    try {
-      await supabase.from('saved_places').insert(newPlace);
-    } catch {
-      // Local state retained
-    }
-
     toast.success(`"${newPlace.name}" added to saved places.`);
     return newPlace;
   };
 
   const updateSavedPlace = async (id: string, updates: Partial<SavedPlace>): Promise<boolean> => {
+    const now = new Date().toISOString();
     setSavedPlaces((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, ...updates, updated_at: new Date().toISOString() } : p))
+      prev.map((p) => (p.id === id ? { ...p, ...updates, updated_at: now } : p))
     );
 
-    try {
-      await supabase.from('saved_places').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id);
-    } catch {
-      // Local state retained
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    if (isUuid) {
+      try {
+        await supabase.from('saved_places').update({ ...updates, updated_at: now }).eq('id', id);
+      } catch (err) {
+        console.warn('Supabase updateSavedPlace error:', err);
+      }
     }
 
     toast.success('Saved place updated.');
@@ -1630,10 +1848,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const deleteSavedPlace = async (id: string): Promise<boolean> => {
     setSavedPlaces((prev) => prev.filter((p) => p.id !== id));
 
-    try {
-      await supabase.from('saved_places').delete().eq('id', id);
-    } catch {
-      // Local state retained
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    if (isUuid) {
+      try {
+        await supabase.from('saved_places').delete().eq('id', id);
+      } catch (err) {
+        console.warn('Supabase deleteSavedPlace error:', err);
+      }
     }
 
     toast.success('Saved place removed.');
@@ -1698,30 +1919,62 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   // Notifications helper
-  const addNotification = (
+  const addNotification = async (
     title: string,
     message: string,
     type: 'info' | 'success' | 'warning' | 'ride' = 'info',
     role?: UserRole
   ) => {
+    const now = new Date().toISOString();
+    const tempId = 'notif-' + Date.now();
     const newItem: NotificationItem = {
-      id: 'notif-' + Date.now(),
+      id: tempId,
       title,
       message,
-      timestamp: new Date().toISOString(),
+      timestamp: now,
       read: false,
       type,
       role,
     };
     setNotifications((prev) => [newItem, ...prev]);
+
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentUser.id);
+    try {
+      await supabase.from('notifications').insert({
+        user_id: isUuid ? currentUser.id : null,
+        role: role || (currentUser.id !== 'guest' ? currentUser.role : null),
+        title,
+        message,
+        type,
+        read: false,
+      });
+    } catch (err) {
+      console.warn('Supabase addNotification error:', err);
+    }
   };
 
-  const markNotificationAsRead = (id: string) => {
+  const markNotificationAsRead = async (id: string) => {
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    if (isUuid) {
+      try {
+        await supabase.from('notifications').update({ read: true }).eq('id', id);
+      } catch (err) {
+        console.warn('Supabase markNotificationAsRead error:', err);
+      }
+    }
   };
 
-  const clearNotifications = () => {
+  const clearNotifications = async () => {
     setNotifications([]);
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentUser.id);
+    if (isUuid) {
+      try {
+        await supabase.from('notifications').delete().eq('user_id', currentUser.id);
+      } catch (err) {
+        console.warn('Supabase clearNotifications error:', err);
+      }
+    }
   };
 
   // Settings
@@ -2822,7 +3075,19 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const initialStatus: BookingStatus = isCustom ? 'pending_review' : 'pending_verification';
 
     const ref = generateBookingReference();
-    const customerId = currentUser.id && currentUser.id !== 'guest' ? currentUser.id : null;
+    let customerId: string | null = null;
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      if (sess?.session?.user?.id) {
+        customerId = sess.session.user.id;
+      }
+    } catch {}
+    if (!customerId && currentUser.id && currentUser.id !== 'guest') {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentUser.id);
+      if (isUuid) {
+        customerId = currentUser.id;
+      }
+    }
     const now = new Date().toISOString();
 
     let newBooking: Booking = {
@@ -2902,10 +3167,21 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         final_fare: newBooking.final_fare,
         confirmed_fare: null,
         dispatcher_notes: null,
-      }).select().single();
+      }).select(`
+        *,
+        driver:drivers(*, profile:profiles(*), assigned_vehicle:rate_vehicle_types(*), location:driver_locations(*))
+      `).single();
+
+      if (insertErr) {
+        console.error('Supabase booking insert error:', insertErr);
+      }
 
       if (inserted) {
-        newBooking = { ...newBooking, id: inserted.id };
+        newBooking = {
+          ...newBooking,
+          ...inserted,
+          customer: currentUser,
+        };
 
         // For fixed-fare bookings, insert into payments table with the confirmed fare
         if (!isCustom && newBooking.estimated_fare) {
@@ -2933,17 +3209,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
 
     setBookings((prev) => {
-      const exists = prev.some(
-        (b) => b.id === newBooking.id || (newBooking.booking_reference && b.booking_reference === newBooking.booking_reference)
+      const filtered = prev.filter(
+        (b) => b.id !== newBooking.id && b.booking_reference !== newBooking.booking_reference
       );
-      if (exists) {
-        return prev.map((b) =>
-          b.id === newBooking.id || (newBooking.booking_reference && b.booking_reference === newBooking.booking_reference)
-            ? { ...b, ...newBooking, id: newBooking.id }
-            : b
-        );
-      }
-      return [newBooking, ...prev];
+      return [newBooking, ...filtered];
     });
 
     if (isCustom) {
@@ -3998,6 +4267,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
+    const now = new Date().toISOString();
     setBookings((prev) =>
       prev.map((b) =>
         b.id === bookingId
@@ -4006,8 +4276,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             status: 'cancelled',
             cancellation_reason: reason,
             cancelled_by: currentUser.id,
-            cancelled_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
+            cancelled_at: now,
+            updated_at: now,
           }
           : b
       )
@@ -4019,6 +4289,37 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       );
     }
 
+    try {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(booking.id);
+      if (isUuid) {
+        await supabase
+          .from('bookings')
+          .update({
+            status: 'cancelled',
+            cancellation_reason: reason,
+            cancelled_by: currentUser.id && currentUser.id !== 'guest' ? currentUser.id : null,
+            cancelled_at: now,
+            updated_at: now,
+          })
+          .eq('id', booking.id);
+
+        if (booking.assigned_driver_id) {
+          await supabase
+            .from('drivers')
+            .update({ status: 'available', updated_at: now })
+            .eq('id', booking.assigned_driver_id);
+        }
+
+        await supabase.from('booking_status_history').insert({
+          booking_id: booking.id,
+          status: 'cancelled',
+          notes: `Booking cancelled. Reason: ${reason}`,
+        });
+      }
+    } catch (dbErr) {
+      console.warn('Supabase cancelBooking error:', dbErr);
+    }
+
     addNotification(
       'Booking Cancelled',
       `Booking ${booking.booking_reference} was cancelled. Reason: ${reason}`,
@@ -4027,9 +4328,19 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     toast.info('Booking cancelled successfully.');
   };
 
-  const updateDriverStatus = (driverId: string, status: DriverStatus) => {
-    setDrivers((prev) => prev.map((d) => (d.id === driverId ? { ...d, status } : d)));
+  const updateDriverStatus = async (driverId: string, status: DriverStatus) => {
+    const now = new Date().toISOString();
+    setDrivers((prev) => prev.map((d) => (d.id === driverId ? { ...d, status, updated_at: now } : d)));
     toast.info(`Driver status changed to ${status.toUpperCase()}`);
+
+    try {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(driverId);
+      if (isUuid) {
+        await supabase.from('drivers').update({ status, updated_at: now }).eq('id', driverId);
+      }
+    } catch (err) {
+      console.warn('Supabase updateDriverStatus error:', err);
+    }
   };
 
   const updateDriverLocation = (
@@ -4109,10 +4420,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const addAdditionalCharge = (
+  const addAdditionalCharge = async (
     bookingId: string,
     charge: Omit<AdditionalCharge, 'id' | 'booking_id' | 'created_at'>
   ) => {
+    const now = new Date().toISOString();
     const newCharge: AdditionalCharge = {
       id: 'chg-' + Date.now(),
       booking_id: bookingId,
@@ -4120,25 +4432,48 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       amount: charge.amount,
       description: charge.description,
       added_by: currentUser.id,
-      created_at: new Date().toISOString(),
+      created_at: now,
     };
 
+    let calculatedFare: number | null = null;
     setBookings((prev) =>
       prev.map((b) => {
         if (b.id === bookingId) {
           const currentCharges = b.additional_charges || [];
           const updatedCharges = [...currentCharges, newCharge];
-          const newFinalFare = (b.final_fare || b.confirmed_fare || b.estimated_fare || 0) + charge.amount;
+          calculatedFare = (b.final_fare || b.confirmed_fare || b.estimated_fare || 0) + charge.amount;
           return {
             ...b,
             additional_charges: updatedCharges,
-            final_fare: newFinalFare,
-            updated_at: new Date().toISOString(),
+            final_fare: calculatedFare,
+            updated_at: now,
           };
         }
         return b;
       })
     );
+
+    try {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(bookingId);
+      if (isUuid) {
+        await supabase.from('additional_charges').insert({
+          booking_id: bookingId,
+          charge_type: charge.charge_type,
+          amount: charge.amount,
+          description: charge.description,
+          added_by: currentUser.id && currentUser.id !== 'guest' ? currentUser.id : null,
+        });
+
+        if (calculatedFare !== null) {
+          await supabase
+            .from('bookings')
+            .update({ final_fare: calculatedFare, updated_at: now })
+            .eq('id', bookingId);
+        }
+      }
+    } catch (err) {
+      console.warn('Supabase addAdditionalCharge error:', err);
+    }
 
     addNotification(
       'Extra Charge Recorded',
@@ -4148,31 +4483,71 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     toast.success(`Added ${charge.amount} ${settings.currency} charge`);
   };
 
-  const recordPayment = (bookingId: string, method: 'cash' | 'online' | 'card', amount: number) => {
+  const recordPayment = async (bookingId: string, method: 'cash' | 'online' | 'card', amount: number) => {
+    const now = new Date().toISOString();
+    const pmtRef = method === 'cash' ? `CASH-${Date.now()}` : `ONLINE-${Date.now()}`;
+    const newPayment = {
+      id: 'pmt-' + Date.now(),
+      booking_id: bookingId,
+      customer_id: currentUser.id && currentUser.id !== 'guest' ? currentUser.id : null,
+      amount,
+      method,
+      status: 'paid' as const,
+      transaction_reference: pmtRef,
+      collected_by: currentUser.id,
+      created_at: now,
+      updated_at: now,
+    };
+
     setBookings((prev) =>
       prev.map((b) => {
         if (b.id === bookingId) {
           return {
             ...b,
             status: 'payment_completed',
+            payment_status: 'paid',
             payment: {
-              id: 'pmt-' + Date.now(),
-              booking_id: bookingId,
+              ...newPayment,
               customer_id: b.customer_id,
-              amount,
-              method,
-              status: 'paid',
-              transaction_reference: method === 'cash' ? `CASH-${Date.now()}` : `ONLINE-${Date.now()}`,
-              collected_by: currentUser.id,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
             },
-            updated_at: new Date().toISOString(),
+            updated_at: now,
           };
         }
         return b;
       })
     );
+
+    try {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(bookingId);
+      if (isUuid) {
+        await supabase.from('payments').insert({
+          booking_id: bookingId,
+          customer_id: currentUser.id && currentUser.id !== 'guest' ? currentUser.id : null,
+          amount,
+          method,
+          status: 'paid',
+          transaction_reference: pmtRef,
+          collected_by: currentUser.id && currentUser.id !== 'guest' ? currentUser.id : null,
+        });
+
+        await supabase
+          .from('bookings')
+          .update({
+            status: 'payment_completed',
+            payment_status: 'paid',
+            updated_at: now,
+          })
+          .eq('id', bookingId);
+
+        await supabase.from('booking_status_history').insert({
+          booking_id: bookingId,
+          status: 'payment_completed',
+          notes: `Payment of SAR ${amount} recorded via ${method.toUpperCase()}.`,
+        });
+      }
+    } catch (err) {
+      console.warn('Supabase recordPayment error:', err);
+    }
 
     addNotification(
       'Payment Settled',
@@ -4182,24 +4557,49 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     toast.success('Payment recorded successfully');
   };
 
-  const submitRating = (data: Omit<RatingFeedback, 'id' | 'created_at'>) => {
+  const submitRating = async (data: Omit<RatingFeedback, 'id' | 'created_at'>) => {
+    const now = new Date().toISOString();
     const newRating: RatingFeedback = {
       id: 'rate-' + Date.now(),
       ...data,
-      created_at: new Date().toISOString(),
+      created_at: now,
     };
     setRatings((prev) => [newRating, ...prev]);
 
+    let newAvg: number | null = null;
     if (data.driver_id) {
       setDrivers((prev) =>
         prev.map((d) => {
           if (d.id === data.driver_id) {
-            const newAvg = parseFloat(((d.rating * 9 + data.rating) / 10).toFixed(2));
+            newAvg = parseFloat(((d.rating * 9 + data.rating) / 10).toFixed(2));
             return { ...d, rating: newAvg };
           }
           return d;
         })
       );
+    }
+
+    try {
+      const isBookingUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.booking_id);
+      if (isBookingUuid) {
+        await supabase.from('ratings_feedback').insert({
+          booking_id: data.booking_id,
+          customer_id: data.customer_id && data.customer_id !== 'guest' ? data.customer_id : null,
+          driver_id: data.driver_id || null,
+          rating: data.rating,
+          feedback: data.feedback || null,
+          category: data.category || 'rating',
+        });
+
+        if (data.driver_id && newAvg !== null) {
+          const isDriverUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.driver_id);
+          if (isDriverUuid) {
+            await supabase.from('drivers').update({ rating: newAvg, updated_at: now }).eq('id', data.driver_id);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Supabase submitRating error:', err);
     }
 
     addNotification('Feedback Submitted', 'Thank you for your rating!', 'success');
@@ -4209,7 +4609,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // Helper active bookings
   const activeCustomerBooking = bookings.find(
     (b) =>
-      (b.customer_id === currentUser.id || b.passenger_phone === currentUser.phone) &&
+      isBookingForCustomer(b, currentUser) &&
       b.status !== 'cancelled' &&
       b.status !== 'rejected' &&
       b.status !== 'trip_completed' &&
@@ -4218,7 +4618,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const activeDriverBooking = bookings.find(
     (b) =>
-      b.assigned_driver_id === currentUser.id &&
+      (b.assigned_driver_id === currentUser.id || (b.driver && b.driver.id === currentUser.id)) &&
       b.status !== 'cancelled' &&
       b.status !== 'rejected' &&
       b.status !== 'trip_completed' &&

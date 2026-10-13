@@ -1,22 +1,12 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
-import dynamic from 'next/dynamic';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
-import { Booking, BookingStatus } from '@/types';
-import { isValidCoordinate } from '@/lib/maps/location-service';
-
-const LiveMap = dynamic(() => import('@/components/map/LiveMap'), {
-  ssr: false,
-  loading: () => (
-    <div className="h-72 sm:h-80 w-full rounded-2xl bg-surface animate-pulse flex items-center justify-center text-muted text-xs">
-      Loading Live Vehicle Radar...
-    </div>
-  ),
-});
+import { Booking, BookingStatus, Driver, AdditionalCharge } from '@/types';
+import { supabase } from '@/lib/supabase/client';
 import {
   Car,
   Phone,
@@ -35,7 +25,6 @@ import {
   Calendar,
   Check,
   XCircle,
-  ChevronRight,
   Send,
   CreditCard,
   Flag,
@@ -44,13 +33,23 @@ import {
   X,
   ExternalLink,
   QrCode,
+  RefreshCw,
+  Copy,
+  Radio,
+  ArrowRight,
+  Building2,
+  Banknote,
+  Info,
+  Download,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { createInvoicePdfBlobUrl } from '@/lib/pdf-invoice';
 
 interface TrackingStepConfig {
   id: number;
   title: string;
   subtitle: string;
+  shortLabel: string;
   description: string;
   icon: (props: { className?: string }) => React.ReactNode;
 }
@@ -60,13 +59,15 @@ const TRACKING_STEPS: TrackingStepConfig[] = [
     id: 1,
     title: 'Submitted',
     subtitle: 'Booking Registered',
-    description: 'Your ride request has been received and logged in the dispatch central system.',
+    shortLabel: 'Submitted',
+    description: 'Your ride request has been received and registered in the Al Harmain dispatch central system.',
     icon: ({ className }) => <Send className={className} />,
   },
   {
     id: 2,
     title: 'Payment Verified',
     subtitle: 'Confirmed by Dispatch',
+    shortLabel: 'Verified',
     description: 'Payment status and transaction verification confirmed by central staff operations.',
     icon: ({ className }) => <CreditCard className={className} />,
   },
@@ -74,6 +75,7 @@ const TRACKING_STEPS: TrackingStepConfig[] = [
     id: 3,
     title: 'Driver Assigned',
     subtitle: 'Chauffeur Selected',
+    shortLabel: 'Assigned',
     description: 'A certified VIP captain and executive vehicle have been allocated for your journey.',
     icon: ({ className }) => <UserCheck className={className} />,
   },
@@ -81,13 +83,15 @@ const TRACKING_STEPS: TrackingStepConfig[] = [
     id: 4,
     title: 'Driver Accepted',
     subtitle: 'Mission Confirmed',
-    description: 'Your assigned captain has acknowledged and accepted your transport mission.',
+    shortLabel: 'Accepted',
+    description: 'Your assigned captain has acknowledged and accepted your VIP transport mission.',
     icon: ({ className }) => <CheckCircle2 className={className} />,
   },
   {
     id: 5,
     title: 'Heading to Pickup',
     subtitle: 'Captain En Route',
+    shortLabel: 'En Route',
     description: 'Your chauffeur is actively driving toward your specified pickup address.',
     icon: ({ className }) => <Navigation className={className} />,
   },
@@ -95,6 +99,7 @@ const TRACKING_STEPS: TrackingStepConfig[] = [
     id: 6,
     title: 'Arrived at Pickup',
     subtitle: 'At Pickup Location',
+    shortLabel: 'Arrived',
     description: 'Your captain has arrived at the pickup point and is ready for boarding.',
     icon: ({ className }) => <MapPin className={className} />,
   },
@@ -102,6 +107,7 @@ const TRACKING_STEPS: TrackingStepConfig[] = [
     id: 7,
     title: 'Trip Started',
     subtitle: 'Passenger Boarded',
+    shortLabel: 'In Transit',
     description: 'Passengers have boarded. Your VIP transport journey is currently underway.',
     icon: ({ className }) => <Car className={className} />,
   },
@@ -109,16 +115,17 @@ const TRACKING_STEPS: TrackingStepConfig[] = [
     id: 8,
     title: 'Trip Completed',
     subtitle: 'Safely Arrived',
-    description: 'You have safely reached your destination. Electronic VAT receipt generated.',
+    shortLabel: 'Completed',
+    description: 'You have safely reached your destination. Official journey invoice and receipt generated.',
     icon: ({ className }) => <Flag className={className} />,
   },
 ];
 
 /**
- * Deterministically compute the active step index (0-indexed: 0 to 7)
- * based strictly on the selected booking's real Supabase status.
+ * Deterministically compute the active step index (0 to 7)
+ * based strictly on the booking's real Supabase status.
  */
-function getActiveStepIndex(status: BookingStatus, assignedDriverId?: string | null): number {
+function getActiveStepIndex(status?: BookingStatus | string, assignedDriverId?: string | null): number {
   switch (status) {
     case 'completed':
     case 'trip_completed':
@@ -151,6 +158,7 @@ function getActiveStepIndex(status: BookingStatus, assignedDriverId?: string | n
     case 'searching':
       return 1; // Step 2: Payment Verified
 
+    case 'pending_review':
     case 'pending_verification':
     case 'pending':
     default:
@@ -159,74 +167,417 @@ function getActiveStepIndex(status: BookingStatus, assignedDriverId?: string | n
   }
 }
 
+function formatStatusName(status?: BookingStatus | string): string {
+  if (!status) return 'Submitted';
+  return status
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+const STORAGE_KEY = 'alharmain_customer_selected_track_booking';
+
 export default function CustomerTrackPage() {
   const searchParams = useSearchParams();
-  const urlRef = searchParams.get('ref') || searchParams.get('bookingId');
+  const urlRef = searchParams.get('ref') || searchParams.get('bookingId') || searchParams.get('id');
 
   const {
     currentUser,
     userRole,
-    bookings,
-    drivers,
     settings,
     submitRating,
-    isDataLoading,
+    bookings: contextBookings,
   } = useApp();
 
-  // Load the customer's actual bookings from Supabase, sorted by real booking date and time
-  const customerBookings = useMemo(() => {
-    return bookings
-      .filter((b) => {
-        const matchesUser =
-          (currentUser?.id && b.customer_id === currentUser.id) ||
-          (currentUser?.phone && b.passenger_phone === currentUser.phone) ||
-          userRole === 'admin' ||
-          userRole === 'dispatcher';
-        return matchesUser;
-      })
-      .sort((a, b) => {
-        const dateA = new Date(a.scheduled_at || a.created_at).getTime();
-        const dateB = new Date(b.scheduled_at || b.created_at).getTime();
-        return dateB - dateA;
-      });
-  }, [bookings, currentUser, userRole]);
+  // Supabase state
+  const [customerBookings, setCustomerBookings] = useState<Booking[]>([]);
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [authenticatedUserId, setAuthenticatedUserId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isRealtimeActive, setIsRealtimeActive] = useState<boolean>(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
 
-  // Selected booking state
-  const [selectedBookingId, setSelectedBookingId] = useState<string>('');
+  // Keep a ref to the currently selected booking to safely update in real-time callbacks
+  const selectedBookingRef = useRef<Booking | null>(null);
+  useEffect(() => {
+    selectedBookingRef.current = selectedBooking;
+  }, [selectedBooking]);
 
-  // Identify the single source of truth for the active booking
-  const selectedBooking = useMemo(() => {
-    if (selectedBookingId) {
-      const found = customerBookings.find(
-        (b) => b.id === selectedBookingId || b.booking_reference === selectedBookingId
-      );
-      if (found) return found;
-    }
-    if (urlRef) {
-      const found = customerBookings.find(
-        (b) => b.id === urlRef || b.booking_reference === urlRef
-      );
-      if (found) return found;
-    }
-    return customerBookings[0] || null;
-  }, [selectedBookingId, urlRef, customerBookings]);
-
-  // Assigned driver for the selected booking
-  const assignedDriver = useMemo(() => {
-    if (!selectedBooking?.assigned_driver_id) return selectedBooking?.driver || null;
-    return (
-      drivers.find((d) => d.id === selectedBooking.assigned_driver_id) ||
-      selectedBooking.driver ||
-      null
-    );
-  }, [selectedBooking, drivers]);
-
-  // Invoice & Rating state
+  // Invoice & Rating modals state
   const [showInvoice, setShowInvoice] = useState<boolean>(false);
+  const [pdfBlobData, setPdfBlobData] = useState<{ blobUrl: string; download: (filename?: string) => void } | null>(null);
   const [showReceiptModal, setShowReceiptModal] = useState<boolean>(false);
   const [ratingVal, setRatingVal] = useState<number>(5);
   const [feedbackText, setFeedbackText] = useState<string>('');
   const [ratingSubmitted, setRatingSubmitted] = useState<boolean>(false);
+
+  useEffect(() => {
+    return () => {
+      if (pdfBlobData?.blobUrl) {
+        URL.revokeObjectURL(pdfBlobData.blobUrl);
+      }
+    };
+  }, [pdfBlobData]);
+
+  /**
+   * Helper to resolve the initial selected booking from a loaded list:
+   * 1. URL search param (ref, bookingId, id) - HIGHEST PRIORITY
+   * 2. LocalStorage persisted reference/id
+   * 3. Latest active booking (not completed/cancelled)
+   * 4. Most recent booking (index 0)
+   */
+  const resolveSelectedBooking = useCallback((bookingsList: Booking[], targetRef?: string | null): Booking | null => {
+    if (!bookingsList || bookingsList.length === 0) return null;
+
+    // 1. Target reference match (highest priority, e.g. from URL or explicit selection)
+    if (targetRef) {
+      const matchTarget = bookingsList.find(
+        (b) =>
+          b.booking_reference?.toLowerCase() === targetRef.toLowerCase() ||
+          b.id?.toLowerCase() === targetRef.toLowerCase()
+      );
+      if (matchTarget) return matchTarget;
+    }
+
+    // 2. URL search param fallback
+    if (urlRef) {
+      const matchUrl = bookingsList.find(
+        (b) =>
+          b.booking_reference?.toLowerCase() === urlRef.toLowerCase() ||
+          b.id?.toLowerCase() === urlRef.toLowerCase()
+      );
+      if (matchUrl) return matchUrl;
+    }
+
+    // 3. LocalStorage match
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          const matchStored = bookingsList.find(
+            (b) =>
+              b.booking_reference?.toLowerCase() === stored.toLowerCase() ||
+              b.id?.toLowerCase() === stored.toLowerCase()
+          );
+          if (matchStored) return matchStored;
+        }
+      } catch { }
+    }
+
+    // 4. First active booking
+    const activeBooking = bookingsList.find(
+      (b) =>
+        b.status !== 'cancelled' &&
+        b.status !== 'rejected' &&
+        b.status !== 'completed' &&
+        b.status !== 'trip_completed' &&
+        b.status !== 'payment_completed'
+    );
+    if (activeBooking) return activeBooking;
+
+    // 5. Default to first booking
+    return bookingsList[0];
+  }, [urlRef]);
+
+  /**
+   * Fetch customer bookings from Supabase using authenticated customer ID or urlRef
+   */
+  const fetchCustomerBookings = useCallback(
+    async (userId?: string, showRefreshFeedback = false) => {
+      try {
+        if (showRefreshFeedback) {
+          setIsRefreshing(true);
+        } else {
+          setIsLoading(true);
+        }
+        setError(null);
+
+        // 1. Determine target user ID
+        let targetId = userId;
+        if (!targetId) {
+          const { data: sessionData } = await supabase.auth.getSession();
+          targetId = sessionData?.session?.user?.id;
+        }
+        if (!targetId && currentUser?.id && currentUser.id !== 'guest') {
+          targetId = currentUser.id;
+        }
+
+        if (targetId) {
+          setAuthenticatedUserId(targetId);
+        }
+
+        let bookingsList: any[] = [];
+
+        // 2. Fetch bookings for this authenticated customer if ID is available
+        if (targetId) {
+          const { data: rawBookings, error: queryErr } = await supabase
+            .from('bookings')
+            .select(`
+              *,
+              driver:drivers(
+                *,
+                profile:profiles(*),
+                assigned_vehicle:rate_vehicle_types(*)
+              ),
+              additional_charges(*),
+              payments(*)
+            `)
+            .eq('customer_id', targetId)
+            .order('created_at', { ascending: false });
+
+          if (!queryErr && rawBookings) {
+            bookingsList = rawBookings;
+          } else if (queryErr) {
+            console.warn('Supabase customer bookings query notice:', queryErr.message);
+          }
+        }
+
+        // 3. Priority Ref check: If urlRef is provided, ensure the booking is loaded even if it wasn't in customer_id list
+        if (urlRef) {
+          const matchExisting = bookingsList.find(
+            (b) =>
+              b.booking_reference?.toLowerCase() === urlRef.toLowerCase() ||
+              b.id?.toLowerCase() === urlRef.toLowerCase()
+          );
+
+          if (!matchExisting) {
+            const { data: specificBooking, error: specErr } = await supabase
+              .from('bookings')
+              .select(`
+                *,
+                driver:drivers(
+                  *,
+                  profile:profiles(*),
+                  assigned_vehicle:rate_vehicle_types(*)
+                ),
+                additional_charges(*),
+                payments(*)
+              `)
+              .or(`booking_reference.eq.${urlRef},id.eq.${urlRef}`)
+              .maybeSingle();
+
+            if (!specErr && specificBooking) {
+              bookingsList = [specificBooking, ...bookingsList];
+            }
+          }
+        }
+
+        // 4. Context Store Fallback: In demo/mock mode or if DB returned empty
+        if (bookingsList.length === 0 && contextBookings && contextBookings.length > 0) {
+          if (urlRef) {
+            const matchInContext = contextBookings.find(
+              (b) =>
+                b.booking_reference?.toLowerCase() === urlRef.toLowerCase() ||
+                b.id?.toLowerCase() === urlRef.toLowerCase()
+            );
+            if (matchInContext) bookingsList = [matchInContext];
+          }
+          if (bookingsList.length === 0 && targetId) {
+            bookingsList = contextBookings.filter((b) => b.customer_id === targetId);
+          }
+          if (bookingsList.length === 0) {
+            bookingsList = contextBookings;
+          }
+        }
+
+        // 5. Normalize relations and populate driver fallback if missing
+        const enhancedBookings: Booking[] = await Promise.all(
+          bookingsList.map(async (rawB: any) => {
+            const b = { ...rawB };
+            // Ensure additional_charges array
+            if (!b.additional_charges || !Array.isArray(b.additional_charges)) {
+              b.additional_charges = [];
+            }
+            // Ensure primary payment is populated
+            if (!b.payment && Array.isArray(b.payments) && b.payments.length > 0) {
+              b.payment = b.payments[0];
+            }
+
+            // If a booking has assigned_driver_id but driver relation didn't populate, fetch driver directly
+            if (b.assigned_driver_id && !b.driver) {
+              try {
+                const { data: driverData } = await supabase
+                  .from('drivers')
+                  .select('*, profile:profiles(*), assigned_vehicle:rate_vehicle_types(*)')
+                  .eq('id', b.assigned_driver_id)
+                  .maybeSingle();
+                if (driverData) {
+                  b.driver = driverData as Driver;
+                }
+              } catch { }
+            }
+            return b as Booking;
+          })
+        );
+
+        setCustomerBookings(enhancedBookings);
+        setLastSyncedAt(new Date());
+
+        // Select the active booking (urlRef takes precedence!)
+        const targetSelection = resolveSelectedBooking(enhancedBookings, urlRef || selectedBookingRef.current?.booking_reference);
+
+        if (targetSelection) {
+          setSelectedBooking(targetSelection);
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem(STORAGE_KEY, targetSelection.booking_reference);
+              // Update URL parameter without reload
+              const currentUrlParam = new URLSearchParams(window.location.search).get('ref');
+              if (currentUrlParam !== targetSelection.booking_reference) {
+                window.history.replaceState(
+                  null,
+                  '',
+                  `?ref=${encodeURIComponent(targetSelection.booking_reference)}`
+                );
+              }
+            } catch { }
+          }
+        } else {
+          setSelectedBooking(null);
+        }
+      } catch (err: any) {
+        console.error('Unexpected error loading journey radar:', err);
+        setError(err?.message || 'An unexpected error occurred while loading telemetry.');
+      } finally {
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
+    },
+    [currentUser?.id, urlRef, resolveSelectedBooking, contextBookings]
+  );
+
+  // Initial load and auth state observer
+  useEffect(() => {
+    fetchCustomerBookings();
+
+    const {
+      data: { subscription: authSub },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      const uid = session?.user?.id;
+      if (uid) {
+        setAuthenticatedUserId(uid);
+        fetchCustomerBookings(uid);
+      } else {
+        setAuthenticatedUserId(null);
+        // Don't wipe bookings if urlRef is available
+        if (!urlRef) {
+          setCustomerBookings([]);
+          setSelectedBooking(null);
+        }
+        setIsLoading(false);
+      }
+    });
+
+    return () => {
+      authSub.unsubscribe();
+    };
+  }, [fetchCustomerBookings, urlRef]);
+
+  // Real-time Supabase postgres_changes subscription
+  useEffect(() => {
+    if (!authenticatedUserId) return;
+
+    const channel = supabase
+      .channel(`radar_customer_${authenticatedUserId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'bookings',
+          filter: `customer_id=eq.${authenticatedUserId}`,
+        },
+        async (payload) => {
+          setLastSyncedAt(new Date());
+
+          if (payload.eventType === 'UPDATE') {
+            const updated = payload.new as any;
+            const isCurrentlySelected = selectedBookingRef.current?.id === updated.id;
+
+            // Fetch the updated booking with driver relations, charges, and payments
+            const { data: fullUpdated } = await supabase
+              .from('bookings')
+              .select(`
+                *,
+                driver:drivers(
+                  *,
+                  profile:profiles(*),
+                  assigned_vehicle:rate_vehicle_types(*)
+                ),
+                additional_charges(*),
+                payments(*)
+              `)
+              .eq('id', updated.id)
+              .maybeSingle();
+
+            const refreshedBooking: Booking = {
+              ...(fullUpdated || updated),
+              additional_charges: Array.isArray((fullUpdated || updated)?.additional_charges)
+                ? (fullUpdated || updated).additional_charges
+                : [],
+              payment:
+                Array.isArray((fullUpdated || updated)?.payments) && (fullUpdated || updated).payments.length > 0
+                  ? (fullUpdated || updated).payments[0]
+                  : (fullUpdated || updated)?.payment || null,
+            };
+
+            // Update bookings list
+            setCustomerBookings((prev) =>
+              prev.map((b) => (b.id === refreshedBooking.id ? refreshedBooking : b))
+            );
+
+            // If this is the currently selected booking, update it immediately
+            if (isCurrentlySelected) {
+              setSelectedBooking(refreshedBooking);
+              toast.info(`Journey Status: ${formatStatusName(refreshedBooking.status)}`, {
+                description: `Live update received for booking #${refreshedBooking.booking_reference}`,
+              });
+            }
+          } else if (payload.eventType === 'INSERT') {
+            // New booking created
+            const newRow = payload.new as any;
+            toast.success(`New Journey Registered: #${newRow.booking_reference}`);
+            fetchCustomerBookings(authenticatedUserId, false);
+          } else if (payload.eventType === 'DELETE') {
+            const deletedId = (payload.old as any)?.id;
+            setCustomerBookings((prev) => prev.filter((b) => b.id !== deletedId));
+            if (selectedBookingRef.current?.id === deletedId) {
+              setSelectedBooking(null);
+            }
+          }
+        }
+      )
+      .subscribe((status) => {
+        setIsRealtimeActive(status === 'SUBSCRIBED');
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [authenticatedUserId, fetchCustomerBookings]);
+
+  // Switch to a different booking
+  const handleSelectBooking = (bookingId: string) => {
+    const found = customerBookings.find((b) => b.id === bookingId || b.booking_reference === bookingId);
+    if (found) {
+      setSelectedBooking(found);
+      setRatingSubmitted(false);
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(STORAGE_KEY, found.booking_reference);
+          window.history.replaceState(null, '', `?ref=${encodeURIComponent(found.booking_reference)}`);
+        } catch { }
+      }
+      toast.success(`Switched to booking #${found.booking_reference}`);
+    }
+  };
+
+  // Assigned driver for selected booking
+  const assignedDriver = useMemo(() => {
+    if (!selectedBooking) return null;
+    return selectedBooking.driver || null;
+  }, [selectedBooking]);
 
   // Active step calculation strictly for the selected booking
   const activeStepIdx = useMemo(() => {
@@ -235,8 +586,7 @@ export default function CustomerTrackPage() {
   }, [selectedBooking?.status, selectedBooking?.assigned_driver_id]);
 
   const isCancelled =
-    selectedBooking?.status === 'cancelled' ||
-    selectedBooking?.status === 'rejected';
+    selectedBooking?.status === 'cancelled' || selectedBooking?.status === 'rejected';
 
   const isPaymentRejected = selectedBooking?.status === 'payment_rejected';
 
@@ -246,14 +596,90 @@ export default function CustomerTrackPage() {
     selectedBooking?.status === 'ride_completed' ||
     selectedBooking?.status === 'payment_completed';
 
-  // Fare & Billing calculations (strictly derived from selected booking)
-  const baseFare = Number(selectedBooking?.estimated_fare) || 0;
-  const finalFare = selectedBooking?.final_fare != null ? Number(selectedBooking.final_fare) : null;
-  const totalFare = finalFare ?? baseFare;
-  const vatRate = settings.tax_percentage || 15;
-  // In Saudi Arabia (ZATCA), consumer quotes include 15% VAT
-  const vatAmount = totalFare > 0 ? (totalFare * vatRate) / (100 + vatRate) : 0;
-  const netSubtotal = totalFare > 0 ? totalFare - vatAmount : 0;
+  // Display name helpers for service & vehicle class
+  const serviceDisplayName = useMemo(() => {
+    if (!selectedBooking) return 'VIP Chauffeur Transfer';
+    const sType = selectedBooking.service_type;
+    if (sType === 'ziyarat_taif') return 'Taif Mountain & Historic Ziyarat';
+    if (sType === 'ziyarat_makkah') return 'Makkah Holy Sites Ziyarat';
+    if (sType === 'ziyarat_madinah') return 'Madinah Holy Sites Ziyarat';
+    if (sType === 'intercity_jeddah_makkah') return 'Jeddah Airport ➔ Makkah Transfer';
+    if (sType === 'intercity_makkah_jeddah') return 'Makkah ➔ Jeddah Transfer';
+    if (sType === 'intercity_makkah_madinah') return 'Makkah ➔ Madinah VIP Highway';
+    if (sType === 'intercity_madinah_makkah') return 'Madinah ➔ Makkah VIP Highway';
+    if (sType === 'intercity_jeddah_madinah') return 'Jeddah ➔ Madinah Express';
+    if (sType === 'intercity_madinah_jeddah') return 'Madinah ➔ Jeddah Express';
+    if (sType === 'hourly_charter') return 'Dedicated Chauffeur Hourly Charter';
+    if (selectedBooking.booking_method === 'fixed') return 'Fixed VIP Pilgrimage Package';
+    return 'VIP Chauffeur Journey';
+  }, [selectedBooking]);
+
+  const vehicleClassDisplayName = useMemo(() => {
+    if (!selectedBooking) return 'Executive VIP Fleet';
+    const vCat = selectedBooking.vehicle_category || selectedBooking.vehicle_type;
+    if (vCat === 'gmc' || vCat === 'vip_gmc') return 'GMC Yukon XL / Suburban Royal VIP';
+    if (vCat === 'staria') return 'Hyundai Staria VIP Business Lounge';
+    if (vCat === 'hiroof') return 'Toyota HiAce High Roof Minibus';
+    if (vCat === 'sedan') return 'Camry / Lexus ES Executive Sedan';
+    if (vCat === 'suv') return 'Luxury VIP SUV';
+    if (vCat === 'van') return 'Toyota HiAce Royal Lounge';
+    if (vCat === 'bus') return 'VIP Luxury Coach';
+    return selectedBooking.vehicle_type?.replace(/_/g, ' ').toUpperCase() || 'VIP Fleet';
+  }, [selectedBooking]);
+
+  // Pricing & Billing Logic
+  const isCustomRoute = selectedBooking?.booking_method === 'custom';
+  const isPendingQuote =
+    isCustomRoute &&
+    (selectedBooking?.status === 'pending_review' ||
+      (selectedBooking?.estimated_fare == null &&
+        selectedBooking?.fixed_fare_amount == null &&
+        selectedBooking?.final_fare == null &&
+        selectedBooking?.confirmed_fare == null));
+
+  // Base Journey Fare (authoritative package fare or estimated distance fare)
+  const baseFare = useMemo(() => {
+    if (isPendingQuote) return 0;
+    return Number(
+      selectedBooking?.fixed_fare_amount ??
+      selectedBooking?.confirmed_fare ??
+      selectedBooking?.estimated_fare ??
+      0
+    );
+  }, [selectedBooking, isPendingQuote]);
+
+  // Additional itemized charges
+  const additionalChargesList: AdditionalCharge[] = useMemo(() => {
+    if (!selectedBooking?.additional_charges) return [];
+    return Array.isArray(selectedBooking.additional_charges) ? selectedBooking.additional_charges : [];
+  }, [selectedBooking?.additional_charges]);
+
+  const extraChargesTotal = useMemo(() => {
+    return additionalChargesList.reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
+  }, [additionalChargesList]);
+
+  // Final Fare from DB if explicitly stored
+  const finalFareDb = selectedBooking?.final_fare != null ? Number(selectedBooking.final_fare) : null;
+
+  // Total all-inclusive fare
+  const totalFare = useMemo(() => {
+    if (isPendingQuote) return null;
+    if (finalFareDb != null && finalFareDb > 0) {
+      return Math.max(finalFareDb, baseFare + extraChargesTotal);
+    }
+    return baseFare + extraChargesTotal;
+  }, [isPendingQuote, finalFareDb, baseFare, extraChargesTotal]);
+
+  // Manual Adjustment / Surcharge / Discount (if final_fare in DB diverges from base + extras)
+  const fareAdjustment = useMemo(() => {
+    if (finalFareDb == null || totalFare == null) return 0;
+    const standardTotal = baseFare + extraChargesTotal;
+    const diff = finalFareDb - standardTotal;
+    return Math.abs(diff) > 0.01 ? diff : 0;
+  }, [finalFareDb, totalFare, baseFare, extraChargesTotal]);
+
+  // Fixed Pricing Policy: All passenger transportation fares are guaranteed fixed prices without additional taxes
+
 
   const paymentStatus = selectedBooking?.payment_status?.toLowerCase();
   const bookingStatus = selectedBooking?.status;
@@ -268,21 +694,21 @@ export default function CustomerTrackPage() {
       };
     }
 
-    if (bookingStatus === 'payment_rejected' || paymentStatus === 'failed') {
+    if (isCancelled) {
       return {
-        label: 'Payment Rejected',
+        label: 'Trip Cancelled',
         bg: 'bg-rose-500/10 border-rose-500/30',
         text: 'text-rose-600 dark:text-rose-400',
         icon: <XCircle className="w-3.5 h-3.5" />,
       };
     }
 
-    if (bookingStatus === 'pending_verification' || paymentStatus === 'pending') {
+    if (bookingStatus === 'payment_rejected' || paymentStatus === 'failed') {
       return {
-        label: 'Verification Pending',
-        bg: 'bg-amber-500/10 border-amber-500/30',
-        text: 'text-amber-600 dark:text-amber-400',
-        icon: <Clock className="w-3.5 h-3.5" />,
+        label: 'Payment Rejected',
+        bg: 'bg-rose-500/10 border-rose-500/30',
+        text: 'text-rose-600 dark:text-rose-400',
+        icon: <XCircle className="w-3.5 h-3.5" />,
       };
     }
 
@@ -295,22 +721,150 @@ export default function CustomerTrackPage() {
       };
     }
 
-    return {
-      label: 'Paid & Verified',
-      bg: 'bg-emerald-500/10 border-emerald-500/30',
-      text: 'text-emerald-600 dark:text-emerald-400',
-      icon: <CheckCircle2 className="w-3.5 h-3.5" />,
-    };
-  }, [selectedBooking, bookingStatus, paymentStatus]);
+    if (isPendingQuote) {
+      return {
+        label: 'Quote Under Review',
+        bg: 'bg-amber-500/10 border-amber-500/30',
+        text: 'text-amber-600 dark:text-amber-400',
+        icon: <Clock className="w-3.5 h-3.5" />,
+      };
+    }
 
-  const paymentMethodLabel = useMemo(() => {
-    const method = selectedBooking?.payment?.method;
-    if (method === 'cash') return 'Cash on Boarding';
-    if (method === 'card') return 'Credit / Debit Card (Mada)';
-    if (method === 'online') return 'Online Payment Gateway';
-    if (selectedBooking?.payment_screenshot_url) return 'Bank Transfer / Proof Uploaded';
-    return 'Electronic Payment / Transfer';
-  }, [selectedBooking]);
+    // Paid & verified verification states
+    if (
+      paymentStatus === 'paid' ||
+      bookingStatus === 'confirmed' ||
+      bookingStatus === 'payment_verified' ||
+      bookingStatus === 'payment_completed' ||
+      bookingStatus === 'driver_assigned' ||
+      bookingStatus === 'driver_accepted' ||
+      bookingStatus === 'driver_arriving' ||
+      bookingStatus === 'driver_arrived' ||
+      bookingStatus === 'trip_started' ||
+      bookingStatus === 'completed' ||
+      bookingStatus === 'trip_completed'
+    ) {
+      return {
+        label: 'Paid & Verified',
+        bg: 'bg-emerald-500/10 border-emerald-500/30',
+        text: 'text-emerald-600 dark:text-emerald-400',
+        icon: <CheckCircle2 className="w-3.5 h-3.5" />,
+      };
+    }
+
+    // Cash on boarding
+    if (selectedBooking.payment?.method === 'cash') {
+      return {
+        label: 'Cash on Boarding',
+        bg: 'bg-blue-500/10 border-blue-500/30',
+        text: 'text-blue-600 dark:text-blue-400',
+        icon: <Clock className="w-3.5 h-3.5" />,
+      };
+    }
+
+    // Proof uploaded awaiting dispatch check
+    if (selectedBooking.payment_screenshot_url && paymentStatus === 'pending') {
+      return {
+        label: 'Transfer Slip Under Review',
+        bg: 'bg-amber-500/10 border-amber-500/30',
+        text: 'text-amber-600 dark:text-amber-400',
+        icon: <Clock className="w-3.5 h-3.5" />,
+      };
+    }
+
+    return {
+      label: 'Verification Pending',
+      bg: 'bg-amber-500/10 border-amber-500/30',
+      text: 'text-amber-600 dark:text-amber-400',
+      icon: <Clock className="w-3.5 h-3.5" />,
+    };
+  }, [selectedBooking, isCancelled, bookingStatus, paymentStatus, isPendingQuote]);
+
+  const paymentDetails = useMemo(() => {
+    if (!selectedBooking) return null;
+
+    const method = selectedBooking.payment?.method;
+    const isPaid = paymentStatus === 'paid';
+    const hasProof = Boolean(selectedBooking.payment_screenshot_url);
+    const txRef = selectedBooking.payment?.transaction_reference || selectedBooking.booking_reference;
+
+    let label = 'Bank Transfer / Proof Uploaded';
+    let iconName: 'bank' | 'card' | 'cash' = 'bank';
+
+    if (method === 'cash') {
+      label = isPaid ? 'Cash Paid to Captain' : 'Cash on Boarding';
+      iconName = 'cash';
+    } else if (method === 'card') {
+      label = 'Credit / Debit Card (Mada)';
+      iconName = 'card';
+    } else if (hasProof) {
+      label = isPaid ? 'Bank Transfer (Verified Slip)' : 'Bank Transfer (Proof Attached)';
+      iconName = 'bank';
+    } else if (method === 'online') {
+      label = 'Online Payment (Verified)';
+      iconName = 'card';
+    }
+
+    return {
+      label,
+      iconName,
+      txRef,
+      isPaid,
+      hasProof,
+    };
+  }, [selectedBooking, paymentStatus]);
+
+  const handleCopyRef = () => {
+    if (!selectedBooking) return;
+    navigator.clipboard.writeText(selectedBooking.booking_reference);
+    toast.success('Booking reference copied to clipboard!');
+  };
+
+  const handleOpenPdfInvoice = () => {
+    if (!selectedBooking) return;
+    if (isPendingQuote) {
+      toast.info('Invoice will be generated once dispatcher confirms the fare quote.');
+      return;
+    }
+
+    try {
+      const invoiceNum = `INV-${selectedBooking.booking_reference.replace(/[^0-9A-Z]/gi, '')}`;
+      const driverName = assignedDriver?.profile?.full_name || assignedDriver?.full_name || 'Executive VIP Chauffeur';
+      const vehicleName = (assignedDriver?.assigned_vehicle as any)?.name ||
+        `${assignedDriver?.assigned_vehicle?.make || ''} ${assignedDriver?.assigned_vehicle?.model || ''}`.trim() ||
+        vehicleClassDisplayName;
+      const plate = assignedDriver?.assigned_vehicle?.plate_number || 'KSA-VIP';
+
+      const pdfData = createInvoicePdfBlobUrl({
+        companyName: settings?.company_name || 'Al Harmain Travels',
+        invoiceNumber: invoiceNum,
+        dateStr: formatDateTime(selectedBooking.created_at),
+        passengerName: selectedBooking.passenger_name || 'VIP Guest',
+        passengerPhone: selectedBooking.passenger_phone || '',
+        bookingRef: selectedBooking.booking_reference,
+        chauffeurName: driverName,
+        vehicleName: vehicleName,
+        plateNumber: plate,
+        serviceName: serviceDisplayName,
+        pickupAddress: selectedBooking.pickup_address,
+        destAddress: selectedBooking.destination_address,
+        fareAmount: String(totalFare || 0),
+        currency: settings?.currency || 'SAR',
+        paymentMethod: paymentDetails?.label || 'Bank Transfer (Verified)',
+        paymentStatus: selectedBooking.payment_status || 'paid',
+      });
+
+      if (pdfBlobData?.blobUrl) {
+        URL.revokeObjectURL(pdfBlobData.blobUrl);
+      }
+
+      setPdfBlobData(pdfData);
+      setShowInvoice(true);
+    } catch (err) {
+      console.error('Failed to generate PDF invoice:', err);
+      toast.error('Unable to generate PDF invoice. Please retry.');
+    }
+  };
 
   const handleRatingSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -327,18 +881,51 @@ export default function CustomerTrackPage() {
     toast.success('Thank you for rating your executive chauffeur!');
   };
 
-  if (isDataLoading) {
+  // Progress percentage
+  const progressPercent = isCompleted ? 100 : Math.round(((activeStepIdx + 1) / 8) * 100);
+
+  // Active step config
+  const currentStepConfig = TRACKING_STEPS[activeStepIdx] || TRACKING_STEPS[0];
+
+  // ==========================================
+  // Render States: Loading, Error, Empty
+  // ==========================================
+
+  if (isLoading) {
     return (
-      <div className="page-shell py-20 text-center space-y-5 animate-pulse">
-        <div className="w-16 h-16 mx-auto rounded-3xl bg-surface border border-base flex items-center justify-center text-muted">
-          <div className="w-7 h-7 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin" />
+      <div className="page-shell h-[calc(100dvh-9.5rem)] -mb-24 lg:mb-0 lg:h-auto lg:min-h-[65vh] flex flex-col items-center justify-center text-center space-y-6 px-4">
+        <div className="relative w-24 h-24 mx-auto flex items-center justify-center shrink-0">
+          <div className="absolute inset-0 rounded-full border-4 border-emerald-500/20 animate-ping" />
+          <div className="absolute inset-2 rounded-full border-2 border-emerald-500/40 animate-pulse" />
+          <div className="relative w-16 h-16 rounded-full bg-surface border border-emerald-500/30 flex items-center justify-center shadow-lg">
+            <Radio className="w-7 h-7 text-emerald-500 animate-spin" />
+          </div>
         </div>
         <div className="space-y-2">
-          <h2 className="text-lg font-bold text-primary">Loading Trip Route Overview...</h2>
-          <p className="text-xs text-muted max-w-sm mx-auto">
-            Retrieving authenticated bookings and status telemetry from Supabase...
-          </p>
+          <h2 className="text-lg sm:text-xl font-bold text-primary tracking-tight">
+            Connecting to Live Journey Radar...
+          </h2>
         </div>
+      </div>
+    );
+  }
+
+  if (error && customerBookings.length === 0) {
+    return (
+      <div className="page-shell py-20 text-center space-y-6">
+        <div className="w-16 h-16 mx-auto rounded-3xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-500">
+          <AlertCircle className="w-8 h-8" />
+        </div>
+        <div className="space-y-2">
+          <h2 className="type-page-title">Connection Error</h2>
+          <p className="text-sm text-secondary max-w-md mx-auto">{error}</p>
+        </div>
+        <button
+          onClick={() => fetchCustomerBookings(authenticatedUserId || undefined, true)}
+          className="btn-primary inline-flex items-center gap-2"
+        >
+          <RefreshCw className="w-4 h-4" /> Retry Telemetry Connection
+        </button>
       </div>
     );
   }
@@ -346,234 +933,200 @@ export default function CustomerTrackPage() {
   if (!selectedBooking) {
     return (
       <div className="page-shell py-20 text-center space-y-6">
-        <div className="w-16 h-16 mx-auto rounded-3xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500">
-          <Car className="w-8 h-8" />
+        <div className="w-20 h-20 mx-auto rounded-3xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500 shadow-xl">
+          <Car className="w-10 h-10" />
         </div>
         <div className="space-y-2">
-          <h2 className="type-page-title">No Bookings Found To Track</h2>
+          <h2 className="type-page-title">No Active Bookings Found To Track</h2>
           <p className="text-sm text-secondary max-w-md mx-auto">
-            You do not have any registered transportation bookings yet. Create a reservation to track its full route overview and lifecycle progress in real time.
+            You do not currently have any registered transportation bookings in your account. Reserve a VIP ride to monitor its real-time journey status.
           </p>
         </div>
-        <div className="flex flex-wrap items-center justify-center gap-3">
+        <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
           <Link href="/customer" className="btn-primary">
             Book a Journey
           </Link>
           <Link href="/customer/bookings" className="btn-secondary">
             View My Bookings
           </Link>
+          <button
+            onClick={() => fetchCustomerBookings(authenticatedUserId || undefined, true)}
+            className="px-4 py-2 rounded-xl bg-surface hover:bg-elevated text-secondary text-xs font-semibold border border-base flex items-center gap-2 transition-colors"
+          >
+            <RefreshCw className="w-3.5 h-3.5" /> Refresh Telemetry
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="page-shell space-y-6">
-      {/* Page Header & Multiple Bookings Selector */}
-      <div className="bg-card border border-base p-5 sm:p-7 rounded-3xl shadow-xl space-y-5">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="page-shell space-y-4 pb-8">
+      {/* ========================================================= */}
+      {/* Page Header Strip & Multiple Bookings Selector */}
+      {/* ========================================================= */}
+      <div className="bg-card border border-base p-4 sm:p-5 rounded-2xl shadow-lg space-y-3">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
               <span className="type-eyebrow text-emerald-600 dark:text-emerald-400">
-                Al Harmain Logistics Telemetry
+                Al Harmain VIP Telemetry
               </span>
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                {isRealtimeActive ? 'Live Realtime Synced' : 'Connected to Supabase'}
               </span>
             </div>
-            <h1 className="text-2xl sm:type-page-title mt-1 flex items-center gap-3 flex-wrap">
-              <span>Trip Route Overview</span>
-              <span className="text-amber-500 dark:text-amber-400 font-mono text-xl sm:text-2xl">
-                #{selectedBooking.booking_reference}
-              </span>
+            <h1 className="text-lg sm:text-xl font-bold tracking-tight text-primary mt-0.5 flex items-center gap-2 flex-wrap">
+              <span>Live Journey Radar</span>
+              <button
+                type="button"
+                onClick={handleCopyRef}
+                className="group inline-flex items-center gap-1 font-mono text-base sm:text-lg font-bold text-amber-500 dark:text-amber-400 hover:text-amber-600 transition-colors cursor-pointer"
+                title="Click to copy reference"
+              >
+                <span>#{selectedBooking.booking_reference}</span>
+                <Copy className="w-3.5 h-3.5 text-muted group-hover:text-amber-500 transition-colors" />
+              </button>
             </h1>
-            <p className="text-xs text-secondary mt-1">
-              Live status progression powered by Al Harmain Central Dispatch and real-time database state.
+            <p className="text-[11px] text-secondary mt-0.5">
+              Deterministic 8-stage journey progression strictly synchronized with Supabase database state.
             </p>
           </div>
 
-          {/* Multiple Bookings Switcher */}
-          {customerBookings.length > 1 && (
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 bg-surface p-2 sm:p-2.5 rounded-2xl border border-base">
-              <span className="text-xs text-muted font-medium flex items-center gap-1.5 px-1">
-                <Calendar className="w-3.5 h-3.5 text-emerald-500" />
-                Select Booking:
-              </span>
-              <select
-                value={selectedBooking.id}
-                onChange={(e) => setSelectedBookingId(e.target.value)}
-                className="bg-card text-xs font-semibold text-primary px-3 py-1.5 rounded-xl border border-base focus:outline-none focus:border-emerald-500 cursor-pointer"
-              >
-                {customerBookings.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.booking_reference} &bull; {formatDateTime(b.scheduled_at || b.created_at)} ({b.status.replace(/_/g, ' ')})
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
+          {/* Action Strip: Booking Switcher & Refresh Button */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {customerBookings.length > 1 && (
+              <div className="flex items-center gap-1.5 bg-surface p-1 rounded-xl border border-base">
+                <span className="text-[11px] text-muted font-medium flex items-center gap-1 px-1">
+                  <Calendar className="w-3 h-3 text-emerald-500 shrink-0" />
+                  <span className="hidden sm:inline">Select Ride:</span>
+                </span>
+                <select
+                  value={selectedBooking.id}
+                  onChange={(e) => handleSelectBooking(e.target.value)}
+                  className="bg-card text-xs font-semibold text-primary px-2.5 py-1 rounded-lg border border-base focus:outline-none focus:border-emerald-500 cursor-pointer max-w-[190px] truncate"
+                >
+                  {customerBookings.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.booking_reference} &bull; {formatStatusName(b.status)} ({formatDateTime(b.scheduled_at || b.created_at)})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
-        {/* Selected Booking Quick Summary Strip */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-3 border-t border-base text-xs">
-          <div className="bg-surface/60 p-3 rounded-2xl border border-base">
-            <span className="text-[10px] uppercase font-bold text-muted block">Passenger</span>
-            <span className="font-semibold text-primary text-sm mt-0.5 block">{selectedBooking.passenger_name}</span>
-            <span className="text-[11px] text-muted">{selectedBooking.passenger_phone}</span>
-          </div>
-
-          <div className="bg-surface/60 p-3 rounded-2xl border border-base">
-            <span className="text-[10px] uppercase font-bold text-muted block">Booking Date &amp; Time</span>
-            <span className="font-semibold text-primary text-sm mt-0.5 block">
-              {formatDateTime(selectedBooking.scheduled_at || selectedBooking.created_at)}
-            </span>
-            <span className="text-[11px] text-emerald-600 dark:text-emerald-400 capitalize">
-              {selectedBooking.booking_type} Ride
-            </span>
-          </div>
-
-          <div className="bg-surface/60 p-3 rounded-2xl border border-base">
-            <span className="text-[10px] uppercase font-bold text-muted block">Executive Vehicle</span>
-            <span className="font-semibold text-primary text-sm mt-0.5 uppercase block">
-              {selectedBooking.vehicle_type?.replace(/_/g, ' ')}
-            </span>
-            <span className="text-[11px] text-muted">{selectedBooking.passenger_count || 1} Passengers</span>
-          </div>
-
-          <div className="bg-surface/60 p-3 rounded-2xl border border-base flex flex-col justify-between">
-            <div>
-              <span className="text-[10px] uppercase font-bold text-muted block">Total Trip Fare</span>
-              <span className="font-bold text-amber-500 dark:text-amber-400 text-base mt-0.5 block">
-                {formatCurrency(selectedBooking.final_fare || selectedBooking.estimated_fare, settings.currency)}
-              </span>
-            </div>
-            <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400">
-              {selectedBooking.payment_status || 'VERIFIED'}
-            </span>
+            <button
+              type="button"
+              onClick={() => fetchCustomerBookings(authenticatedUserId || undefined, true)}
+              disabled={isRefreshing}
+              className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg bg-surface hover:bg-elevated text-secondary hover:text-primary text-xs font-semibold border border-base flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+              title="Force re-sync with Supabase"
+            >
+              <RefreshCw className={`w-3 h-3 text-emerald-500 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">Re-sync</span>
+            </button>
           </div>
         </div>
 
-        {/* Cancellation or Rejection Alerts if applicable */}
+        {/* Cancellation or Rejection Alerts */}
         {isCancelled && (
-          <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl flex items-start gap-3 text-xs text-rose-800 dark:text-rose-200">
-            <XCircle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
+          <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-start gap-2.5 text-xs text-rose-800 dark:text-rose-200">
+            <XCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
             <div>
-              <span className="font-bold text-sm block">Booking Cancelled</span>
-              <p className="mt-0.5 text-rose-700 dark:text-rose-300">
-                {selectedBooking.cancellation_reason || 'This journey reservation was cancelled.'}
+              <span className="font-bold text-xs block">Journey Cancelled in Database</span>
+              <p className="mt-0.5 text-rose-700 dark:text-rose-300 text-[11px]">
+                {selectedBooking.cancellation_reason || 'This journey reservation was cancelled in the dispatch database.'}
               </p>
             </div>
           </div>
         )}
 
         {isPaymentRejected && (
-          <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-start gap-3 text-xs text-amber-800 dark:text-amber-200">
-            <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+          <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-start gap-2.5 text-xs text-amber-800 dark:text-amber-200">
+            <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
             <div>
-              <span className="font-bold text-sm block">Payment Verification Required</span>
-              <p className="mt-0.5 text-amber-700 dark:text-amber-300">
-                {selectedBooking.payment_rejected_reason || 'Payment verification could not be confirmed by dispatch staff. Please check with customer support.'}
+              <span className="font-bold text-xs block">Payment Verification Required</span>
+              <p className="mt-0.5 text-amber-700 dark:text-amber-300 text-[11px]">
+                {selectedBooking.payment_rejected_reason || 'Payment verification could not be approved by operations staff. Please review your payment or contact dispatch.'}
               </p>
             </div>
           </div>
         )}
-      </div>
 
-      {/* Live Vehicle Radar Map */}
-      <div className="bg-card border border-base rounded-3xl p-6 sm:p-7 shadow-xl space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-bold mb-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-              <span>LIVE JOURNEY RADAR</span>
+        {/* Selected Booking Quick Summary Strip */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-2.5 border-t border-base text-xs">
+          <div className="bg-surface/60 p-2.5 rounded-xl border border-base">
+            <span className="text-[9.5px] uppercase font-bold text-muted block">Route &amp; Passenger</span>
+            <div className="mt-1 space-y-0.5">
+              <div className="flex items-start gap-1.5">
+                <MapPin className="w-3 h-3 text-emerald-500 shrink-0 mt-0.5" />
+                <span className="font-semibold text-primary line-clamp-1 text-[11px]">{selectedBooking.pickup_address}</span>
+              </div>
+              <div className="flex items-start gap-1.5">
+                <Flag className="w-3 h-3 text-amber-500 shrink-0 mt-0.5" />
+                <span className="font-semibold text-primary line-clamp-1 text-[11px]">{selectedBooking.destination_address}</span>
+              </div>
             </div>
-            <h2 className="type-card-title text-base sm:text-lg flex items-center gap-2">
-              <Car className="w-5 h-5 text-emerald-500" />
-              Live Chauffeur Positioning &amp; Route
-            </h2>
-            <p className="text-xs text-secondary mt-0.5">
-              Real-time vehicle telemetry synchronized with assigned VIP chauffeur device.
-            </p>
+            <span className="text-[10.5px] text-muted block mt-1">Passenger: {selectedBooking.passenger_name}</span>
           </div>
 
-          {assignedDriver?.location && isValidCoordinate(assignedDriver.location.latitude, assignedDriver.location.longitude) ? (
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-xs font-bold self-start sm:self-auto">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-              <span>Chauffeur Live GPS Connected</span>
-            </div>
-          ) : (
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-surface text-secondary border border-base text-xs font-medium self-start sm:self-auto">
-              <Clock className="w-3.5 h-3.5 text-muted" />
-              <span>{assignedDriver ? 'Waiting for chauffeur GPS broadcast' : 'Awaiting chauffeur allocation'}</span>
-            </div>
-          )}
-        </div>
+          <div className="bg-surface/60 p-2.5 rounded-xl border border-base">
+            <span className="text-[9.5px] uppercase font-bold text-muted block">Booking Date &amp; Time</span>
+            <span className="font-semibold text-primary text-xs mt-0.5 block">
+              {formatDateTime(selectedBooking.scheduled_at || selectedBooking.created_at)}
+            </span>
+            <span className="text-[10.5px] text-emerald-600 dark:text-emerald-400 capitalize">
+              {selectedBooking.booking_type} Ride &bull; {selectedBooking.passenger_count || 1} Passengers
+            </span>
+          </div>
 
-        <div className="rounded-2xl overflow-hidden border border-base shadow-lg">
-          <LiveMap
-            center={
-              assignedDriver?.location && isValidCoordinate(assignedDriver.location.latitude, assignedDriver.location.longitude)
-                ? [assignedDriver.location.latitude, assignedDriver.location.longitude]
-                : isValidCoordinate(selectedBooking.pickup_latitude, selectedBooking.pickup_longitude)
-                ? [selectedBooking.pickup_latitude, selectedBooking.pickup_longitude]
-                : [21.4225, 39.8262]
-            }
-            zoom={13}
-            markers={[
-              ...(assignedDriver?.location && isValidCoordinate(assignedDriver.location.latitude, assignedDriver.location.longitude)
-                ? [
-                    {
-                      lat: assignedDriver.location.latitude,
-                      lng: assignedDriver.location.longitude,
-                      label: assignedDriver.profile?.full_name || assignedDriver.full_name || 'Assigned Chauffeur',
-                      type: 'driver' as const,
-                      subText: `${assignedDriver.assigned_vehicle?.plate_number || 'VIP Vehicle'} • Live GPS`,
-                      heading: assignedDriver.location.heading || 0,
-                    },
-                  ]
-                : []),
-              ...(isValidCoordinate(selectedBooking.pickup_latitude, selectedBooking.pickup_longitude)
-                ? [
-                    {
-                      lat: selectedBooking.pickup_latitude,
-                      lng: selectedBooking.pickup_longitude,
-                      label: 'Pickup Location',
-                      type: 'pickup' as const,
-                      subText: selectedBooking.pickup_address,
-                    },
-                  ]
-                : []),
-              ...(isValidCoordinate(selectedBooking.destination_latitude, selectedBooking.destination_longitude)
-                ? [
-                    {
-                      lat: selectedBooking.destination_latitude,
-                      lng: selectedBooking.destination_longitude,
-                      label: 'Destination',
-                      type: 'destination' as const,
-                      subText: selectedBooking.destination_address,
-                    },
-                  ]
-                : []),
-            ]}
-            showRoute={true}
-            className="h-80 sm:h-96 w-full"
-          />
+          <div className="bg-surface/60 p-2.5 rounded-xl border border-base">
+            <span className="text-[9.5px] uppercase font-bold text-muted block">Executive Vehicle</span>
+            <span className="font-semibold text-primary text-xs mt-0.5 uppercase block">
+              {selectedBooking.vehicle_type?.replace(/_/g, ' ')}
+            </span>
+            <span className="text-[10.5px] text-muted">
+              {assignedDriver
+                ? `Captain ${assignedDriver.profile?.full_name || assignedDriver.full_name}`
+                : 'Awaiting Chauffeur'}
+            </span>
+          </div>
+
+          <div className="bg-surface/60 p-2.5 rounded-xl border border-base flex flex-col justify-between">
+            <div>
+              <span className="text-[9.5px] uppercase font-bold text-muted block">Total Trip Fare</span>
+              <span className="font-bold text-amber-500 dark:text-amber-400 text-sm sm:text-base mt-0.5 block">
+                {formatCurrency(totalFare, settings?.currency || 'SAR')}
+              </span>
+            </div>
+            <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded-full border self-start ${paymentBadge.bg} ${paymentBadge.text}`}>
+              {paymentBadge.label}
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Main Focus: Detailed Trip Route Overview (Vertical Progression Timeline) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column: The 8 Sequential Timeline Cards */}
-        <div className="lg:col-span-8 bg-card border border-base p-6 sm:p-8 rounded-3xl shadow-xl space-y-6">
-          <div className="border-b border-base pb-4 flex items-center justify-between">
+      {/* ========================================================= */}
+      {/* 2-COLUMN SECTION: LIVE JOURNEY RADAR & CHAUFFEUR / BILLING */}
+      {/* ========================================================= */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-start">
+        {/* Left Column: The 8-Stage Live Journey Radar Timeline */}
+        <div className="lg:col-span-8 bg-card border border-base p-4 sm:p-6 rounded-2xl shadow-lg space-y-4">
+          <div className="border-b border-base pb-3 flex items-center justify-between">
             <div>
-              <h2 className="type-card-title text-lg flex items-center gap-2">
-                <Navigation className="w-5 h-5 text-emerald-500" />
-                Trip Route Overview Timeline
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[11px] font-bold mb-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                <span>LIVE JOURNEY</span>
+                <span className="text-muted font-normal">•</span>
+                <span className="font-mono text-[10px]">Real-Time GPS Tracking</span>
+              </div>
+              <h2 className="text-sm sm:text-base font-bold text-primary flex items-center gap-1.5">
+                <Navigation className="w-4 h-4 text-emerald-500" />
+                Live Journey Radar &amp; Progression Timeline
               </h2>
-              <p className="text-xs text-muted mt-0.5">
-                Exact sequence of VIP transportation stages for booking #{selectedBooking.booking_reference}.
+              <p className="text-[11px] text-muted mt-0.5">
+                Exact sequence of verified VIP transportation stages for booking #{selectedBooking.booking_reference}.
               </p>
             </div>
             <span className="text-xs font-mono font-bold text-amber-500 dark:text-amber-400">
@@ -581,8 +1134,8 @@ export default function CustomerTrackPage() {
             </span>
           </div>
 
-          {/* Sequential Step Cards with SVG Connectors */}
-          <div className="relative space-y-6 pl-2">
+          {/* Sequential Step Cards with Connectors */}
+          <div className="relative space-y-4 pl-1">
             {TRACKING_STEPS.map((step, idx) => {
               const isDone = idx < activeStepIdx || (idx === 7 && isCompleted);
               const isCurrent = idx === activeStepIdx && !isCompleted;
@@ -590,52 +1143,49 @@ export default function CustomerTrackPage() {
               const isLast = idx === TRACKING_STEPS.length - 1;
 
               return (
-                <div key={step.id} className="relative flex items-start gap-4 sm:gap-5 group">
-                  {/* SVG Vertical Separator Line */}
+                <div key={step.id} className="relative flex items-start gap-3 sm:gap-4 group">
+                  {/* Vertical Connector Line */}
                   {!isLast && (
                     <div
-                      className={`absolute left-[19px] top-10 bottom-[-24px] w-0.5 transition-colors duration-500 ${
-                        isDone ? 'bg-emerald-500' : 'bg-surface border-l-2 border-dashed border-base'
-                      }`}
+                      className={`absolute left-[15px] sm:left-[17px] top-8 bottom-[-18px] w-0.5 transition-colors duration-500 ${isDone ? 'bg-emerald-500' : 'bg-surface border-l-2 border-dashed border-base'
+                        }`}
                     />
                   )}
 
-                  {/* Step Marker Icon with SVG Badge */}
+                  {/* Step Marker Icon */}
                   <div
-                    className={`relative z-10 w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 transition-all shadow-md ${
-                      isDone
-                        ? 'bg-emerald-600 text-white ring-4 ring-emerald-500/20'
-                        : isCurrent
-                        ? 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white ring-4 ring-emerald-400/40 animate-pulse scale-105'
+                    className={`relative z-10 w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-all shadow-sm ${isDone
+                      ? 'bg-emerald-600 text-white ring-2 ring-emerald-500/20'
+                      : isCurrent
+                        ? 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white ring-2 ring-emerald-400/40 animate-pulse scale-105'
                         : 'bg-surface text-muted border border-base'
-                    }`}
+                      }`}
                   >
                     {isDone ? (
-                      <Check className="w-5 h-5 stroke-[2.5]" />
+                      <Check className="w-4 h-4 stroke-[2.5]" />
                     ) : (
-                      step.icon({ className: 'w-5 h-5' })
+                      step.icon({ className: 'w-4 h-4' })
                     )}
                   </div>
 
                   {/* Step Content Body Card */}
                   <div
-                    className={`flex-1 p-4 sm:p-5 rounded-2xl border transition-all ${
-                      isCurrent
-                        ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-500/50 shadow-md ring-1 ring-emerald-500/30'
-                        : isDone
+                    className={`flex-1 p-3 sm:p-3.5 rounded-xl border transition-all ${isCurrent
+                      ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-500/50 shadow-sm ring-1 ring-emerald-500/30'
+                      : isDone
                         ? 'bg-surface/50 border-base'
                         : 'bg-surface/20 border-base opacity-60'
-                    }`}
+                      }`}
                   >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
-                      <div className="flex items-center gap-2.5">
-                        <span className="font-mono text-xs font-bold text-muted">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-[11px] font-bold text-muted">
                           0{step.id}
                         </span>
-                        <h3 className="font-bold text-primary text-base">
+                        <h3 className="font-bold text-primary text-xs sm:text-sm">
                           {step.title}
                         </h3>
-                        <span className="text-xs text-muted font-medium">
+                        <span className="text-[11px] text-muted font-medium">
                           &mdash; {step.subtitle}
                         </span>
                       </div>
@@ -643,40 +1193,40 @@ export default function CustomerTrackPage() {
                       {/* Status Badges */}
                       <div>
                         {isDone && (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/80 px-2.5 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-800">
-                            <Check className="w-3 h-3 stroke-[3]" /> Completed
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-800">
+                            <Check className="w-2.5 h-2.5 stroke-[3]" /> Completed
                           </span>
                         )}
                         {isCurrent && (
-                          <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/80 px-2.5 py-0.5 rounded-full border border-amber-300 dark:border-amber-800">
-                            <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/80 px-2 py-0.5 rounded-full border border-amber-300 dark:border-amber-800">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
                             Active Phase
                           </span>
                         )}
                         {isPending && (
-                          <span className="text-[11px] font-medium text-muted bg-surface px-2.5 py-0.5 rounded-full border border-base">
+                          <span className="text-[10px] font-medium text-muted bg-surface px-2 py-0.5 rounded-full border border-base">
                             Pending
                           </span>
                         )}
                       </div>
                     </div>
 
-                    <p className="text-xs text-secondary mt-2 leading-relaxed">
+                    <p className="text-[11px] text-secondary mt-1.5 leading-relaxed">
                       {step.description}
                     </p>
 
-                    {/* Contextual Step Data: Injected into relevant steps */}
+                    {/* Contextual Step Data */}
                     {step.id === 1 && (
-                      <div className="mt-3 pt-3 border-t border-base/60 text-xs text-muted flex items-center justify-between flex-wrap gap-2">
+                      <div className="mt-2 pt-2 border-t border-base/60 text-[11px] text-muted flex items-center justify-between flex-wrap gap-2">
                         <span>Submitted At: <strong>{formatDateTime(selectedBooking.created_at)}</strong></span>
                         <span className="font-mono">Ref: {selectedBooking.booking_reference}</span>
                       </div>
                     )}
 
                     {step.id === 2 && isDone && (
-                      <div className="mt-3 pt-3 border-t border-base/60 text-xs flex items-center justify-between flex-wrap gap-2 text-emerald-700 dark:text-emerald-300">
+                      <div className="mt-2 pt-2 border-t border-base/60 text-[11px] flex items-center justify-between flex-wrap gap-2 text-emerald-700 dark:text-emerald-300">
                         <span className="flex items-center gap-1 font-medium">
-                          <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
                           Payment status verified &amp; approved by Central Operations.
                         </span>
                         <span className="font-bold uppercase">{selectedBooking.payment_status || 'PAID'}</span>
@@ -685,36 +1235,36 @@ export default function CustomerTrackPage() {
 
                     {/* Driver details attached to Step 3 & Step 4 */}
                     {(step.id === 3 || step.id === 4) && (isDone || isCurrent) && assignedDriver && (
-                      <div className="mt-3 pt-3 border-t border-base/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs bg-card/80 p-3 rounded-xl border border-base">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white font-bold flex items-center justify-center text-sm shadow">
+                      <div className="mt-2 pt-2 border-t border-base/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs bg-card/80 p-2.5 rounded-xl border border-base">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white font-bold flex items-center justify-center text-xs shadow">
                             {assignedDriver.profile?.full_name?.charAt(0) || assignedDriver.full_name?.charAt(0) || 'C'}
                           </div>
                           <div>
-                            <span className="font-bold text-primary block">
+                            <span className="font-bold text-primary block text-xs">
                               Captain {assignedDriver.profile?.full_name || assignedDriver.full_name}
                             </span>
-                            <span className="text-[11px] text-muted">
-                              Vehicle: {assignedDriver.assigned_vehicle?.make || 'VIP'} {assignedDriver.assigned_vehicle?.model || 'Fleet'} &bull; Plate: {assignedDriver.assigned_vehicle?.plate_number || 'VIP-KSA'}
+                            <span className="text-[10.5px] text-muted">
+                              Vehicle: {(assignedDriver.assigned_vehicle as any)?.name || `${assignedDriver.assigned_vehicle?.make || ''} ${assignedDriver.assigned_vehicle?.model || ''}`.trim() || selectedBooking.vehicle_type} &bull; Plate: {assignedDriver.assigned_vehicle?.plate_number || 'VIP-KSA'}
                             </span>
                           </div>
                         </div>
 
                         {assignedDriver.profile?.phone && (
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5">
                             <a
                               href={`tel:${assignedDriver.profile.phone}`}
-                              className="px-3 py-1.5 rounded-lg bg-surface hover:bg-elevated text-primary text-xs font-semibold flex items-center gap-1.5 border border-base"
+                              className="px-2.5 py-1 rounded-lg bg-surface hover:bg-elevated text-primary text-[11px] font-semibold flex items-center gap-1 border border-base"
                             >
-                              <Phone className="w-3.5 h-3.5 text-emerald-500" /> Call
+                              <Phone className="w-3 h-3 text-emerald-500" /> Call
                             </a>
                             <a
                               href={`https://wa.me/${assignedDriver.profile.phone.replace(/[^0-9]/g, '')}?text=Salam%20Captain%2C%20I%20am%20passenger%20for%20booking%20${selectedBooking.booking_reference}`}
                               target="_blank"
                               rel="noreferrer"
-                              className="px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 text-xs font-semibold flex items-center gap-1.5 border border-emerald-300 dark:border-emerald-800"
+                              className="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold flex items-center gap-1 border border-emerald-300 dark:border-emerald-800"
                             >
-                              <MessageSquare className="w-3.5 h-3.5 text-emerald-500" /> WhatsApp
+                              <MessageSquare className="w-3 h-3 text-emerald-500" /> WhatsApp
                             </a>
                           </div>
                         )}
@@ -722,9 +1272,9 @@ export default function CustomerTrackPage() {
                     )}
 
                     {step.id === 8 && isCompleted && (
-                      <div className="mt-3 pt-3 border-t border-base/60 flex items-center justify-between text-xs text-emerald-700 dark:text-emerald-300 font-medium">
+                      <div className="mt-2 pt-2 border-t border-base/60 flex items-center justify-between text-[11px] text-emerald-700 dark:text-emerald-300 font-medium">
                         <span>Journey concluded successfully. We look forward to serving you again.</span>
-                        <span className="font-bold">ZATCA Compliant</span>
+                        <span className="font-bold">Official Invoice Available</span>
                       </div>
                     )}
                   </div>
@@ -735,97 +1285,93 @@ export default function CustomerTrackPage() {
         </div>
 
         {/* Right Column: Chauffeur Card & Billing Summary */}
-        <div className="lg:col-span-4 space-y-6">
+        <div className="lg:col-span-4 space-y-4">
           {/* Driver & Vehicle Information Card */}
           {assignedDriver ? (
-            <div className="bg-card border border-base rounded-3xl p-6 shadow-xl space-y-5">
-              <div className="flex items-center gap-4">
+            <div className="bg-card border border-base rounded-2xl p-4 sm:p-5 shadow-lg space-y-3.5">
+              <div className="flex items-center gap-3">
                 <div className="relative">
                   {assignedDriver.profile?.avatar_url ? (
                     <img
                       src={assignedDriver.profile.avatar_url}
                       alt={assignedDriver.profile?.full_name || 'Captain'}
-                      className="w-16 h-16 rounded-2xl object-cover border-2 border-emerald-500 shadow-md"
+                      className="w-12 h-12 rounded-xl object-cover border-2 border-emerald-500 shadow-sm"
                     />
                   ) : (
-                    <div className="w-16 h-16 rounded-2xl bg-emerald-600 text-white font-bold flex items-center justify-center text-xl shadow-md border-2 border-emerald-400">
+                    <div className="w-12 h-12 rounded-xl bg-emerald-600 text-white font-bold flex items-center justify-center text-lg shadow-sm border border-emerald-400">
                       {assignedDriver.profile?.full_name?.charAt(0) || assignedDriver.full_name?.charAt(0) || 'C'}
                     </div>
                   )}
                   <span className="absolute -bottom-1 -right-1 bg-emerald-600 text-white rounded-full p-0.5 shadow">
-                    <CheckCircle2 className="w-4 h-4 text-white" />
+                    <CheckCircle2 className="w-3.5 h-3.5 text-white" />
                   </span>
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 tracking-wider">
-                    Assigned Chauffeur
+                  <span className="text-[9.5px] uppercase font-bold text-emerald-600 dark:text-emerald-400 tracking-wider">
+                    Assigned VIP Chauffeur
                   </span>
-                  <h3 className="type-card-title truncate text-base mt-0.5">
+                  <h3 className="font-bold text-primary truncate text-sm mt-0.5">
                     {assignedDriver.profile?.full_name || assignedDriver.full_name || 'Assigned Captain'}
                   </h3>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 font-bold bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-800/40">
-                      <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" /> {assignedDriver.rating || 5.0}
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="inline-flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400 font-bold bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800/40">
+                      <Star className="w-3 h-3 fill-amber-400 text-amber-400" /> {assignedDriver.rating || 5.0}
                     </span>
-                    <span className="text-xs text-muted">{assignedDriver.total_rides || 0}+ Rides</span>
+                    <span className="text-[11px] text-muted">{assignedDriver.total_rides || 0}+ Rides</span>
                   </div>
                 </div>
               </div>
 
               {/* Vehicle Specifications */}
-              <div className="p-4 rounded-2xl bg-surface border border-base space-y-2.5 text-xs">
+              <div className="p-3 rounded-xl bg-surface border border-base space-y-1.5 text-xs">
                 <div className="flex items-center justify-between">
                   <span className="text-muted">Assigned Vehicle</span>
-                  <span className="font-bold text-primary">
-                    {assignedDriver.assigned_vehicle?.make || 'VIP'} {assignedDriver.assigned_vehicle?.model || 'Fleet'}
+                  <span className="font-bold text-primary truncate max-w-[170px] text-right">
+                    {(assignedDriver.assigned_vehicle as any)?.name || `${assignedDriver.assigned_vehicle?.make || ''} ${assignedDriver.assigned_vehicle?.model || ''}`.trim() || selectedBooking.vehicle_type?.replace(/_/g, ' ').toUpperCase() || 'Executive VIP Fleet'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-muted">License Plate</span>
-                  <span className="font-mono font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-0.5 rounded-md border border-amber-200 dark:border-amber-800/30">
+                  <span className="font-mono font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded border border-amber-200 dark:border-amber-800/30 text-[11px]">
                     {assignedDriver.assigned_vehicle?.plate_number || 'KSA-VIP'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-muted">Vehicle Type</span>
-                  <span className="font-semibold text-secondary uppercase">
-                    {assignedDriver.assigned_vehicle?.vehicle_type || selectedBooking.vehicle_type}
+                  <span className="text-muted">Vehicle Class</span>
+                  <span className="font-semibold text-secondary uppercase text-[11px]">
+                    {selectedBooking.vehicle_type?.replace(/_/g, ' ')}
                   </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted">Color</span>
-                  <span className="text-secondary">{assignedDriver.assigned_vehicle?.color || 'Obsidian Black'}</span>
                 </div>
               </div>
 
               {/* Direct Passenger Contact Actions */}
-              <div className="grid grid-cols-2 gap-3 pt-1">
+              <div className="grid grid-cols-2 gap-2 pt-0.5">
                 <a
                   href={`tel:${assignedDriver.profile?.phone || assignedDriver.phone || ''}`}
-                  className="py-2.5 px-3 rounded-xl bg-surface hover:bg-elevated text-primary text-xs font-semibold flex items-center justify-center gap-2 border border-base transition-colors shadow-sm"
+                  className="py-2 px-2.5 rounded-xl bg-surface hover:bg-elevated text-primary text-xs font-semibold flex items-center justify-center gap-1.5 border border-base transition-colors shadow-sm"
                 >
-                  <Phone className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Call Captain
+                  <Phone className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> Call
                 </a>
                 <a
                   href={`https://wa.me/${(assignedDriver.profile?.phone || assignedDriver.phone || '').replace(/[^0-9]/g, '')}?text=Salam%20Captain%2C%20I%20am%20passenger%20for%20booking%20${selectedBooking.booking_reference}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="py-2.5 px-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/80 hover:bg-emerald-100 dark:hover:bg-emerald-900 text-emerald-800 dark:text-emerald-300 text-xs font-semibold flex items-center justify-center gap-2 border border-emerald-300 dark:border-emerald-700/50 transition-colors shadow-sm"
+                  className="py-2 px-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/80 hover:bg-emerald-100 dark:hover:bg-emerald-900 text-emerald-800 dark:text-emerald-300 text-xs font-semibold flex items-center justify-center gap-1.5 border border-emerald-300 dark:border-emerald-700/50 transition-colors shadow-sm"
                 >
-                  <MessageSquare className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> WhatsApp
+                  <MessageSquare className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> WhatsApp
                 </a>
               </div>
             </div>
           ) : (
-            <div className="bg-card border border-base rounded-3xl p-6 shadow-xl space-y-4">
+            <div className="bg-card border border-base rounded-2xl p-4 sm:p-5 shadow-lg space-y-3">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950 text-amber-600 flex items-center justify-center">
-                  <Clock className="w-6 h-6 animate-pulse" />
+                <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950 text-amber-600 flex items-center justify-center">
+                  <Clock className="w-5 h-5 animate-pulse" />
                 </div>
                 <div>
-                  <h3 className="type-card-title text-sm">Chauffeur Assignment In Queue</h3>
-                  <p className="text-xs text-muted mt-0.5">
+                  <h3 className="font-bold text-primary text-xs sm:text-sm">Chauffeur Allocation In Queue</h3>
+                  <p className="text-[11px] text-muted mt-0.5">
                     Central dispatch is allocating an executive chauffeur and luxury vehicle for your reservation.
                   </p>
                 </div>
@@ -834,20 +1380,27 @@ export default function CustomerTrackPage() {
           )}
 
           {/* Fare & Billing Summary Card */}
-          <div className="bg-card border border-base rounded-3xl p-6 shadow-xl space-y-5">
+          <div className="bg-card border border-base rounded-2xl p-4 sm:p-5 shadow-lg space-y-3.5">
             {/* Header: Title + Dynamic Status Badge */}
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
+            <div className="flex items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center">
                   <Receipt className="w-4 h-4" />
                 </div>
                 <div>
-                  <span className="text-xs uppercase tracking-wider text-muted font-bold block">Fare &amp; Billing</span>
-                  <span className="text-[11px] text-muted">Fixed All-Inclusive VIP Rate</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] uppercase tracking-wider text-muted font-bold block">Fare &amp; Billing</span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                      {selectedBooking.booking_method === 'fixed' ? 'Fixed' : 'Custom'}
+                    </span>
+                  </div>
+                  <span className="text-[10.5px] text-muted font-medium block truncate max-w-[150px]">
+                    {serviceDisplayName}
+                  </span>
                 </div>
               </div>
               <span
-                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${paymentBadge.bg} ${paymentBadge.text}`}
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-semibold border ${paymentBadge.bg} ${paymentBadge.text}`}
               >
                 {paymentBadge.icon}
                 {paymentBadge.label}
@@ -855,138 +1408,158 @@ export default function CustomerTrackPage() {
             </div>
 
             {/* Total Fare Display */}
-            <div className="p-4 rounded-2xl bg-surface border border-base flex items-baseline justify-between">
+            <div className="p-3 rounded-xl bg-surface border border-base flex items-baseline justify-between">
               <div>
-                <span className="text-[11px] uppercase tracking-wider text-muted font-bold block">Total Amount</span>
-                <div className="type-page-title text-3xl font-extrabold text-primary tracking-tight mt-0.5">
-                  {formatCurrency(totalFare, settings.currency)}
-                </div>
+                <span className="text-[10px] uppercase tracking-wider text-muted font-bold block">
+                  {paymentStatus === 'paid' ? 'Total Settled Amount' : 'Total Fare Amount'}
+                </span>
+                {isPendingQuote ? (
+                  <div className="mt-1 text-amber-500 font-bold text-xs flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 animate-pulse" />
+                    <span>Quote Pending Dispatch Review</span>
+                  </div>
+                ) : (
+                  <div className="text-xl sm:text-2xl font-black text-primary tracking-tight mt-0.5">
+                    {formatCurrency(totalFare || 0, settings?.currency || 'SAR')}
+                  </div>
+                )}
               </div>
               <div className="text-right">
-                <span className="inline-block text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-md">
-                  15% VAT Included
+                <span className="inline-block text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md">
+                  Guaranteed Rate
                 </span>
-                <span className="text-[11px] text-muted block mt-1">ZATCA Standard</span>
               </div>
             </div>
 
-            {/* Rejection Alert Notice (if rejected) */}
-            {selectedBooking.payment_rejected_reason && (
-              <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300 text-xs space-y-1">
-                <div className="font-bold flex items-center gap-1.5">
-                  <AlertCircle className="w-4 h-4 text-rose-500" /> Payment Verification Notice
-                </div>
-                <p className="text-[11px] leading-relaxed text-rose-600 dark:text-rose-400">
-                  {selectedBooking.payment_rejected_reason}
-                </p>
-              </div>
-            )}
-
             {/* Itemized Fare Breakdown */}
-            <div className="p-4 rounded-2xl bg-surface/60 border border-base space-y-2.5 text-xs">
-              <div className="flex items-center justify-between text-secondary">
-                <span className="text-muted">Base Journey Fare:</span>
-                <span className="font-semibold text-primary">{formatCurrency(baseFare, settings.currency)}</span>
-              </div>
+            <div className="p-3 rounded-xl bg-surface/60 border border-base space-y-2 text-xs">
+              {isPendingQuote ? (
+                <div className="py-1 text-center text-muted text-xs leading-relaxed">
+                  Your custom route request has been registered in central dispatch. Our team is calculating all-inclusive VIP rates with driver allocation.
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between text-secondary">
+                    <span className="text-muted font-medium text-[11px]">Base Fare:</span>
+                    <span className="font-semibold text-primary">{formatCurrency(baseFare, settings?.currency || 'SAR')}</span>
+                  </div>
 
-              {selectedBooking.additional_charges && selectedBooking.additional_charges.length > 0 && (
-                <div className="space-y-1.5 pt-1 border-t border-base/60">
-                  {selectedBooking.additional_charges.map((c) => (
-                    <div key={c.id} className="flex items-center justify-between text-secondary">
-                      <span className="text-muted capitalize">
-                        {c.charge_type.replace('_', ' ')}:
+                  {additionalChargesList.length > 0 && (
+                    <div className="space-y-1 pt-1 border-t border-base/60">
+                      {additionalChargesList.map((c) => (
+                        <div key={c.id} className="flex items-center justify-between text-secondary text-[11px]">
+                          <span className="text-muted capitalize">
+                            {c.charge_type.replace('_', ' ')}:
+                            {c.description ? ` (${c.description})` : ''}
+                          </span>
+                          <span className="font-semibold text-amber-500 dark:text-amber-400">
+                            +{formatCurrency(Number(c.amount) || 0, settings?.currency || 'SAR')}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {fareAdjustment !== 0 && (
+                    <div className="flex items-center justify-between text-secondary pt-1 border-t border-base/60 text-[11px]">
+                      <span className="text-muted">
+                        {fareAdjustment > 0 ? 'Adjustment:' : 'VIP Adjustment:'}
                       </span>
-                      <span className="font-semibold text-amber-500 dark:text-amber-400">
-                        +{formatCurrency(c.amount, settings.currency)}
+                      <span className={`font-semibold ${fareAdjustment > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>
+                        {fareAdjustment > 0 ? '+' : ''}{formatCurrency(fareAdjustment, settings?.currency || 'SAR')}
                       </span>
                     </div>
-                  ))}
-                </div>
+                  )}
+
+                  <div className="flex items-center justify-between text-secondary pt-1 border-t border-base/60">
+                    <span className="text-muted font-bold text-[11px]">Total Guaranteed Fare:</span>
+                    <span className="font-bold text-primary text-xs sm:text-sm">
+                      {formatCurrency(totalFare || 0, settings?.currency || 'SAR')}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-secondary pt-1 border-t border-base/60 text-[11px]">
+                    <span className="text-muted">Payment:</span>
+                    <span className="font-semibold text-primary flex items-center gap-1">
+                      {paymentDetails?.iconName === 'bank' && <Building2 className="w-3 h-3 text-amber-500" />}
+                      {paymentDetails?.iconName === 'card' && <CreditCard className="w-3 h-3 text-amber-500" />}
+                      {paymentDetails?.iconName === 'cash' && <Banknote className="w-3 h-3 text-emerald-500" />}
+                      {paymentDetails?.label || 'Electronic Payment'}
+                    </span>
+                  </div>
+
+                  {paymentDetails?.txRef && (
+                    <div className="flex items-center justify-between text-secondary pt-0.5 text-[11px]">
+                      <span className="text-muted">Trx ID:</span>
+                      <span className="font-mono text-[10px] font-semibold text-primary bg-surface px-1.5 py-0.5 rounded border border-base">
+                        {paymentDetails.txRef}
+                      </span>
+                    </div>
+                  )}
+                </>
               )}
-
-              {finalFare != null && finalFare !== baseFare && (
-                <div className="flex items-center justify-between text-secondary pt-1 border-t border-base/60">
-                  <span className="text-muted">Adjusted Final Fare:</span>
-                  <span className="font-bold text-primary">{formatCurrency(finalFare, settings.currency)}</span>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between text-secondary pt-1 border-t border-base/60">
-                <span className="text-muted">Net Subtotal (excl. VAT):</span>
-                <span className="font-medium">{formatCurrency(netSubtotal, settings.currency)}</span>
-              </div>
-
-              <div className="flex items-center justify-between text-secondary">
-                <span className="text-muted">VAT (15% Included):</span>
-                <span className="font-medium text-emerald-600 dark:text-emerald-400">
-                  {formatCurrency(vatAmount, settings.currency)}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between text-secondary pt-1 border-t border-base/60">
-                <span className="text-muted">Payment Method:</span>
-                <span className="font-semibold text-primary flex items-center gap-1.5">
-                  <CreditCard className="w-3.5 h-3.5 text-amber-500" />
-                  {paymentMethodLabel}
-                </span>
-              </div>
             </div>
 
             {/* Actions: View Slip (if uploaded) & View VAT Invoice */}
-            <div className="space-y-2 pt-1">
+            <div className="space-y-1.5 pt-0.5">
               {selectedBooking.payment_screenshot_url && (
                 <button
                   type="button"
                   onClick={() => setShowReceiptModal(true)}
-                  className="w-full py-2.5 px-4 rounded-xl bg-surface hover:bg-elevated text-secondary hover:text-primary text-xs font-semibold flex items-center justify-center gap-2 border border-base transition-colors shadow-sm"
+                  className="w-full py-2 px-3 rounded-xl bg-surface hover:bg-elevated text-secondary hover:text-primary text-xs font-semibold flex items-center justify-center gap-1.5 border border-base transition-colors shadow-sm cursor-pointer"
                 >
-                  <Eye className="w-4 h-4 text-emerald-500" />
-                  View Payment Slip / Transfer Proof
+                  <Eye className="w-3.5 h-3.5 text-emerald-500" />
+                  View Payment Slip
                 </button>
               )}
 
               <button
                 type="button"
-                onClick={() => setShowInvoice(true)}
-                className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all active:scale-[0.99]"
+                onClick={handleOpenPdfInvoice}
+                disabled={isPendingQuote}
+                className={`w-full py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-[0.99] cursor-pointer ${
+                  isPendingQuote
+                    ? 'bg-muted/30 text-muted cursor-not-allowed border border-base'
+                    : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950'
+                }`}
               >
-                <FileText className="w-4 h-4" />
-                View Branded VAT Tax Invoice
+                <FileText className="w-3.5 h-3.5" />
+                <Download className="w-3 h-3" />
+                {isPendingQuote ? 'PDF Invoice (Pending Quote)' : 'Download PDF Invoice'}
               </button>
             </div>
           </div>
 
-          {/* 5-Star Rating Modal when trip is completed */}
+          {/* 5-Star Rating Card when trip is completed */}
           {isCompleted && (
-            <div className="bg-gradient-to-br from-emerald-50 via-slate-50 to-emerald-100/50 dark:from-emerald-950/80 dark:via-slate-900 dark:to-slate-900 border-2 border-emerald-500/50 rounded-3xl p-6 shadow-2xl space-y-4 animate-fade-in text-primary dark:text-white">
-              <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 text-xs font-bold uppercase tracking-wider">
-                <Sparkles className="w-4 h-4 text-amber-500 dark:text-amber-400" />
+            <div className="bg-gradient-to-br from-emerald-50 via-slate-50 to-emerald-100/50 dark:from-emerald-950/80 dark:via-slate-900 dark:to-slate-900 border border-emerald-500/50 rounded-2xl p-4 sm:p-5 shadow-lg space-y-3 animate-fade-in text-primary dark:text-white">
+              <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 text-[11px] font-bold uppercase tracking-wider">
+                <Sparkles className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
                 Rate Your Journey
               </div>
-              <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                How was your trip with {assignedDriver?.profile?.full_name || 'your chauffeur'}?
+              <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
+                How was your journey with {assignedDriver?.profile?.full_name || 'your VIP chauffeur'}?
               </h4>
 
               {ratingSubmitted ? (
-                <div className="p-3.5 rounded-xl bg-emerald-100 dark:bg-emerald-900/40 text-center text-xs text-emerald-800 dark:text-emerald-300 font-medium border border-emerald-200 dark:border-emerald-800/40">
+                <div className="p-3 rounded-xl bg-emerald-100 dark:bg-emerald-900/40 text-center text-xs text-emerald-800 dark:text-emerald-300 font-medium border border-emerald-200 dark:border-emerald-800/40">
                   ✓ Thank you! Your review has been recorded.
                 </div>
               ) : (
-                <form onSubmit={handleRatingSubmit} className="space-y-3">
-                  <div className="flex items-center justify-center gap-2 py-1">
+                <form onSubmit={handleRatingSubmit} className="space-y-2.5">
+                  <div className="flex items-center justify-center gap-1.5 py-0.5">
                     {[1, 2, 3, 4, 5].map((star) => (
                       <button
                         key={star}
                         type="button"
                         onClick={() => setRatingVal(star)}
-                        className="text-2xl transition-transform hover:scale-125"
+                        className="text-xl transition-transform hover:scale-125 cursor-pointer"
                       >
                         <Star
-                          className={`w-7 h-7 ${
-                            star <= ratingVal
-                              ? 'text-amber-500 dark:text-amber-400 fill-amber-500 dark:fill-amber-400'
-                              : 'text-slate-300 dark:text-slate-600'
-                          }`}
+                          className={`w-6 h-6 ${star <= ratingVal
+                            ? 'text-amber-500 dark:text-amber-400 fill-amber-500 dark:fill-amber-400'
+                            : 'text-slate-300 dark:text-slate-600'
+                            }`}
                         />
                       </button>
                     ))}
@@ -997,14 +1570,14 @@ export default function CustomerTrackPage() {
                     value={feedbackText}
                     onChange={(e) => setFeedbackText(e.target.value)}
                     placeholder="Leave a comment for your chauffeur..."
-                    className="w-full bg-input border border-base rounded-xl p-2.5 text-xs text-primary focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-input border border-base rounded-xl p-2 text-xs text-primary focus:outline-none focus:border-emerald-500"
                   />
 
                   <button
                     type="submit"
-                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2.5 rounded-xl transition-colors shadow-md"
+                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 rounded-xl transition-colors shadow-md cursor-pointer"
                   >
-                    Submit 5-Star Review
+                    Submit Review
                   </button>
                 </form>
               )}
@@ -1013,166 +1586,152 @@ export default function CustomerTrackPage() {
         </div>
       </div>
 
-      {/* Branded Digital VAT Tax Invoice Modal */}
-      {showInvoice && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 overflow-y-auto animate-fade-in">
-          <div className="bg-card border border-base rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto relative print:static print:max-h-none print:w-full print:bg-white print:text-black print:p-0 print:border-none print:shadow-none">
-            {/* Close Button (hidden during print) */}
-            <button
-              onClick={() => setShowInvoice(false)}
-              className="absolute top-5 right-5 p-2 rounded-xl bg-surface hover:bg-elevated text-muted hover:text-primary border border-base transition-colors print:hidden"
-              aria-label="Close Invoice"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            {/* Invoice Top Branding */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-base pb-6 gap-4 pr-10 sm:pr-0">
+      {/* ========================================================= */}
+      {/* Official PDF Journey Invoice Modal */}
+      {/* ========================================================= */}
+      {showInvoice && selectedBooking && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto animate-fade-in">
+          <div className="bg-card border border-base rounded-3xl shadow-2xl flex flex-col max-w-4xl w-full max-h-[94vh] overflow-hidden relative">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-base flex items-center justify-between gap-3 bg-surface/50">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-600 flex items-center justify-center text-amber-300 font-bold text-xl shadow-lg border border-emerald-400/40">
-                  الح
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center font-bold">
+                  <FileText className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="type-card-title text-xl tracking-tight">{settings.company_name || 'Al Harmain Travels'}</h3>
-                  <p className="text-xs text-muted mt-0.5">{settings.company_tagline || 'VIP Umrah, Hajj & Executive Transportation'}</p>
-                  <p className="text-[11px] text-muted">{settings.address || 'Kingdom of Saudi Arabia'}</p>
+                  <div className="flex items-center gap-2">
+                    <h3 className="type-card-title text-base">Official Journey Invoice</h3>
+                    <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                      PDF Document
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted mt-0.5 font-mono">
+                    INV-{selectedBooking.booking_reference.replace(/[^0-9A-Z]/gi, '')} &bull; Fixed Agreed Price
+                  </p>
                 </div>
               </div>
 
-              <div className="text-left sm:text-right">
-                <span className="text-xs uppercase font-extrabold text-emerald-600 dark:text-emerald-400 tracking-wider block">
-                  Tax Invoice / فاتورة ضريبية
+              <div className="flex items-center gap-2">
+                {pdfBlobData?.blobUrl && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => pdfBlobData.download()}
+                      className="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                      title="Download PDF to device"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span className="hidden sm:inline">Download PDF</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => window.open(pdfBlobData.blobUrl, '_blank')}
+                      className="p-2 sm:px-3 sm:py-2 rounded-xl bg-surface hover:bg-elevated text-secondary hover:text-primary border border-base text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                      title="Open in new tab"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      <span className="hidden sm:inline">Open Fullscreen</span>
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowInvoice(false)}
+                  className="p-2 rounded-xl bg-surface hover:bg-elevated text-muted hover:text-primary border border-base transition-colors cursor-pointer"
+                  aria-label="Close Invoice Modal"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Price & Guarantee Pill Strip */}
+            <div className="px-5 py-3 bg-surface/30 border-b border-base/60 flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-3">
+                <span className="text-muted">Passenger: <strong className="text-primary font-semibold">{selectedBooking.passenger_name}</strong></span>
+                <span className="text-muted hidden sm:inline">&bull;</span>
+                <span className="text-muted hidden sm:inline">Ref: <strong className="font-mono text-primary">{selectedBooking.booking_reference}</strong></span>
+              </div>
+              <div className="flex items-center gap-2.5">
+                <span className="text-xs text-muted">Total Fixed Fare:</span>
+                <span className="type-card-title text-base font-extrabold text-amber-500">
+                  {formatCurrency(totalFare || 0, settings?.currency || 'SAR')}
                 </span>
-                <span className="text-sm font-mono font-bold text-primary block mt-0.5">
-                  INV-{selectedBooking.booking_reference.replace(/[^0-9A-Z]/gi, '')}
-                </span>
-                <p className="text-[11px] text-muted mt-1">
-                  Issued: {formatDateTime(selectedBooking.created_at)}
-                </p>
-                <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-300 dark:border-emerald-800">
-                  <CheckCircle2 className="w-3 h-3" /> ZATCA Standard
+                <span className="inline-block text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">
+                  Fixed Agreed Price &bull; No Taxes Added
                 </span>
               </div>
             </div>
 
-            {/* Passenger & Chauffeur Info */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs bg-surface/40 p-4 rounded-2xl border border-base">
-              <div>
-                <span className="text-[10px] uppercase font-bold text-muted tracking-wider block mb-1">
-                  Billed To / Passenger
-                </span>
-                <p className="font-bold text-primary text-sm">{selectedBooking.passenger_name}</p>
-                <p className="text-muted mt-0.5">{selectedBooking.passenger_phone}</p>
-                <p className="text-[11px] text-muted mt-1">
-                  Booking Ref: <strong className="font-mono text-primary">{selectedBooking.booking_reference}</strong>
-                </p>
-              </div>
+            {/* PDF Viewer Body */}
+            <div className="flex-1 p-3 sm:p-5 overflow-y-auto bg-surface/20 min-h-[480px]">
+              {pdfBlobData?.blobUrl ? (
+                <div className="space-y-4">
+                  <div className="w-full h-[540px] sm:h-[600px] rounded-2xl overflow-hidden border border-base shadow-lg bg-slate-900">
+                    <iframe
+                      src={`${pdfBlobData.blobUrl}#view=FitH`}
+                      title={`Invoice-${selectedBooking.booking_reference}`}
+                      className="w-full h-full border-0 bg-white"
+                    />
+                  </div>
 
-              <div className="sm:text-right">
-                <span className="text-[10px] uppercase font-bold text-muted tracking-wider block mb-1">
-                  Service Chauffeur &amp; Vehicle
-                </span>
-                <p className="font-bold text-primary text-sm">
-                  {assignedDriver?.profile?.full_name || assignedDriver?.full_name || 'Executive Chauffeur'}
-                </p>
-                <p className="text-muted mt-0.5">
-                  {assignedDriver?.assigned_vehicle?.plate_number || 'KSA-VIP'} &bull;{' '}
-                  {assignedDriver?.assigned_vehicle?.make || 'VIP'}{' '}
-                  {assignedDriver?.assigned_vehicle?.model || 'Fleet'}
-                </p>
-                <p className="text-[11px] text-muted mt-1 capitalize">
-                  Vehicle Class: <strong>{selectedBooking.vehicle_type.replace('_', ' ')}</strong>
-                </p>
-              </div>
-            </div>
-
-            {/* Line items table */}
-            <div className="border border-base rounded-2xl overflow-hidden text-xs">
-              <div className="bg-surface p-3 grid grid-cols-12 font-bold text-muted border-b border-base">
-                <span className="col-span-8">Description / الوصف</span>
-                <span className="col-span-4 text-right">Amount ({settings.currency})</span>
-              </div>
-              <div className="divide-y divide-base p-3 space-y-2">
-                <div className="grid grid-cols-12 text-secondary">
-                  <div className="col-span-8 pr-2">
-                    <p className="font-semibold text-primary">VIP Chauffeur Transfer</p>
-                    <p className="text-[11px] text-muted mt-0.5">
-                      {selectedBooking.pickup_address} &rarr; {selectedBooking.destination_address}
+                  {/* Fallback bar for mobile / direct download */}
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 bg-card border border-base rounded-2xl text-xs">
+                    <div className="flex items-center gap-2 text-muted">
+                      <FileText className="w-4 h-4 text-amber-500 shrink-0" />
+                      <span>Standard PDF document formatted for desktop &amp; mobile viewing.</span>
+                    </div>
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <button
+                        type="button"
+                        onClick={() => pdfBlobData.download()}
+                        className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                      >
+                        <Download className="w-4 h-4" /> Save PDF Copy
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="py-20 flex flex-col items-center justify-center text-center space-y-4">
+                  <RefreshCw className="w-10 h-10 text-amber-500 animate-spin" />
+                  <div>
+                    <h4 className="type-card-title text-base">Generating PDF Invoice...</h4>
+                    <p className="text-xs text-muted mt-1 max-w-sm">
+                      Please wait while we prepare the official fixed price invoice for your journey.
                     </p>
                   </div>
-                  <span className="col-span-4 text-right font-medium self-center">
-                    {formatCurrency(baseFare, settings.currency)}
-                  </span>
+                  <button
+                    type="button"
+                    onClick={handleOpenPdfInvoice}
+                    className="px-4 py-2 rounded-xl bg-surface hover:bg-elevated border border-base text-xs font-semibold text-primary transition-colors cursor-pointer"
+                  >
+                    Retry Generation
+                  </button>
                 </div>
-
-                {selectedBooking.additional_charges?.map((c) => (
-                  <div key={c.id} className="grid grid-cols-12 text-secondary pt-2">
-                    <span className="col-span-8 text-muted capitalize">
-                      {c.charge_type.replace('_', ' ')}: {c.description || 'Highway / Service fee'}
-                    </span>
-                    <span className="col-span-4 text-right font-medium self-center text-amber-500">
-                      +{formatCurrency(c.amount, settings.currency)}
-                    </span>
-                  </div>
-                ))}
-              </div>
+              )}
             </div>
 
-            {/* Totals & VAT summary */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
-              <div className="flex items-center gap-3 p-3 rounded-2xl bg-surface/50 border border-base text-xs text-muted w-full sm:w-auto">
-                <div className="w-12 h-12 rounded-xl bg-card border border-base flex items-center justify-center text-primary shrink-0">
-                  <QrCode className="w-8 h-8 text-secondary" />
-                </div>
-                <div className="text-[11px]">
-                  <p className="font-bold text-primary">ZATCA Compliant E-Invoice</p>
-                  <p className="text-muted">Digital cryptographic seal verified</p>
-                </div>
-              </div>
-
-              <div className="w-full sm:w-72 space-y-2 text-xs bg-surface/60 p-4 rounded-2xl border border-base">
-                <div className="flex justify-between text-muted">
-                  <span>Subtotal (Net excl. VAT):</span>
-                  <span>{formatCurrency(netSubtotal, settings.currency)}</span>
-                </div>
-                <div className="flex justify-between text-muted">
-                  <span>VAT (15% Included):</span>
-                  <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                    {formatCurrency(vatAmount, settings.currency)}
-                  </span>
-                </div>
-                <div className="flex justify-between type-card-title border-t border-base pt-2 text-sm">
-                  <span className="font-bold">Total Settled:</span>
-                  <span className="text-amber-500 dark:text-amber-400 font-extrabold">
-                    {formatCurrency(totalFare, settings.currency)}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Invoice Footer Actions (hidden on print) */}
-            <div className="flex items-center justify-between border-t border-base pt-4 print:hidden">
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="bg-surface hover:bg-elevated text-primary text-xs font-semibold px-4 py-2.5 rounded-xl flex items-center gap-2 border border-base transition-colors"
-              >
-                <Printer className="w-4 h-4 text-amber-500" /> Print Tax Receipt
-              </button>
-
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-base bg-surface/50 flex items-center justify-between text-xs">
+              <span className="text-[11px] text-muted">
+                {settings?.company_name || 'Al Harmain Travels'} &bull; Fixed Rate Guarantee
+              </span>
               <button
                 type="button"
                 onClick={() => setShowInvoice(false)}
-                className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-5 py-2.5 rounded-xl transition-colors shadow-sm"
+                className="px-5 py-2 rounded-xl bg-surface hover:bg-elevated border border-base text-primary font-semibold transition-colors cursor-pointer"
               >
-                Done
+                Close
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Payment Proof / Slip Lightbox Modal */}
+      {/* ========================================================= */}
+      {/* Customer Payment Receipt Proof Modal */}
+      {/* ========================================================= */}
       {showReceiptModal && selectedBooking?.payment_screenshot_url && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-card border border-base rounded-3xl p-6 max-w-lg w-full space-y-4 shadow-2xl relative">

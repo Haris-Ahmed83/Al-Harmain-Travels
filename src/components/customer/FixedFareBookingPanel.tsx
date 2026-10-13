@@ -97,54 +97,54 @@ export const SERVICE_OPTIONS: {
   desc: string;
   badge?: string;
 }[] = [
-  {
-    type: 'intercity_jeddah_makkah',
-    label: 'Jeddah → Makkah',
-    icon: <Plane className="w-4 h-4" />,
-    desc: 'Airport & city transfer to Makkah hotels',
-    badge: 'Popular',
-  },
-  {
-    type: 'intercity_makkah_jeddah',
-    label: 'Makkah → Jeddah',
-    icon: <Navigation className="w-4 h-4" />,
-    desc: 'Transfer back to Jeddah city or airport',
-  },
-  {
-    type: 'intercity_makkah_madinah',
-    label: 'Makkah → Madinah',
-    icon: <Route className="w-4 h-4" />,
-    desc: 'Direct highway VIP transfer between holy cities',
-    badge: 'Holy Cities',
-  },
-  {
-    type: 'intercity_makkah_madinah_sameday',
-    label: 'Makkah → Madinah (Same Day)',
-    icon: <Clock className="w-4 h-4" />,
-    desc: 'Full-day Makkah ↔ Madinah round-trip transfer',
-  },
-  {
-    type: 'ziyarat_makkah',
-    label: 'Makkah Ziyarat',
-    icon: <Star className="w-4 h-4" />,
-    desc: 'Sacred holy sites tour within Makkah Al-Mukarramah',
-    badge: 'Ziyarat',
-  },
-  {
-    type: 'ziyarat_taif',
-    label: 'Taif Ziyarat',
-    icon: <Star className="w-4 h-4" />,
-    desc: 'Scenic mountain excursion & holy sites in Taif',
-    badge: 'Ziyarat',
-  },
-  {
-    type: 'ziyarat_taif_bani_saad',
-    label: 'Taif + Bani Saad',
-    icon: <Star className="w-4 h-4" />,
-    desc: 'Comprehensive Taif tour including historical Bani Saad',
-    badge: 'Ziyarat',
-  },
-];
+    {
+      type: 'intercity_jeddah_makkah',
+      label: 'Jeddah → Makkah',
+      icon: <Plane className="w-4 h-4" />,
+      desc: 'Airport & city transfer to Makkah hotels',
+      badge: 'Popular',
+    },
+    {
+      type: 'intercity_makkah_jeddah',
+      label: 'Makkah → Jeddah',
+      icon: <Navigation className="w-4 h-4" />,
+      desc: 'Transfer back to Jeddah city or airport',
+    },
+    {
+      type: 'intercity_makkah_madinah',
+      label: 'Makkah → Madinah',
+      icon: <Route className="w-4 h-4" />,
+      desc: 'Direct highway VIP transfer between holy cities',
+      badge: 'Holy Cities',
+    },
+    {
+      type: 'intercity_makkah_madinah_sameday',
+      label: 'Makkah → Madinah (Same Day)',
+      icon: <Clock className="w-4 h-4" />,
+      desc: 'Full-day Makkah ↔ Madinah round-trip transfer',
+    },
+    {
+      type: 'ziyarat_makkah',
+      label: 'Makkah Ziyarat',
+      icon: <Star className="w-4 h-4" />,
+      desc: 'Sacred holy sites tour within Makkah Al-Mukarramah',
+      badge: 'Ziyarat',
+    },
+    {
+      type: 'ziyarat_taif',
+      label: 'Taif Ziyarat',
+      icon: <Star className="w-4 h-4" />,
+      desc: 'Scenic mountain excursion & holy sites in Taif',
+      badge: 'Ziyarat',
+    },
+    {
+      type: 'ziyarat_taif_bani_saad',
+      label: 'Taif + Bani Saad',
+      icon: <Star className="w-4 h-4" />,
+      desc: 'Comprehensive Taif tour including historical Bani Saad',
+      badge: 'Ziyarat',
+    },
+  ];
 
 export type FixedBookingStep = 'service' | 'route' | 'vehicle' | 'details' | 'summary_payment' | 'submitted';
 
@@ -402,14 +402,14 @@ export default function FixedFareBookingPanel({
   }, [rateVehicles]);
 
   return (
-    <div className="bg-card border border-base rounded-2xl sm:rounded-3xl shadow-xl overflow-hidden flex flex-col w-full transition-all">
+    <div className="bg-card border border-base rounded-2xl shadow-lg overflow-hidden flex flex-col w-full transition-all">
       {/* ── TOP STEPPER HEADER ──────────────────────────────────────────────── */}
       {bookingStep !== 'submitted' && (
-        <div className="border-b border-base bg-surface/50 backdrop-blur-md px-3 sm:px-5 pt-4 pb-3.5 space-y-3">
+        <div className="border-b border-base bg-surface/50 backdrop-blur-md px-3 sm:px-4 pt-3 pb-2.5 space-y-2">
           {/* Universal 5-Step Stepper Nodes with connecting track line */}
           <div className="relative w-full">
             {/* Background Connecting Track Line (connecting center of first to last node) */}
-            <div className="absolute top-4 left-[10%] right-[10%] h-0.5 bg-base -translate-y-1/2 z-0">
+            <div className="absolute top-3 sm:top-3.5 left-[10%] right-[10%] h-0.5 bg-base -translate-y-1/2 z-0">
               <div
                 className="h-full bg-emerald-500 transition-all duration-500 rounded-full"
                 style={{
@@ -431,41 +431,38 @@ export default function FixedFareBookingPanel({
                     type="button"
                     disabled={!isCompleted}
                     onClick={() => handleStepJump(idx)}
-                    className={`flex flex-col items-center group transition-all text-center px-0.5 ${
-                      isCompleted ? 'cursor-pointer' : 'cursor-default'
-                    }`}
+                    className={`flex flex-col items-center group transition-all text-center px-0.5 ${isCompleted ? 'cursor-pointer' : 'cursor-default'
+                      }`}
                   >
                     {/* Circle Node */}
                     <div
-                      className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center font-bold text-xs transition-all duration-300 relative ${
-                        isCompleted
-                          ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/25 group-hover:scale-110 ring-2 ring-emerald-500/30'
-                          : isActive
-                          ? 'bg-emerald-600 text-white ring-4 ring-emerald-500/25 shadow-lg shadow-emerald-900/40 scale-105'
+                      className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center font-bold text-xs transition-all duration-300 relative ${isCompleted
+                        ? 'bg-emerald-500 text-slate-950 shadow-sm shadow-emerald-500/25 group-hover:scale-110 ring-2 ring-emerald-500/30'
+                        : isActive
+                          ? 'bg-emerald-600 text-white ring-2 ring-emerald-500/25 shadow-md shadow-emerald-900/40 scale-105'
                           : 'bg-elevated border border-base text-muted/60'
-                      }`}
+                        }`}
                     >
                       {isCompleted ? (
-                        <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[3]" />
+                        <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[3]" />
                       ) : (
-                        <span className="text-[11px] sm:text-xs font-black">{idx + 1}</span>
+                        <span className="text-[10px] sm:text-xs font-black">{idx + 1}</span>
                       )}
                     </div>
 
                     {/* Step Title Label */}
-                    <div className="mt-1.5 w-full">
+                    <div className="mt-1 w-full">
                       <span
-                        className={`block text-[10px] sm:text-[11px] font-bold tracking-tight truncate leading-tight transition-colors ${
-                          isActive
-                            ? 'text-emerald-500 dark:text-emerald-400 font-extrabold'
-                            : isCompleted
+                        className={`block text-[9.5px] sm:text-[10.5px] font-bold tracking-tight truncate leading-tight transition-colors ${isActive
+                          ? 'text-emerald-500 dark:text-emerald-400 font-extrabold'
+                          : isCompleted
                             ? 'text-primary group-hover:text-emerald-500'
                             : 'text-muted/60'
-                        }`}
+                          }`}
                       >
                         {step.label}
                       </span>
-                      <span className="hidden sm:block text-[9px] uppercase font-semibold text-muted/50 tracking-wider">
+                      <span className="hidden sm:block text-[8.5px] uppercase font-semibold text-muted/50 tracking-wider">
                         Step {idx + 1}
                       </span>
                     </div>
@@ -476,9 +473,9 @@ export default function FixedFareBookingPanel({
           </div>
 
           {/* Current Active Step Banner with percentage and back button */}
-          <div className="pt-2 border-t border-base/50 flex items-center justify-between gap-2 text-xs">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shrink-0">
+          <div className="pt-1.5 border-t border-base/50 flex items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shrink-0">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 Step {currentStepIndex + 1} of 5
               </span>
@@ -486,12 +483,11 @@ export default function FixedFareBookingPanel({
                 {STEPS_CONFIG[currentStepIndex].fullTitle}
               </span>
             </div>
-
             {currentStepIndex > 0 && (
               <button
                 type="button"
                 onClick={() => handleStepJump(currentStepIndex - 1)}
-                className="text-[11px] font-semibold text-muted hover:text-primary px-2.5 py-1 rounded-xl bg-elevated hover:bg-surface border border-base hover:border-strong transition-all flex items-center gap-1 shrink-0 active:scale-95 cursor-pointer"
+                className="text-[10.5px] font-semibold text-muted hover:text-primary px-2 py-0.5 rounded-lg bg-elevated hover:bg-surface border border-base hover:border-strong transition-all flex items-center gap-1 shrink-0 active:scale-95 cursor-pointer"
               >
                 <ArrowLeft className="w-3 h-3" />
                 <span>Back</span>
@@ -503,26 +499,26 @@ export default function FixedFareBookingPanel({
 
       {/* ── STEP 1: SERVICE SELECTION ────────────────────────────────────────── */}
       {bookingStep === 'service' && (
-        <div className="p-4 sm:p-6 space-y-4 animate-fade-in">
-          <div className="flex items-start justify-between gap-3">
+        <div className="p-3.5 sm:p-4 space-y-3 animate-fade-in">
+          <div className="flex items-start justify-between gap-2.5">
             <div>
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 mb-1">
-                <Sparkles className="w-3 h-3 text-amber-500" /> Guaranteed Fixed Pricing
+              <div className="inline-flex items-center gap-1.5 px-2 py-0.2 rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 mb-1">
+                <Sparkles className="w-2.5 h-2.5 text-amber-500" /> Guaranteed Fixed Pricing
               </div>
-              <h2 className="text-base sm:text-lg font-bold text-primary">Select Your Service</h2>
-              <p className="text-xs text-muted mt-0.5">
+              <h2 className="text-sm sm:text-base font-bold text-primary">Select Your Service</h2>
+              <p className="text-[11px] text-muted mt-0.5">
                 Choose a predefined VIP route or sacred holy tour with all-inclusive rates.
               </p>
             </div>
           </div>
 
           {/* Service Cards Grid */}
-          <div className="grid grid-cols-1 gap-2.5 sm:gap-3">
+          <div className="grid grid-cols-1 gap-2 sm:gap-2.5">
             {displayedServices.length === 0 ? (
-              <div className="p-8 text-center bg-surface/40 rounded-2xl border border-base space-y-2">
-                <AlertCircle className="w-6 h-6 text-amber-500 mx-auto" />
+              <div className="p-6 text-center bg-surface/40 rounded-xl border border-base space-y-1.5">
+                <AlertCircle className="w-5 h-5 text-amber-500 mx-auto" />
                 <p className="text-xs font-bold text-primary">No Fixed-Fare Routes Currently Active</p>
-                <p className="text-[11px] text-muted">
+                <p className="text-[10.5px] text-muted">
                   The operations desk is currently updating tariffs. Please choose Custom Route Booking or check back shortly.
                 </p>
               </div>
@@ -535,41 +531,39 @@ export default function FixedFareBookingPanel({
                     key={svc.type}
                     type="button"
                     onClick={() => onSelectService(svc.type)}
-                    className={`w-full text-left p-3.5 sm:p-4 rounded-2xl border transition-all group cursor-pointer flex items-center justify-between gap-3 relative overflow-hidden ${
-                      isSelected
-                        ? 'bg-emerald-500/10 border-emerald-500 shadow-md ring-2 ring-emerald-500/20'
-                        : 'bg-surface/60 border-base hover:border-emerald-500/50 hover:bg-surface hover:shadow-md'
-                    }`}
+                    className={`w-full text-left p-2.5 sm:p-3 rounded-xl border transition-all group cursor-pointer flex items-center justify-between gap-2.5 relative overflow-hidden ${isSelected
+                      ? 'bg-emerald-500/10 border-emerald-500 shadow-sm ring-1 ring-emerald-500/20'
+                      : 'bg-surface/60 border-base hover:border-emerald-500/50 hover:bg-surface hover:shadow-sm'
+                      }`}
                   >
-                    <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex items-center gap-2.5 min-w-0">
                       <div
-                        className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
-                          isSelected
-                            ? 'bg-emerald-500 text-slate-950 font-bold shadow-md shadow-emerald-500/25'
-                            : 'bg-emerald-500/10 text-emerald-500 group-hover:bg-emerald-500/20 group-hover:scale-105'
-                        }`}
+                        className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${isSelected
+                          ? 'bg-emerald-500 text-slate-950 font-bold shadow-sm shadow-emerald-500/25'
+                          : 'bg-emerald-500/10 text-emerald-500 group-hover:bg-emerald-500/20 group-hover:scale-105'
+                          }`}
                       >
                         {svc.icon}
                       </div>
 
                       <div className="min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="font-bold text-xs sm:text-sm text-primary group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
                             {svc.label}
                           </span>
                           {svc.badge && (
-                            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                            <span className="px-1.5 py-0.2 rounded-full text-[8.5px] font-extrabold uppercase bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
                               {svc.badge}
                             </span>
                           )}
                         </div>
-                        <p className="text-[11px] text-muted truncate mt-0.5">{svc.desc}</p>
+                        <p className="text-[10.5px] text-muted truncate mt-0.5">{svc.desc}</p>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
-                      <div className="w-8 h-8 rounded-xl bg-elevated border border-base/70 flex items-center justify-center group-hover:border-emerald-500/40 group-hover:bg-emerald-500/10 transition-colors">
-                        <ChevronRight className="w-4 h-4 text-muted group-hover:text-emerald-500 transition-colors" />
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="w-6 h-6 rounded-lg bg-elevated border border-base/70 flex items-center justify-center group-hover:border-emerald-500/40 group-hover:bg-emerald-500/10 transition-colors">
+                        <ChevronRight className="w-3.5 h-3.5 text-muted group-hover:text-emerald-500 transition-colors" />
                       </div>
                     </div>
                   </button>
@@ -578,55 +572,65 @@ export default function FixedFareBookingPanel({
             )}
           </div>
 
-          <div className="p-3 rounded-2xl bg-surface border border-base/80 flex items-center gap-2 text-[11px] text-muted">
-            <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
-            <span>All fares verified by operations desk. Zero surge pricing, tolls & fuel included.</span>
+          <div className="p-2.5 rounded-xl bg-surface border border-base/80 flex items-center gap-2 text-[10.5px] text-muted">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+            <span>All fixed-fare rates are licensed by KSA Transport General Authority.</span>
           </div>
         </div>
       )}
 
       {/* ── STEP 2: ROUTE & TERMINAL SELECTION ────────────────────────────────── */}
       {bookingStep === 'route' && selectedService && (
-        <div className="p-4 sm:p-6 space-y-4 animate-fade-in">
-          {/* Header */}
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 mb-1">
-                <MapPin className="w-3 h-3 text-amber-500" />
-                {SERVICE_LABELS[selectedService]}
-              </div>
-              <h2 className="text-base sm:text-lg font-bold text-primary">Specify Pickup & Route</h2>
-              <p className="text-xs text-muted mt-0.5">
-                {isZiyarat
-                  ? 'Enter your hotel or accommodation for sacred tour pickup.'
-                  : 'Enter pickup and destination details for this VIP transfer.'}
-              </p>
-            </div>
+        <div className="p-3.5 sm:p-4 space-y-3 animate-fade-in">
+          {/* Header — dynamic route identity */}
+          {(() => {
+            // Derive Origin → Destination from rateRoutes (live admin data), fallback to SERVICE_LABELS
+            const matchedRoute = rateRoutes?.find((r) => r.id === selectedService);
+            const originName = matchedRoute?.origin_name || '';
+            const destinationName = matchedRoute?.destination_name || '';
+            const routeLabel =
+              originName && destinationName
+                ? `${originName} → ${destinationName}`
+                : SERVICE_LABELS[selectedService] || selectedService;
+            return (
+              <div className="space-y-2">
+                {/* Route identity: location icon + Origin → Destination */}
+                <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                  <div className="w-6 h-6 rounded-lg bg-amber-500 flex items-center justify-center shrink-0 shadow-sm shadow-amber-500/30">
+                    <MapPin className="w-3.5 h-3.5 text-slate-950" />
+                  </div>
+                  <span className="text-xs sm:text-sm font-extrabold text-amber-700 dark:text-amber-300 leading-tight tracking-tight">
+                    {routeLabel}
+                  </span>
+                </div>
 
-            <button
-              type="button"
-              onClick={() => setBookingStep('service')}
-              className="px-2.5 py-1.5 rounded-xl bg-elevated border border-base hover:border-strong text-secondary text-xs font-semibold flex items-center gap-1 shrink-0 active:scale-95 transition-all cursor-pointer"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Back</span>
-            </button>
-          </div>
+                {/* Heading & description */}
+                <div>
+                  <h2 className="text-sm sm:text-base font-bold text-primary leading-tight">Specify Pickup &amp; Route</h2>
+                  <p className="text-[11px] text-muted mt-0.5">
+                    {isZiyarat
+                      ? 'Enter your hotel or accommodation for sacred tour pickup.'
+                      : 'Enter pickup and destination details for this VIP transfer.'}
+                  </p>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Jeddah Airport Terminal Selector (if applicable) */}
           {needsTerminal && (
-            <div className="p-3.5 sm:p-4 rounded-2xl bg-surface/70 border border-amber-500/30 space-y-2.5">
+            <div className="p-3 rounded-xl bg-surface/70 border border-amber-500/30 space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-primary flex items-center gap-1.5">
-                  <Plane className="w-4 h-4 text-amber-500" />
+                  <Plane className="w-3.5 h-3.5 text-amber-500" />
                   Jeddah Airport Terminal <span className="text-rose-500">*</span>
                 </label>
-                <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
+                <span className="text-[9.5px] font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
                   Required
                 </span>
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-1.5">
                 {TERMINAL_OPTIONS.map((t) => {
                   const isAvailable =
                     activeTerminals.length === 0 ||
@@ -639,17 +643,16 @@ export default function FixedFareBookingPanel({
                       type="button"
                       disabled={!isAvailable}
                       onClick={() => onSelectTerminal(t.code)}
-                      className={`p-2.5 rounded-xl border flex flex-col items-center justify-center text-center transition-all cursor-pointer ${
-                        !isAvailable
-                          ? 'opacity-35 cursor-not-allowed bg-surface/20 border-base text-muted'
-                          : isSelected
-                          ? 'bg-amber-500/15 border-amber-500 text-amber-700 dark:text-amber-300 ring-2 ring-amber-500/20 font-bold shadow-sm'
+                      className={`p-2 rounded-lg border flex flex-col items-center justify-center text-center transition-all cursor-pointer ${!isAvailable
+                        ? 'opacity-35 cursor-not-allowed bg-surface/20 border-base text-muted'
+                        : isSelected
+                          ? 'bg-amber-500/15 border-amber-500 text-amber-700 dark:text-amber-300 ring-1 ring-amber-500/20 font-bold shadow-sm'
                           : 'bg-card border-base text-secondary hover:border-amber-500/40 hover:bg-elevated'
-                      }`}
+                        }`}
                     >
-                      <Plane className={`w-3.5 h-3.5 mb-1 ${isSelected ? 'text-amber-500' : 'text-muted'}`} />
+                      <Plane className={`w-3 h-3 mb-0.5 ${isSelected ? 'text-amber-500' : 'text-muted'}`} />
                       <span className="text-xs font-bold leading-tight">{t.label}</span>
-                      <span className="text-[9px] text-muted truncate max-w-full hidden xs:block">
+                      <span className="text-[8.5px] text-muted truncate max-w-full hidden xs:block">
                         {isAvailable ? t.sub : 'Unavailable'}
                       </span>
                     </button>
@@ -658,8 +661,8 @@ export default function FixedFareBookingPanel({
               </div>
 
               {!selectedTerminal && (
-                <p className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1 pt-0.5">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                <p className="text-[10.5px] text-amber-600 dark:text-amber-400 flex items-center gap-1 pt-0.5">
+                  <AlertCircle className="w-3 h-3 shrink-0" />
                   Please select your arrival or departure terminal at Jeddah Airport.
                 </p>
               )}
@@ -667,17 +670,17 @@ export default function FixedFareBookingPanel({
           )}
 
           {/* Pickup Location Box */}
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-[9.5px] font-extrabold uppercase tracking-widest text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 Pickup Location {isZiyarat && '(Hotel / Residence)'}
               </span>
 
               <button
                 type="button"
                 onClick={onUseCurrentLocation}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-all cursor-pointer active:scale-95"
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9.5px] font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-all cursor-pointer active:scale-95"
               >
                 <Crosshair className="w-3 h-3 text-emerald-500" />
                 <span>Use Live GPS</span>
@@ -685,9 +688,9 @@ export default function FixedFareBookingPanel({
             </div>
 
             <div className="relative group">
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 z-10 pointer-events-none">
-                <div className="w-7 h-7 rounded-xl bg-emerald-500 text-slate-950 flex items-center justify-center shadow-sm">
-                  <MapPin className="w-3.5 h-3.5" />
+              <div className="absolute left-2.5 top-1/2 -translate-y-1/2 z-10 pointer-events-none">
+                <div className="w-6 h-6 rounded-lg bg-emerald-500 text-slate-950 flex items-center justify-center shadow-sm">
+                  <MapPin className="w-3 h-3" />
                 </div>
               </div>
 
@@ -697,16 +700,16 @@ export default function FixedFareBookingPanel({
                 onClick={() => onOpenSearch('pickup')}
                 value={pickup?.address || ''}
                 placeholder="Search pickup: hotel, landmark, airport…"
-                className="w-full pl-12 pr-10 py-3 rounded-2xl bg-input border border-base text-primary font-medium text-xs focus:outline-none focus:border-emerald-500 cursor-pointer transition-all shadow-sm placeholder:text-muted truncate hover:border-strong"
+                className="w-full pl-10 pr-8 py-2 rounded-xl bg-input border border-base text-primary font-medium text-xs h-9 sm:h-9.5 focus:outline-none focus:border-emerald-500 cursor-pointer transition-all shadow-sm placeholder:text-muted truncate hover:border-strong"
               />
 
               {pickup && (
                 <button
                   type="button"
                   onClick={onClearPickup}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-lg text-muted hover:text-rose-500 hover:bg-elevated transition-colors"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-muted hover:text-rose-500 hover:bg-elevated transition-colors"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
@@ -714,31 +717,30 @@ export default function FixedFareBookingPanel({
 
           {/* Destination Box (if not Ziyarat) */}
           {!isZiyarat && (
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-extrabold uppercase tracking-widest text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-amber-500" />
+                <span className="text-[9.5px] font-extrabold uppercase tracking-widest text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                   Destination
                 </span>
 
                 <button
                   type="button"
                   onClick={() => onToggleInteractiveMode(interactiveMode === 'destination' ? 'none' : 'destination')}
-                  className={`text-[10px] font-semibold flex items-center gap-1 px-2.5 py-1 rounded-full border transition-all cursor-pointer ${
-                    interactiveMode === 'destination'
-                      ? 'bg-amber-500/15 border-amber-500/50 text-amber-600 dark:text-amber-400 font-bold'
-                      : 'bg-elevated border-base text-muted hover:text-primary'
-                  }`}
+                  className={`text-[9.5px] font-semibold flex items-center gap-1 px-2 py-0.5 rounded-full border transition-all cursor-pointer ${interactiveMode === 'destination'
+                    ? 'bg-amber-500/15 border-amber-500/50 text-amber-600 dark:text-amber-400 font-bold'
+                    : 'bg-elevated border-base text-muted hover:text-primary'
+                    }`}
                 >
-                  <MapPin className="w-3 h-3" />
+                  <MapPin className="w-2.5 h-2.5" />
                   <span>{interactiveMode === 'destination' ? 'Pinning Mode' : 'Pick on Map'}</span>
                 </button>
               </div>
 
               <div className="relative group">
-                <div className="absolute left-3 top-1/2 -translate-y-1/2 z-10 pointer-events-none">
-                  <div className="w-7 h-7 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center shadow-sm">
-                    <Navigation className="w-3.5 h-3.5" />
+                <div className="absolute left-2.5 top-1/2 -translate-y-1/2 z-10 pointer-events-none">
+                  <div className="w-6 h-6 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center shadow-sm">
+                    <Navigation className="w-3 h-3" />
                   </div>
                 </div>
 
@@ -748,16 +750,16 @@ export default function FixedFareBookingPanel({
                   onClick={() => onOpenSearch('destination')}
                   value={destination?.address || ''}
                   placeholder="Search destination: holy mosque, hotel, city…"
-                  className="w-full pl-12 pr-10 py-3 rounded-2xl bg-input border border-base text-primary font-medium text-xs focus:outline-none focus:border-amber-500 cursor-pointer transition-all shadow-sm placeholder:text-muted truncate hover:border-strong"
+                  className="w-full pl-10 pr-8 py-2 rounded-xl bg-input border border-base text-primary font-medium text-xs h-9 sm:h-9.5 focus:outline-none focus:border-amber-500 cursor-pointer transition-all shadow-sm placeholder:text-muted truncate hover:border-strong"
                 />
 
                 {destination && (
                   <button
                     type="button"
                     onClick={onClearDestination}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-lg text-muted hover:text-rose-500 hover:bg-elevated transition-colors"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-muted hover:text-rose-500 hover:bg-elevated transition-colors"
                   >
-                    <X className="w-4 h-4" />
+                    <X className="w-3.5 h-3.5" />
                   </button>
                 )}
               </div>
@@ -766,12 +768,12 @@ export default function FixedFareBookingPanel({
 
           {/* Ziyarat Tour Info Banner */}
           {isZiyarat && (
-            <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 text-xs text-emerald-800 dark:text-emerald-200 space-y-1">
-              <div className="font-bold flex items-center gap-1.5">
-                <Star className="w-4 h-4 text-amber-500 shrink-0" />
+            <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-xs text-emerald-800 dark:text-emerald-200 space-y-0.5">
+              <div className="font-bold flex items-center gap-1.5 text-xs">
+                <Star className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                 <span>Predefined Sacred Sites Itinerary</span>
               </div>
-              <p className="text-[11px] text-muted leading-relaxed">
+              <p className="text-[10.5px] text-muted leading-relaxed">
                 Your VIP chauffeur picks you up from your hotel and guides you through all sacred Ziyarat locations. No destination address is required.
               </p>
             </div>
@@ -779,17 +781,17 @@ export default function FixedFareBookingPanel({
 
           {/* Saved Places Shortcuts */}
           {(homePlace || workPlace || customPlaces.length > 0) && !isZiyarat && (
-            <div className="pt-2 border-t border-base/70">
-              <div className="text-[10px] font-bold text-muted uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+            <div className="pt-1.5 border-t border-base/70">
+              <div className="text-[9.5px] font-bold text-muted uppercase tracking-widest mb-1 flex items-center gap-1.5">
                 <Bookmark className="w-3 h-3 text-amber-500" />
                 <span>Saved Shortcuts</span>
               </div>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-1">
                 {homePlace && (
                   <button
                     type="button"
                     onClick={() => onSelectPlace(homePlace)}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-elevated hover:bg-emerald-500/10 border border-base hover:border-emerald-500/30 text-primary text-[11px] font-semibold transition-all cursor-pointer"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-elevated hover:bg-emerald-500/10 border border-base hover:border-emerald-500/30 text-primary text-[10.5px] font-semibold transition-all cursor-pointer"
                   >
                     <Home className="w-3 h-3 text-emerald-500" />
                     <span>Home</span>
@@ -799,7 +801,7 @@ export default function FixedFareBookingPanel({
                   <button
                     type="button"
                     onClick={() => onSelectPlace(workPlace)}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-elevated hover:bg-amber-500/10 border border-base hover:border-amber-500/30 text-primary text-[11px] font-semibold transition-all cursor-pointer"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-elevated hover:bg-amber-500/10 border border-base hover:border-amber-500/30 text-primary text-[10.5px] font-semibold transition-all cursor-pointer"
                   >
                     <Briefcase className="w-3 h-3 text-amber-500" />
                     <span>Work</span>
@@ -810,10 +812,10 @@ export default function FixedFareBookingPanel({
                     key={cp.id}
                     type="button"
                     onClick={() => onSelectPlace(cp)}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-elevated border border-base text-primary text-[11px] font-semibold transition-all cursor-pointer"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-elevated border border-base text-primary text-[10.5px] font-semibold transition-all cursor-pointer"
                   >
                     <Bookmark className="w-3 h-3 text-emerald-500" />
-                    <span className="truncate max-w-[90px]">{cp.name}</span>
+                    <span className="truncate max-w-[85px]">{cp.name}</span>
                   </button>
                 ))}
               </div>
@@ -822,22 +824,22 @@ export default function FixedFareBookingPanel({
 
           {/* Route Error */}
           {routeError && (
-            <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
+            <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
               <span>{routeError}</span>
             </div>
           )}
 
           {/* Action Button */}
-          <div className="pt-2">
+          <div className="pt-1.5">
             <button
               type="button"
               disabled={(!isZiyarat && !pickup) || (needsTerminal && !selectedTerminal)}
               onClick={onConfirmRoute}
-              className="w-full py-3.5 sm:py-4 rounded-2xl text-xs sm:text-sm font-bold transition-all shadow-xl disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-600 text-white hover:from-emerald-500 hover:to-emerald-500 flex items-center justify-center gap-2 active:scale-[0.99] cursor-pointer"
+              className="w-full py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-600 text-white hover:from-emerald-500 hover:to-emerald-500 flex items-center justify-center gap-2 active:scale-[0.99] cursor-pointer"
             >
               <span>Continue to Vehicle Selection</span>
-              <ArrowRight className="w-4 h-4" />
+              <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
@@ -845,16 +847,16 @@ export default function FixedFareBookingPanel({
 
       {/* ── STEP 3: VEHICLE SELECTION ────────────────────────────────────────── */}
       {bookingStep === 'vehicle' && selectedService && (
-        <div className="p-4 sm:p-6 space-y-4 animate-fade-in">
+        <div className="p-3.5 sm:p-4 space-y-3 animate-fade-in">
           {/* Header */}
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start justify-between gap-2.5">
             <div>
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 mb-1">
-                <Car className="w-3 h-3 text-emerald-500" />
+              <div className="inline-flex items-center gap-1.5 px-2 py-0.2 rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 mb-1">
+                <Car className="w-2.5 h-2.5 text-emerald-500" />
                 Fleet &amp; Fixed Fares
               </div>
-              <h2 className="text-base sm:text-lg font-bold text-primary">Choose Your Vehicle</h2>
-              <p className="text-xs text-muted mt-0.5">
+              <h2 className="text-sm sm:text-base font-bold text-primary">Choose Your Vehicle</h2>
+              <p className="text-[11px] text-muted mt-0.5">
                 Exact fixed fares verified by Al Harmain operations. No meter, no surge.
               </p>
             </div>
@@ -862,28 +864,28 @@ export default function FixedFareBookingPanel({
             <button
               type="button"
               onClick={() => setBookingStep('route')}
-              className="px-2.5 py-1.5 rounded-xl bg-elevated border border-base hover:border-strong text-secondary text-xs font-semibold flex items-center gap-1 shrink-0 active:scale-95 transition-all cursor-pointer"
+              className="px-2 py-1 rounded-lg bg-elevated border border-base hover:border-strong text-secondary text-[11px] font-semibold flex items-center gap-1 shrink-0 active:scale-95 transition-all cursor-pointer"
             >
-              <ArrowLeft className="w-3.5 h-3.5" />
+              <ArrowLeft className="w-3 h-3" />
               <span>Back</span>
             </button>
           </div>
 
           {/* Current Route Snapshot */}
-          <div className="p-3 rounded-2xl bg-surface/80 border border-base flex items-center justify-between gap-2 text-xs">
+          <div className="p-2.5 rounded-xl bg-surface/80 border border-base flex items-center justify-between gap-2 text-xs">
             <div className="flex items-center gap-2 truncate">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-              <span className="font-semibold text-primary truncate">{getServiceLabel(selectedService, rateRoutes)}</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+              <span className="font-semibold text-primary truncate text-xs">{getServiceLabel(selectedService, rateRoutes)}</span>
             </div>
             {selectedTerminal && (
-              <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 text-[10px] font-bold border border-amber-500/30 shrink-0">
+              <span className="px-2 py-0.2 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 text-[9.5px] font-bold border border-amber-500/30 shrink-0">
                 {TERMINAL_LABELS[selectedTerminal as NonNullable<TerminalCode>] || rateTerminals.find(t => t.id === selectedTerminal || t.code === selectedTerminal)?.name || selectedTerminal}
               </span>
             )}
           </div>
 
           {/* Vehicle Cards Grid */}
-          <div className="space-y-2.5">
+          <div className="space-y-2">
             {displayVehicles.map((cat) => {
               const isAvailable = availableVehicles.includes(cat);
               const fare = isAvailable ? resolveFixedFare(cat, selectedService, selectedTerminal, activeRates) : null;
@@ -904,38 +906,35 @@ export default function FixedFareBookingPanel({
                   type="button"
                   disabled={!isAvailable}
                   onClick={() => onSelectVehicle(cat)}
-                  className={`w-full text-left p-3.5 sm:p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden flex flex-col gap-2 ${
-                    !isAvailable
-                      ? 'opacity-40 cursor-not-allowed bg-surface/40 border-base'
-                      : isSelected
-                      ? 'bg-emerald-500/10 border-emerald-500 ring-2 ring-emerald-500/20 shadow-md'
+                  className={`w-full text-left p-2.5 sm:p-3 rounded-xl border transition-all cursor-pointer relative overflow-hidden flex flex-col gap-1.5 ${!isAvailable
+                    ? 'opacity-40 cursor-not-allowed bg-surface/40 border-base'
+                    : isSelected
+                      ? 'bg-emerald-500/10 border-emerald-500 ring-1 ring-emerald-500/20 shadow-sm'
                       : 'bg-card border-base hover:border-emerald-500/40 hover:bg-surface'
-                  }`}
+                    }`}
                 >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex items-center justify-between gap-2.5">
+                    <div className="flex items-center gap-2.5 min-w-0">
                       {/* Selection Radio Dot */}
                       <div
-                        className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
-                          isSelected
-                            ? 'border-emerald-500 bg-emerald-500 text-white shadow-sm'
-                            : 'border-muted bg-transparent'
-                        }`}
+                        className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${isSelected
+                          ? 'border-emerald-500 bg-emerald-500 text-white shadow-xs'
+                          : 'border-muted bg-transparent'
+                          }`}
                       >
-                        {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                        {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
                       </div>
 
                       <div className="min-w-0">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
                           <span
-                            className={`font-bold text-xs sm:text-sm ${
-                              isSelected ? 'text-emerald-700 dark:text-emerald-300 font-extrabold' : 'text-primary'
-                            }`}
+                            className={`font-bold text-xs sm:text-sm ${isSelected ? 'text-emerald-700 dark:text-emerald-300 font-extrabold' : 'text-primary'
+                              }`}
                           >
                             {vLabel}
                           </span>
                         </div>
-                        <p className="text-[11px] text-muted truncate">{desc.subtitle}</p>
+                        <p className="text-[10.5px] text-muted truncate">{desc.subtitle}</p>
                       </div>
                     </div>
 
@@ -943,10 +942,10 @@ export default function FixedFareBookingPanel({
                     <div className="text-right shrink-0">
                       {fare?.found ? (
                         <div>
-                          <div className="font-black text-base sm:text-lg text-emerald-600 dark:text-emerald-400 leading-tight">
+                          <div className="font-black text-sm sm:text-base text-emerald-600 dark:text-emerald-400 leading-tight">
                             {formatFareSAR(fare.fare)}
                           </div>
-                          <div className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1 justify-end">
+                          <div className="text-[8.5px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1 justify-end">
                             <ShieldCheck className="w-2.5 h-2.5" />
                             Fixed Fare
                           </div>
@@ -958,17 +957,17 @@ export default function FixedFareBookingPanel({
                   </div>
 
                   {/* Specs footer */}
-                  <div className="flex items-center justify-between pt-2 border-t border-base/60 text-[11px] text-muted">
-                    <div className="flex items-center gap-3">
+                  <div className="flex items-center justify-between pt-1.5 border-t border-base/60 text-[10.5px] text-muted">
+                    <div className="flex items-center gap-2.5">
                       <span className="flex items-center gap-1 font-semibold text-secondary">
-                        <Users className="w-3.5 h-3.5 text-emerald-500" /> {cap.passengers} Pax
+                        <Users className="w-3 h-3 text-emerald-500" /> {cap.passengers} Pax
                       </span>
                       <span>•</span>
                       <span className="flex items-center gap-1 font-semibold text-secondary">
-                        <Luggage className="w-3.5 h-3.5 text-amber-500" /> {cap.luggage} Bags
+                        <Luggage className="w-3 h-3 text-amber-500" /> {cap.luggage} Bags
                       </span>
                     </div>
-                    <span className="text-[10px] text-muted italic hidden xs:inline">{desc.highlights}</span>
+                    <span className="text-[9.5px] text-muted italic hidden xs:inline">{desc.highlights}</span>
                   </div>
                 </button>
               );
@@ -976,27 +975,27 @@ export default function FixedFareBookingPanel({
           </div>
 
           {/* Action Button */}
-          <div className="pt-2">
+          <div className="pt-1.5">
             <button
               type="button"
               disabled={!selectedVehicle || isFareValidating}
               onClick={onConfirmVehicle}
-              className="w-full py-3.5 sm:py-4 rounded-2xl text-xs sm:text-sm font-bold transition-all shadow-xl disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-600 text-white hover:from-emerald-500 hover:to-emerald-500 flex items-center justify-center gap-2 active:scale-[0.99] cursor-pointer"
+              className="w-full py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-600 text-white hover:from-emerald-500 hover:to-emerald-500 flex items-center justify-center gap-2 active:scale-[0.99] cursor-pointer"
             >
               {isFareValidating ? (
                 <>
-                  <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                  <span className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
                   <span>Verifying Server Fare…</span>
                 </>
               ) : (
                 <>
                   <span>Continue to Passenger Details</span>
                   {selectedVehicle && farePreview?.found && (
-                    <span className="px-2 py-0.5 rounded-lg bg-black/20 text-white font-black text-xs">
+                    <span className="px-1.5 py-0.5 rounded-md bg-black/20 text-white font-black text-[11px]">
                       {formatFareSAR(farePreview.fare)}
                     </span>
                   )}
-                  <ArrowRight className="w-4 h-4" />
+                  <ArrowRight className="w-3.5 h-3.5" />
                 </>
               )}
             </button>
@@ -1006,16 +1005,16 @@ export default function FixedFareBookingPanel({
 
       {/* ── STEP 4: PASSENGER DETAILS & SCHEDULE ──────────────────────────────── */}
       {bookingStep === 'details' && selectedService && selectedVehicle && (
-        <form onSubmit={onDetailsSubmit} className="p-4 sm:p-6 space-y-4 animate-fade-in">
+        <form onSubmit={onDetailsSubmit} className="p-3.5 sm:p-4 space-y-3 animate-fade-in">
           {/* Header */}
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start justify-between gap-2.5">
             <div>
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 mb-1">
-                <User className="w-3 h-3 text-emerald-500" />
+              <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 mb-0.5">
+                <User className="w-2.5 h-2.5 text-emerald-500" />
                 Step 4 of 5
               </div>
-              <h2 className="text-base sm:text-lg font-bold text-primary">Passenger &amp; Schedule</h2>
-              <p className="text-xs text-muted mt-0.5">
+              <h2 className="text-sm sm:text-base font-bold text-primary">Passenger &amp; Schedule</h2>
+              <p className="text-[11px] text-muted">
                 Provide passenger details and exact pickup timing for your VIP chauffeur.
               </p>
             </div>
@@ -1023,119 +1022,119 @@ export default function FixedFareBookingPanel({
             <button
               type="button"
               onClick={() => setBookingStep('vehicle')}
-              className="px-2.5 py-1.5 rounded-xl bg-elevated border border-base hover:border-strong text-secondary text-xs font-semibold flex items-center gap-1 shrink-0 active:scale-95 transition-all cursor-pointer"
+              className="px-2 py-1 rounded-lg bg-elevated border border-base hover:border-strong text-secondary text-[11px] font-semibold flex items-center gap-1 shrink-0 active:scale-95 transition-all cursor-pointer"
             >
-              <ArrowLeft className="w-3.5 h-3.5" />
+              <ArrowLeft className="w-3 h-3" />
               <span>Back</span>
             </button>
           </div>
 
           {/* Quick Itinerary Pill */}
-          <div className="p-3 rounded-2xl bg-surface/80 border border-base flex items-center justify-between text-xs gap-2">
+          <div className="p-2.5 rounded-xl bg-surface/80 border border-base flex items-center justify-between text-xs gap-2">
             <div className="truncate">
               <span className="font-bold text-primary">{SERVICE_LABELS[selectedService]}</span>
               {selectedTerminal && (
                 <span className="text-amber-500 ml-1 font-semibold">({TERMINAL_LABELS[selectedTerminal]})</span>
               )}
-              <div className="text-[11px] text-muted">{VEHICLE_LABELS[selectedVehicle]}</div>
+              <div className="text-[10px] text-muted">{VEHICLE_LABELS[selectedVehicle]}</div>
             </div>
             {farePreview?.found && (
-              <span className="font-black text-emerald-600 dark:text-emerald-400 text-sm shrink-0">
+              <span className="font-black text-emerald-600 dark:text-emerald-400 text-xs sm:text-sm shrink-0">
                 {formatFareSAR(farePreview.fare)}
               </span>
             )}
           </div>
 
           {/* Inputs Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <div>
-              <label className="type-label block mb-1 text-xs">
+              <label className="block mb-1 text-[10px] font-bold text-secondary uppercase tracking-wider">
                 Lead Passenger Name <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
-                <User className="w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <User className="w-3.5 h-3.5 text-muted absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="text"
                   required
                   value={passengerName}
                   onChange={(e) => setPassengerName(e.target.value)}
                   placeholder="e.g. Sheikh Mohammed"
-                  className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-emerald-500 font-medium"
+                  className="w-full pl-8 pr-2.5 py-1.5 h-8.5 sm:h-9 rounded-lg bg-input border border-base text-primary text-xs focus:outline-none focus:border-emerald-500 font-medium"
                 />
               </div>
             </div>
 
             <div>
-              <label className="type-label block mb-1 text-xs">
+              <label className="block mb-1 text-[10px] font-bold text-secondary uppercase tracking-wider">
                 Phone (WhatsApp Enabled) <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
-                <Phone className="w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <Phone className="w-3.5 h-3.5 text-muted absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="tel"
                   required
                   value={passengerPhone}
                   onChange={(e) => setPassengerPhone(e.target.value)}
                   placeholder="+966 50 123 4567"
-                  className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-emerald-500 font-medium"
+                  className="w-full pl-8 pr-2.5 py-1.5 h-8.5 sm:h-9 rounded-lg bg-input border border-base text-primary text-xs focus:outline-none focus:border-emerald-500 font-medium"
                 />
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             <div>
-              <label className="type-label block mb-1 text-xs">
+              <label className="block mb-1 text-[10px] font-bold text-secondary uppercase tracking-wider">
                 Journey Date <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
-                <Calendar className="w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <Calendar className="w-3.5 h-3.5 text-muted absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="date"
                   required
                   value={journeyDate}
                   onChange={(e) => setJourneyDate(e.target.value)}
-                  className="w-full pl-9 pr-2 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-emerald-500 font-medium"
+                  className="w-full pl-8 pr-2 py-1.5 h-8.5 sm:h-9 rounded-lg bg-input border border-base text-primary text-xs focus:outline-none focus:border-emerald-500 font-medium"
                 />
               </div>
             </div>
 
             <div>
-              <label className="type-label block mb-1 text-xs">
+              <label className="block mb-1 text-[10px] font-bold text-secondary uppercase tracking-wider">
                 Pickup Time <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
-                <Clock className="w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <Clock className="w-3.5 h-3.5 text-muted absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="time"
                   required
                   value={journeyTime}
                   onChange={(e) => setJourneyTime(e.target.value)}
-                  className="w-full pl-9 pr-2 py-2.5 rounded-xl bg-input border border-base text-primary text-xs focus:outline-none focus:border-emerald-500 font-medium"
+                  className="w-full pl-8 pr-2 py-1.5 h-8.5 sm:h-9 rounded-lg bg-input border border-base text-primary text-xs focus:outline-none focus:border-emerald-500 font-medium"
                 />
               </div>
             </div>
 
             <div>
-              <label className="type-label block mb-1 text-xs">
+              <label className="block mb-1 text-[10px] font-bold text-secondary uppercase tracking-wider">
                 Passengers (Max {currentMaxPax})
               </label>
               <div className="relative">
-                <Users className="w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <Users className="w-3.5 h-3.5 text-muted absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="number"
                   min={1}
                   max={currentMaxPax}
                   value={passengerCount}
                   onChange={(e) => setPassengerCount(parseInt(e.target.value) || 1)}
-                  className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-input border border-base text-primary text-xs text-center font-bold focus:outline-none focus:border-emerald-500"
+                  className="w-full pl-8 pr-2.5 py-1.5 h-8.5 sm:h-9 rounded-lg bg-input border border-base text-primary text-xs text-center font-bold focus:outline-none focus:border-emerald-500"
                 />
               </div>
             </div>
           </div>
 
           <div>
-            <label className="type-label block mb-1 text-xs">
+            <label className="block mb-1 text-[10px] font-bold text-secondary uppercase tracking-wider">
               Flight Details / Special Requests (Optional)
             </label>
             <textarea
@@ -1143,25 +1142,25 @@ export default function FixedFareBookingPanel({
               placeholder="e.g. Flight SV-124 arriving from London, child seat needed, extra baggage assistance"
               value={specialInstructions}
               onChange={(e) => setSpecialInstructions(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-input border border-base text-primary placeholder:text-muted text-xs focus:outline-none focus:border-emerald-500"
+              className="w-full px-3 py-2 rounded-xl bg-input border border-base text-primary placeholder:text-muted text-xs focus:outline-none focus:border-emerald-500"
             />
           </div>
 
           {/* Action Button */}
-          <div className="flex items-center gap-3 pt-2">
+          <div className="flex items-center gap-2.5 pt-1">
             <button
               type="button"
               onClick={() => setBookingStep('vehicle')}
-              className="btn-secondary flex-1 py-3 text-xs"
+              className="btn-secondary flex-1 py-2.5 text-xs rounded-xl"
             >
               Back
             </button>
             <button
               type="submit"
-              className="btn-primary flex-[2] py-3 text-xs flex items-center justify-center gap-2 font-bold cursor-pointer"
+              className="btn-primary flex-[2] py-2.5 text-xs rounded-xl flex items-center justify-center gap-2 font-bold cursor-pointer"
             >
               <span>Continue to Summary &amp; Payment</span>
-              <ArrowRight className="w-4 h-4" />
+              <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </form>
@@ -1169,16 +1168,16 @@ export default function FixedFareBookingPanel({
 
       {/* ── STEP 5: SUMMARY & PAYMENT ────────────────────────────────────────── */}
       {bookingStep === 'summary_payment' && selectedService && selectedVehicle && (
-        <form onSubmit={onConfirmBooking} className="p-4 sm:p-6 space-y-4 animate-fade-in">
+        <form onSubmit={onConfirmBooking} className="p-3.5 sm:p-4 space-y-3 animate-fade-in">
           {/* Header */}
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start justify-between gap-2.5">
             <div>
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 mb-1">
-                <Receipt className="w-3 h-3 text-amber-500" />
+              <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 mb-0.5">
+                <Receipt className="w-2.5 h-2.5 text-amber-500" />
                 Final Step 5 of 5
               </div>
-              <h2 className="text-base sm:text-lg font-bold text-primary">Summary &amp; Payment Proof</h2>
-              <p className="text-xs text-muted mt-0.5">
+              <h2 className="text-sm sm:text-base font-bold text-primary">Summary &amp; Payment Proof</h2>
+              <p className="text-[11px] text-muted">
                 Review your VIP itinerary and upload transfer confirmation screenshot.
               </p>
             </div>
@@ -1186,60 +1185,60 @@ export default function FixedFareBookingPanel({
             <button
               type="button"
               onClick={() => setBookingStep('details')}
-              className="px-2.5 py-1.5 rounded-xl bg-elevated border border-base hover:border-strong text-secondary text-xs font-semibold flex items-center gap-1 shrink-0 active:scale-95 transition-all cursor-pointer"
+              className="px-2 py-1 rounded-lg bg-elevated border border-base hover:border-strong text-secondary text-[11px] font-semibold flex items-center gap-1 shrink-0 active:scale-95 transition-all cursor-pointer"
             >
-              <ArrowLeft className="w-3.5 h-3.5" />
+              <ArrowLeft className="w-3 h-3" />
               <span>Back</span>
             </button>
           </div>
 
           {/* Comprehensive Itinerary Card */}
-          <div className="rounded-2xl bg-surface border border-base p-4 space-y-3 text-xs">
-            <div className="flex items-center justify-between text-muted text-[11px] border-b border-base/60 pb-2">
+          <div className="rounded-xl bg-surface border border-base p-3 space-y-2.5 text-xs">
+            <div className="flex items-center justify-between text-muted text-[10.5px] border-b border-base/60 pb-1.5">
               <span className="font-bold text-secondary uppercase tracking-wider">VIP Itinerary Overview</span>
               <span className="font-semibold text-primary">
                 {journeyDate} at {journeyTime}
               </span>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 text-[11px]">
+            <div className="grid grid-cols-2 gap-2 text-[10.5px]">
               <div>
-                <span className="text-muted block text-[10px]">Service</span>
-                <span className="font-bold text-primary">{SERVICE_LABELS[selectedService]}</span>
+                <span className="text-muted block text-[9.5px]">Service</span>
+                <span className="font-bold text-primary truncate block">{SERVICE_LABELS[selectedService]}</span>
               </div>
               {selectedTerminal && (
                 <div>
-                  <span className="text-muted block text-[10px]">Terminal</span>
-                  <span className="font-bold text-amber-500">{TERMINAL_LABELS[selectedTerminal]}</span>
+                  <span className="text-muted block text-[9.5px]">Terminal</span>
+                  <span className="font-bold text-amber-500 truncate block">{TERMINAL_LABELS[selectedTerminal]}</span>
                 </div>
               )}
               <div>
-                <span className="text-muted block text-[10px]">Chauffeur Vehicle</span>
-                <span className="font-bold text-primary">{VEHICLE_LABELS[selectedVehicle]}</span>
+                <span className="text-muted block text-[9.5px]">Chauffeur Vehicle</span>
+                <span className="font-bold text-primary truncate block">{VEHICLE_LABELS[selectedVehicle]}</span>
               </div>
               <div>
-                <span className="text-muted block text-[10px]">Passengers</span>
+                <span className="text-muted block text-[9.5px]">Passengers</span>
                 <span className="font-bold text-primary">{passengerCount} Pax</span>
               </div>
             </div>
 
             {/* Route Pins */}
-            <div className="pt-2 border-t border-base/60 space-y-1.5">
+            <div className="pt-1.5 border-t border-base/60 space-y-1">
               {pickup && (
                 <div className="flex items-start gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 mt-0.5 shrink-0" />
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 mt-1 shrink-0" />
                   <div className="min-w-0">
-                    <span className="text-muted text-[10px] uppercase font-bold block">Pickup</span>
-                    <p className="font-medium text-primary truncate">{pickup.address}</p>
+                    <span className="text-muted text-[9.5px] uppercase font-bold block">Pickup</span>
+                    <p className="font-medium text-primary text-[11px] truncate">{pickup.address}</p>
                   </div>
                 </div>
               )}
               {destination && (
                 <div className="flex items-start gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 mt-0.5 shrink-0" />
+                  <span className="w-2 h-2 rounded-full bg-amber-500 mt-1 shrink-0" />
                   <div className="min-w-0">
-                    <span className="text-muted text-[10px] uppercase font-bold block">Destination</span>
-                    <p className="font-medium text-amber-500 truncate">{destination.address}</p>
+                    <span className="text-muted text-[9.5px] uppercase font-bold block">Destination</span>
+                    <p className="font-medium text-amber-600 dark:text-amber-400 text-[11px] truncate">{destination.address}</p>
                   </div>
                 </div>
               )}
@@ -1247,17 +1246,17 @@ export default function FixedFareBookingPanel({
 
             {/* Total Fixed Fare Box */}
             {farePreview?.found && (
-              <div className="mt-3 p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between gap-3">
+              <div className="mt-2 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between gap-2.5">
                 <div>
-                  <div className="text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                  <div className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300">
                     Total Guaranteed Fixed Fare
                   </div>
-                  <div className="text-[10px] text-muted flex items-center gap-1 mt-0.5">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                    <span>All-inclusive VIP rate · Zero surge · All taxes &amp; tolls included</span>
+                  <div className="text-[9.5px] text-muted flex items-center gap-1 mt-0.5">
+                    <ShieldCheck className="w-3 h-3 text-emerald-500" />
+                    <span>All-inclusive VIP rate · Zero surge</span>
                   </div>
                 </div>
-                <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 shrink-0">
+                <div className="text-lg sm:text-xl font-black text-emerald-600 dark:text-emerald-400 shrink-0">
                   {formatFareSAR(farePreview.fare)}
                 </div>
               </div>
@@ -1265,60 +1264,60 @@ export default function FixedFareBookingPanel({
           </div>
 
           {/* Corporate Bank Payment Details */}
-          <div className="p-3.5 sm:p-4 rounded-2xl bg-amber-500/5 border border-amber-500/25 space-y-2.5 text-xs">
+          <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/25 space-y-2 text-xs">
             <div className="flex items-center justify-between text-amber-600 dark:text-amber-400 font-bold">
-              <span className="flex items-center gap-2">
-                <Building2 className="w-4 h-4" />
+              <span className="flex items-center gap-1.5 text-xs">
+                <Building2 className="w-3.5 h-3.5" />
                 Bank Transfer / Mobile Pay Details
               </span>
-              <span className="text-[10px] font-mono uppercase bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+              <span className="text-[9px] font-mono uppercase bg-amber-500/10 px-1.5 py-0.5 rounded-full border border-amber-500/20">
                 Official Account
               </span>
             </div>
 
-            <p className="text-[11px] text-secondary">
+            <p className="text-[10.5px] text-secondary">
               Transfer <strong>{farePreview?.found ? formatFareSAR(farePreview.fare) : 'the fare amount'}</strong> to
               our official verified business account:
             </p>
 
-            <div className="p-3 rounded-xl bg-card border border-base font-mono text-[11px] space-y-2">
+            <div className="p-2.5 rounded-lg bg-card border border-base font-mono text-[10.5px] space-y-1.5">
               <div className="flex justify-between items-center text-secondary">
                 <span>Bank:</span>
                 <strong className="text-primary">Al Rajhi Bank / SNB</strong>
               </div>
               <div className="flex justify-between items-center text-secondary">
                 <span>Account Name:</span>
-                <strong className="text-primary truncate max-w-[180px]">Al Harmain VIP Transport</strong>
+                <strong className="text-primary truncate max-w-[160px]">Al Harmain VIP Transport</strong>
               </div>
               <div className="flex justify-between items-center text-secondary gap-2 pt-1 border-t border-base/60">
                 <span className="shrink-0">IBAN:</span>
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="text-amber-600 dark:text-amber-400 font-bold break-all select-all text-right text-[10px] sm:text-xs">
+                  <span className="text-amber-600 dark:text-amber-400 font-bold break-all select-all text-right text-[10px]">
                     SA44 8000 0456 6080 1012 3456
                   </span>
                   <button
                     type="button"
                     onClick={() => handleCopyText('SA4480000456608010123456', 'IBAN')}
-                    className="p-1 rounded-lg hover:bg-elevated text-muted hover:text-amber-500 transition-colors shrink-0"
+                    className="p-1 rounded hover:bg-elevated text-muted hover:text-amber-500 transition-colors shrink-0"
                     title="Copy IBAN"
                   >
-                    <Copy className="w-3.5 h-3.5" />
+                    <Copy className="w-3 h-3" />
                   </button>
                 </div>
               </div>
               <div className="flex justify-between items-center text-secondary gap-2">
                 <span className="shrink-0">STC Pay / Urpay:</span>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-emerald-600 dark:text-emerald-400 font-bold select-all">
+                  <span className="text-emerald-600 dark:text-emerald-400 font-bold select-all text-[10.5px]">
                     +966 54 888 1234
                   </span>
                   <button
                     type="button"
                     onClick={() => handleCopyText('+966548881234', 'STC Pay')}
-                    className="p-1 rounded-lg hover:bg-elevated text-muted hover:text-emerald-500 transition-colors shrink-0"
+                    className="p-1 rounded hover:bg-elevated text-muted hover:text-emerald-500 transition-colors shrink-0"
                     title="Copy Phone"
                   >
-                    <Copy className="w-3.5 h-3.5" />
+                    <Copy className="w-3 h-3" />
                   </button>
                 </div>
               </div>
@@ -1326,13 +1325,13 @@ export default function FixedFareBookingPanel({
           </div>
 
           {/* Payment Proof File Upload */}
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <div className="flex items-center justify-between text-xs font-bold text-primary">
               <span className="flex items-center gap-1.5">
-                <Receipt className="w-4 h-4 text-emerald-500" />
+                <Receipt className="w-3.5 h-3.5 text-emerald-500" />
                 Upload Transfer Screenshot / Receipt <span className="text-rose-500">*</span>
               </span>
-              <span className="text-[10px] text-muted">Required</span>
+              <span className="text-[9.5px] text-muted">Required</span>
             </div>
 
             <input
@@ -1347,44 +1346,44 @@ export default function FixedFareBookingPanel({
             {!paymentPreviewUrl ? (
               <label
                 htmlFor="payment-receipt-upload"
-                className="cursor-pointer border-2 border-dashed border-base hover:border-emerald-500/60 rounded-2xl p-5 bg-surface/40 hover:bg-surface flex flex-col items-center justify-center text-center gap-2 transition-all group"
+                className="cursor-pointer border-2 border-dashed border-base hover:border-emerald-500/60 rounded-xl p-3.5 bg-surface/40 hover:bg-surface flex flex-col items-center justify-center text-center gap-1.5 transition-all group"
               >
-                <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <UploadCloud className="w-5 h-5" />
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center group-hover:scale-105 transition-transform">
+                  <UploadCloud className="w-4 h-4" />
                 </div>
                 <div>
                   <span className="text-xs font-bold text-primary group-hover:text-emerald-500 transition-colors">
                     Click to Upload Transfer Screenshot
                   </span>
-                  <p className="text-[11px] text-muted mt-0.5">PNG, JPG, or WebP (max 10MB)</p>
+                  <p className="text-[10px] text-muted mt-0.5">PNG, JPG, or WebP (max 10MB)</p>
                 </div>
               </label>
             ) : (
-              <div className="rounded-2xl bg-surface border border-emerald-500/40 p-3 space-y-2.5">
+              <div className="rounded-xl bg-surface border border-emerald-500/40 p-2.5 space-y-2">
                 <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2 font-semibold text-primary truncate max-w-[80%]">
-                    <FileImage className="w-4 h-4 text-emerald-500 shrink-0" />
-                    <span className="truncate">{paymentFile?.name || 'Payment Receipt'}</span>
+                  <div className="flex items-center gap-1.5 font-semibold text-primary truncate max-w-[80%]">
+                    <FileImage className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                    <span className="truncate text-xs">{paymentFile?.name || 'Payment Receipt'}</span>
                   </div>
                   <button
                     type="button"
                     onClick={onRemovePaymentFile}
-                    className="text-[11px] text-rose-500 hover:text-rose-400 font-bold hover:underline"
+                    className="text-[10px] text-rose-500 hover:text-rose-400 font-bold hover:underline"
                   >
                     Remove
                   </button>
                 </div>
 
-                <div className="relative rounded-xl overflow-hidden max-h-40 border border-base bg-card flex items-center justify-center p-2">
+                <div className="relative rounded-lg overflow-hidden max-h-32 border border-base bg-card flex items-center justify-center p-1.5">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={paymentPreviewUrl}
                     alt="Payment Screenshot Preview"
-                    className="max-h-36 object-contain w-full rounded-lg"
+                    className="max-h-28 object-contain w-full rounded"
                   />
                 </div>
 
-                <div className="flex items-center justify-between text-[10px] text-muted">
+                <div className="flex items-center justify-between text-[9.5px] text-muted">
                   <span>Size: {paymentFile ? (paymentFile.size / 1024).toFixed(1) + ' KB' : ''}</span>
                   <label
                     htmlFor="payment-receipt-upload"
@@ -1398,27 +1397,27 @@ export default function FixedFareBookingPanel({
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-3 pt-2">
+          <div className="flex items-center gap-2.5 pt-1">
             <button
               type="button"
               onClick={() => setBookingStep('details')}
-              className="btn-secondary flex-1 py-3.5 text-xs"
+              className="btn-secondary flex-1 py-2.5 text-xs rounded-xl"
             >
               Back to Details
             </button>
             <button
               type="submit"
               disabled={isSubmitting || !paymentFile}
-              className="btn-primary flex-[2] py-3.5 text-xs flex items-center justify-center gap-2 font-bold disabled:opacity-50 disabled:cursor-not-allowed shadow-lg cursor-pointer active:scale-[0.99]"
+              className="btn-primary flex-[2] py-2.5 text-xs rounded-xl flex items-center justify-center gap-2 font-bold disabled:opacity-50 disabled:cursor-not-allowed shadow-md cursor-pointer active:scale-[0.99]"
             >
               {isSubmitting ? (
                 <>
-                  <span className="w-4 h-4 rounded-full border-2 border-slate-950/30 border-t-slate-950 animate-spin" />
+                  <span className="w-3.5 h-3.5 rounded-full border-2 border-slate-950/30 border-t-slate-950 animate-spin" />
                   <span>Submitting Booking…</span>
                 </>
               ) : (
                 <>
-                  <CheckCircle2 className="w-4 h-4" />
+                  <CheckCircle2 className="w-3.5 h-3.5" />
                   <span>Confirm Booking &amp; Pay</span>
                 </>
               )}
@@ -1429,32 +1428,32 @@ export default function FixedFareBookingPanel({
 
       {/* ── STEP 6: BOOKING SUBMITTED (SUCCESS) ──────────────────────────────── */}
       {bookingStep === 'submitted' && confirmedBookingRef && (
-        <div className="p-6 sm:p-8 space-y-5 text-center animate-fade-in">
-          <div className="w-16 h-16 rounded-full bg-emerald-500/15 text-emerald-500 flex items-center justify-center mx-auto border-2 border-emerald-500/30 shadow-inner">
-            <CheckCircle2 className="w-10 h-10" />
+        <div className="p-4 sm:p-6 space-y-4 text-center animate-fade-in">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 text-emerald-500 flex items-center justify-center mx-auto border border-emerald-500/30 shadow-inner">
+            <CheckCircle2 className="w-7 h-7" />
           </div>
 
-          <div className="space-y-1">
-            <h3 className="text-xl font-bold text-primary">Booking Confirmed &amp; Submitted!</h3>
+          <div className="space-y-0.5">
+            <h3 className="text-base sm:text-lg font-bold text-primary">Booking Confirmed &amp; Submitted!</h3>
             <p className="text-xs text-secondary">
               Your VIP chauffeur booking and payment receipt are securely logged in our dispatch desk.
             </p>
           </div>
 
-          <div className="p-4 rounded-2xl bg-surface border border-base space-y-2.5 text-left text-xs">
-            <div className="flex items-center justify-between border-b border-base/60 pb-2">
+          <div className="p-3 rounded-xl bg-surface border border-base space-y-2 text-left text-xs">
+            <div className="flex items-center justify-between border-b border-base/60 pb-1.5">
               <span className="text-muted">Booking Reference:</span>
               <div className="flex items-center gap-1.5">
-                <span className="font-mono text-base font-black text-amber-600 dark:text-amber-400">
+                <span className="font-mono text-sm sm:text-base font-black text-amber-600 dark:text-amber-400">
                   {confirmedBookingRef}
                 </span>
                 <button
                   type="button"
                   onClick={() => handleCopyText(confirmedBookingRef, 'Booking Reference')}
-                  className="p-1 rounded-lg hover:bg-elevated text-muted hover:text-amber-500"
+                  className="p-1 rounded-md hover:bg-elevated text-muted hover:text-amber-500"
                   title="Copy Reference"
                 >
-                  <Copy className="w-3.5 h-3.5" />
+                  <Copy className="w-3 h-3" />
                 </button>
               </div>
             </div>
@@ -1475,33 +1474,33 @@ export default function FixedFareBookingPanel({
               </div>
             )}
 
-            <div className="flex items-center justify-between pt-1">
+            <div className="flex items-center justify-between pt-0.5">
               <span className="text-muted">Status:</span>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] uppercase font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+              <span className="px-2 py-0.5 rounded-full text-[9px] uppercase font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
                 Pending Verification
               </span>
             </div>
 
-            <p className="text-[11px] text-muted pt-2 border-t border-base/60 leading-relaxed">
+            <p className="text-[10.5px] text-muted pt-1.5 border-t border-base/60 leading-relaxed">
               Our operations desk will verify your payment screenshot. You will receive real-time notifications on
               chauffeur assignment and arrival.
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-2 pt-2">
+          <div className="flex flex-col sm:flex-row gap-2 pt-1">
             <Link
               href="/customer/bookings"
-              className="btn-primary flex-1 py-3 text-xs flex items-center justify-center gap-2 font-bold"
+              className="btn-primary flex-1 py-2.5 text-xs rounded-xl flex items-center justify-center gap-1.5 font-bold"
             >
-              <Clock className="w-4 h-4" />
+              <Clock className="w-3.5 h-3.5" />
               <span>View in My Trips</span>
             </Link>
 
             <Link
               href="/customer/track"
-              className="btn-secondary flex-1 py-3 text-xs flex items-center justify-center gap-2 font-bold"
+              className="btn-secondary flex-1 py-2.5 text-xs rounded-xl flex items-center justify-center gap-1.5 font-bold"
             >
-              <Navigation className="w-4 h-4" />
+              <Navigation className="w-3.5 h-3.5" />
               <span>Open Live Radar</span>
             </Link>
           </div>
@@ -1509,7 +1508,7 @@ export default function FixedFareBookingPanel({
           <button
             type="button"
             onClick={onResetBooking}
-            className="text-xs text-muted hover:text-primary inline-flex items-center gap-1.5 transition-colors cursor-pointer pt-2"
+            className="text-xs text-muted hover:text-primary inline-flex items-center gap-1.5 transition-colors cursor-pointer pt-1"
           >
             <RotateCcw className="w-3 h-3" />
             <span>Book Another Ride</span>
