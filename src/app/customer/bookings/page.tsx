@@ -4,8 +4,9 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
 import { useApp } from '@/context/AppContext';
+import { useLanguage } from '@/context/LanguageContext';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
-import { Booking, BookingStatus } from '@/types';
+import { Booking, BookingStatus, RatingFeedback } from '@/types';
 import {
   Clock,
   Calendar,
@@ -25,11 +26,16 @@ import {
   X,
   RefreshCw,
   Loader2,
+  Star,
+  MessageSquare,
+  Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatDriverRating } from '@/lib/driver-stats';
 
 export default function CustomerBookingsPage() {
-  const { settings, uploadCustomerPaymentProof, cancelBooking, drivers } = useApp();
+  const { settings, uploadCustomerPaymentProof, cancelBooking, drivers, ratings, submitRating } = useApp();
+  const { language, dir, isRTL, t } = useLanguage();
 
   // Local Supabase state
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -50,6 +56,46 @@ export default function CustomerBookingsPage() {
   const [paymentUploadBooking, setPaymentUploadBooking] = useState<Booking | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
+
+  // Rating & Review modals state
+  const [rateModalBooking, setRateModalBooking] = useState<Booking | null>(null);
+  const [rateModalRatingVal, setRateModalRatingVal] = useState<number>(5);
+  const [rateModalFeedback, setRateModalFeedback] = useState<string>('');
+  const [isSubmittingRating, setIsSubmittingRating] = useState<boolean>(false);
+  const [viewReviewModal, setViewReviewModal] = useState<{ booking: Booking; rating: RatingFeedback } | null>(null);
+
+  const handleRatingSubmitModal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rateModalBooking || isSubmittingRating) return;
+
+    const targetDriverId = rateModalBooking.assigned_driver_id || rateModalBooking.driver?.id;
+    if (!targetDriverId) {
+      toast.error('No driver assigned to this booking.');
+      return;
+    }
+
+    setIsSubmittingRating(true);
+    try {
+      const res = await submitRating({
+        booking_id: rateModalBooking.id,
+        customer_id: rateModalBooking.customer_id || undefined,
+        driver_id: targetDriverId,
+        rating: rateModalRatingVal,
+        feedback: rateModalFeedback,
+        category: 'rating',
+      });
+
+      if (res.success || res.alreadyRated) {
+        setRateModalBooking(null);
+        setRateModalFeedback('');
+        setRateModalRatingVal(5);
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to submit review.');
+    } finally {
+      setIsSubmittingRating(false);
+    }
+  };
 
   // Fetch bookings strictly for the authenticated customer ID from Supabase
   const fetchBookings = useCallback(async (userId?: string, showSpinner = true) => {
@@ -310,112 +356,112 @@ export default function CustomerBookingsPage() {
       pending_review: {
         bg: 'bg-amber-500/15 border-amber-500/40',
         text: 'text-amber-700 dark:text-amber-300',
-        label: 'Awaiting Dispatcher Review',
+        label: isRTL ? 'بانتظار مراجعة العمليات' : 'Awaiting Dispatcher Review',
       },
       pending_verification: {
         bg: 'bg-amber-500/15 border-amber-500/40',
         text: 'text-amber-700 dark:text-amber-300',
-        label: 'Awaiting Payment Verification',
+        label: isRTL ? 'بانتظار التحقق من الدفع' : 'Awaiting Payment Verification',
       },
       payment_rejected: {
         bg: 'bg-rose-500/15 border-rose-500/40',
         text: 'text-rose-700 dark:text-rose-300',
-        label: 'Payment Proof Rejected',
+        label: isRTL ? 'تم رفض إيصال الدفع' : 'Payment Proof Rejected',
       },
       payment_verified: {
         bg: 'bg-blue-500/15 border-blue-500/40',
         text: 'text-blue-700 dark:text-blue-300',
-        label: 'Payment Verified',
+        label: isRTL ? 'تم التحقق من الدفع' : 'Payment Verified',
       },
       confirmed: {
         bg: 'bg-sky-500/15 border-sky-500/40',
         text: 'text-sky-700 dark:text-sky-300',
-        label: 'Booking Confirmed',
+        label: isRTL ? 'حجز مؤكد' : 'Booking Confirmed',
       },
       driver_assigned: {
         bg: 'bg-teal-500/15 border-teal-500/40',
         text: 'text-teal-700 dark:text-teal-300',
-        label: 'Captain Assigned',
+        label: isRTL ? 'تم تعيين الكابتن' : 'Captain Assigned',
       },
       accepted: {
         bg: 'bg-indigo-500/15 border-indigo-500/40',
         text: 'text-indigo-700 dark:text-indigo-300',
-        label: 'Captain Accepted',
+        label: isRTL ? 'الكابتن قبل الرحلة' : 'Captain Accepted',
       },
       driver_accepted: {
         bg: 'bg-indigo-500/15 border-indigo-500/40',
         text: 'text-indigo-700 dark:text-indigo-300',
-        label: 'Captain Accepted',
+        label: isRTL ? 'الكابتن قبل الرحلة' : 'Captain Accepted',
       },
       on_the_way: {
         bg: 'bg-emerald-500/15 border-emerald-500/40',
         text: 'text-emerald-700 dark:text-emerald-300',
-        label: 'Captain On The Way',
+        label: isRTL ? 'الكابتن في الطريق' : 'Captain On The Way',
       },
       driver_arriving: {
         bg: 'bg-emerald-500/15 border-emerald-500/40',
         text: 'text-emerald-700 dark:text-emerald-300',
-        label: 'Captain Arriving',
+        label: isRTL ? 'الكابتن في الطريق إليك' : 'Captain Arriving',
       },
       arrived: {
         bg: 'bg-cyan-500/15 border-cyan-500/40',
         text: 'text-cyan-700 dark:text-cyan-300',
-        label: 'Captain Arrived',
+        label: isRTL ? 'الكابتن وصل للموقع' : 'Captain Arrived',
       },
       driver_arrived: {
         bg: 'bg-cyan-500/15 border-cyan-500/40',
         text: 'text-cyan-700 dark:text-cyan-300',
-        label: 'Captain Arrived',
+        label: isRTL ? 'الكابتن وصل للموقع' : 'Captain Arrived',
       },
       started: {
         bg: 'bg-purple-500/15 border-purple-500/40',
         text: 'text-purple-700 dark:text-purple-300',
-        label: 'Trip In Progress',
+        label: isRTL ? 'الرحلة جارية الآن' : 'Trip In Progress',
       },
       trip_started: {
         bg: 'bg-purple-500/15 border-purple-500/40',
         text: 'text-purple-700 dark:text-purple-300',
-        label: 'Trip In Progress',
+        label: isRTL ? 'الرحلة جارية الآن' : 'Trip In Progress',
       },
       ride_started: {
         bg: 'bg-purple-500/15 border-purple-500/40',
         text: 'text-purple-700 dark:text-purple-300',
-        label: 'Trip In Progress',
+        label: isRTL ? 'الرحلة جارية الآن' : 'Trip In Progress',
       },
       completed: {
         bg: 'bg-emerald-500/20 border-emerald-500/40',
         text: 'text-emerald-700 dark:text-emerald-300',
-        label: 'Trip Completed',
+        label: isRTL ? 'اكتملت الرحلة' : 'Trip Completed',
       },
       trip_completed: {
         bg: 'bg-emerald-500/20 border-emerald-500/40',
         text: 'text-emerald-700 dark:text-emerald-300',
-        label: 'Trip Completed',
+        label: isRTL ? 'اكتملت الرحلة' : 'Trip Completed',
       },
       ride_completed: {
         bg: 'bg-emerald-500/20 border-emerald-500/40',
         text: 'text-emerald-700 dark:text-emerald-300',
-        label: 'Trip Completed',
+        label: isRTL ? 'اكتملت الرحلة' : 'Trip Completed',
       },
       payment_completed: {
         bg: 'bg-emerald-500/20 border-emerald-500/40',
         text: 'text-emerald-700 dark:text-emerald-300',
-        label: 'Completed & Paid',
+        label: isRTL ? 'مكتملة ومسددة' : 'Completed & Paid',
       },
       cancelled: {
         bg: 'bg-rose-500/15 border-rose-500/40',
         text: 'text-rose-700 dark:text-rose-300',
-        label: 'Cancelled',
+        label: isRTL ? 'ملغية' : 'Cancelled',
       },
       rejected: {
         bg: 'bg-rose-500/15 border-rose-500/40',
         text: 'text-rose-700 dark:text-rose-300',
-        label: 'Rejected',
+        label: isRTL ? 'مرفوضة' : 'Rejected',
       },
       pending: {
         bg: 'bg-amber-500/15 border-amber-500/40',
         text: 'text-amber-700 dark:text-amber-300',
-        label: 'Pending Review',
+        label: isRTL ? 'قيد المراجعة' : 'Pending Review',
       },
     };
 
@@ -433,13 +479,15 @@ export default function CustomerBookingsPage() {
   };
 
   return (
-    <div className="page-shell space-y-4">
+    <div dir={dir} className="page-shell space-y-4">
       {/* Title & Action Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card border border-base p-4 sm:p-5 rounded-2xl shadow-lg">
         <div>
-          <h2 className="text-lg sm:text-xl font-bold tracking-tight text-primary">My VIP Rides &amp; Bookings</h2>
+          <h2 className="text-lg sm:text-xl font-bold tracking-tight text-primary">
+            {t('bookings.title', 'My VIP Rides & Bookings')}
+          </h2>
           <p className="text-xs text-muted mt-0.5">
-            Track verification progress, driver assignments, and booking receipts.
+            {t('bookings.subtitle', 'Track verification progress, driver assignments, and booking receipts.')}
           </p>
         </div>
 
@@ -448,9 +496,9 @@ export default function CustomerBookingsPage() {
             type="button"
             onClick={handleManualRefresh}
             disabled={isRefreshing || isLoading}
-            aria-label="Refresh bookings"
+            aria-label={isRTL ? 'تحديث الرحلات' : 'Refresh bookings'}
             className="p-2 bg-surface hover:bg-elevated border border-base text-secondary hover:text-primary rounded-xl transition-colors disabled:opacity-50 cursor-pointer"
-            title="Refresh bookings from server"
+            title={isRTL ? 'تحديث الرحلات والحالة من الخادم' : 'Refresh bookings from server'}
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-emerald-500' : ''}`} />
           </button>
@@ -459,7 +507,7 @@ export default function CustomerBookingsPage() {
             href="/customer"
             className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow transition-colors inline-flex items-center gap-1.5"
           >
-            + Request New Ride
+            {isRTL ? '+ حجز رحلة VIP جديدة' : '+ Request New Ride'}
           </Link>
         </div>
       </div>
@@ -475,7 +523,7 @@ export default function CustomerBookingsPage() {
             onClick={() => fetchBookings(authenticatedUserId || undefined)}
             className="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg transition-colors cursor-pointer text-xs"
           >
-            Retry
+            {isRTL ? 'إعادة المحاولة' : 'Retry'}
           </button>
         </div>
       )}
@@ -483,22 +531,22 @@ export default function CustomerBookingsPage() {
       {/* Filter and Search Bar */}
       <div className="flex flex-col sm:flex-row items-center gap-2.5">
         <div className="relative flex-1 w-full">
-          <Search className="w-3.5 h-3.5 text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <Search className="w-3.5 h-3.5 text-muted absolute left-3 rtl:left-auto rtl:right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
-            placeholder="Search booking ref, airport, or hotel..."
+            placeholder={isRTL ? 'ابحث برقم الحجز، المسار، أو اسم السائق...' : 'Search booking ref, airport, or hotel...'}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-input border border-base rounded-xl pl-9 pr-3 py-1.5 h-8.5 sm:h-9 text-xs text-primary placeholder:text-muted focus:outline-none focus:border-emerald-500"
+            className="w-full bg-input border border-base rounded-xl pl-9 pr-3 rtl:pl-3 rtl:pr-9 py-1.5 h-8.5 sm:h-9 text-xs text-primary placeholder:text-muted focus:outline-none focus:border-emerald-500"
           />
         </div>
 
         <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto pb-0.5 scrollbar-none shrink-0">
           {[
-            { key: 'all', label: 'All' },
-            { key: 'active', label: 'Active / Pending' },
-            { key: 'completed', label: 'Completed' },
-            { key: 'cancelled', label: 'Cancelled / Rejected' },
+            { key: 'all', label: isRTL ? 'جميع الرحلات' : 'All' },
+            { key: 'active', label: isRTL ? 'النشطة / قيد المراجعة' : 'Active / Pending' },
+            { key: 'completed', label: isRTL ? 'المكتملة' : 'Completed' },
+            { key: 'cancelled', label: isRTL ? 'الملغية / المرفوضة' : 'Cancelled / Rejected' },
           ].map((tab) => (
             <button
               key={tab.key}
@@ -540,11 +588,13 @@ export default function CustomerBookingsPage() {
         ) : filteredBookings.length === 0 ? (
           <div className="p-8 text-center bg-card border border-base rounded-2xl space-y-2.5">
             <Car className="w-8 h-8 text-muted mx-auto" />
-            <h4 className="text-sm sm:text-base font-bold text-primary">No Bookings Found</h4>
+            <h4 className="text-sm sm:text-base font-bold text-primary">
+              {isRTL ? 'لم يتم العثور على رحلات' : 'No Bookings Found'}
+            </h4>
             <p className="text-xs text-muted max-w-sm mx-auto">
               {searchQuery || filterStatus !== 'all'
-                ? 'Try adjusting your filters or search keyword.'
-                : "You haven't requested any rides yet. Create your first luxury transfer."}
+                ? (isRTL ? 'جرّب تعديل معايير البحث أو التصفية.' : 'Try adjusting your filters or search keyword.')
+                : (isRTL ? 'لم تقم بحجز أي رحلة بعد. قم بطلب رحلتك الفاخرة الأولى الآن.' : "You haven't requested any rides yet. Create your first luxury transfer.")}
             </p>
             {!searchQuery && filterStatus === 'all' && (
               <div className="pt-1.5">
@@ -552,7 +602,7 @@ export default function CustomerBookingsPage() {
                   href="/customer"
                   className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2 rounded-xl shadow transition-colors inline-flex items-center gap-1.5"
                 >
-                  + Request New Ride
+                  {isRTL ? '+ حجز رحلة VIP جديدة' : '+ Request New Ride'}
                 </Link>
               </div>
             )}
@@ -590,21 +640,21 @@ export default function CustomerBookingsPage() {
                           : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
                       }`}
                     >
-                      {b.booking_method === 'custom' ? 'Custom Route' : 'Fixed Fare'}
+                      {b.booking_method === 'custom' ? (isRTL ? 'مسار مخصص' : 'Custom Route') : (isRTL ? 'أجرة ثابتة' : 'Fixed Fare')}
                     </span>
                     {b.trip_type === 'round_trip' && (
                       <span className="text-[9.5px] font-bold px-1.5 py-0.5 rounded border bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30">
-                        Round Trip
+                        {isRTL ? 'ذهاب وعودة' : 'Round Trip'}
                       </span>
                     )}
                     {b.scheduled_at && (
                       <span className="text-[9.5px] font-medium text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/40 px-1.5 py-0.5 rounded border border-sky-200 dark:border-sky-800/50 flex items-center gap-1">
-                        <Clock className="w-2.5 h-2.5" /> Scheduled: {formatDateTime(b.scheduled_at)}
+                        <Clock className="w-2.5 h-2.5" /> {isRTL ? 'الموعد:' : 'Scheduled:'} {formatDateTime(b.scheduled_at)}
                       </span>
                     )}
                     {b.return_scheduled_at && (
                       <span className="text-[9.5px] font-medium text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40 px-1.5 py-0.5 rounded border border-purple-200 dark:border-purple-800/50 flex items-center gap-1">
-                        <Clock className="w-2.5 h-2.5" /> Return: {formatDateTime(b.return_scheduled_at)}
+                        <Clock className="w-2.5 h-2.5" /> {isRTL ? 'العودة:' : 'Return:'} {formatDateTime(b.return_scheduled_at)}
                       </span>
                     )}
                   </div>
@@ -616,7 +666,10 @@ export default function CustomerBookingsPage() {
                   <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-start gap-2 text-xs text-amber-800 dark:text-amber-200">
                     <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
                     <div className="text-[11px]">
-                      <span className="font-bold">Awaiting Dispatcher Review:</span> Your custom itinerary has been received. Our operations dispatcher will contact you shortly via phone / WhatsApp (<strong className="text-primary">{b.passenger_phone}</strong>) to confirm vehicle availability, quote the fare, and provide payment details.
+                      <span className="font-bold">{isRTL ? 'بانتظار مراجعة العمليات:' : 'Awaiting Dispatcher Review:'}</span>{' '}
+                      {isRTL
+                        ? `تم استلام خط سير رحلتك المخصص. سيتواصل معك مشرف العمليات قريباً عبر الهاتف أو الواتساب (${b.passenger_phone}) لتأكيد توفر المركبة وتحديد الأجرة وتزويدك ببيانات الدفع.`
+                        : `Your custom itinerary has been received. Our operations dispatcher will contact you shortly via phone / WhatsApp (${b.passenger_phone}) to confirm vehicle availability, quote the fare, and provide payment details.`}
                     </div>
                   </div>
                 )}
@@ -625,7 +678,10 @@ export default function CustomerBookingsPage() {
                   <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-start gap-2 text-xs text-amber-800 dark:text-amber-200">
                     <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
                     <div className="text-[11px]">
-                      <span className="font-bold">Payment Under Dispatch Verification:</span> Our staff is validating your transferred funds proof. Once confirmed, an executive captain will be assigned to your route.
+                      <span className="font-bold">{isRTL ? 'جاري التحقق من الدفع:' : 'Payment Under Dispatch Verification:'}</span>{' '}
+                      {isRTL
+                        ? 'يقوم فريقنا بالتحقق من إيصال التحويل البنكي المرفوع. فور التأكيد، سيتم تخصيص كابتن تنفيذي لرحلتك.'
+                        : 'Our staff is validating your transferred funds proof. Once confirmed, an executive captain will be assigned to your route.'}
                     </div>
                   </div>
                 )}
@@ -634,38 +690,88 @@ export default function CustomerBookingsPage() {
                   <div className="p-2.5 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-start gap-2 text-xs text-rose-800 dark:text-rose-200">
                     <XCircle className="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />
                     <div className="text-[11px]">
-                      <span className="font-bold">Payment Proof Rejected:</span>{' '}
-                      {b.payment_rejected_reason || 'Bank reference could not be verified by dispatch.'} Please reach out to customer dispatch support or submit a new booking with clear proof.
+                      <span className="font-bold">{isRTL ? 'تم رفض إيصال الدفع:' : 'Payment Proof Rejected:'}</span>{' '}
+                      {b.payment_rejected_reason || (isRTL ? 'تعذر التحقق من الحوالة البنكية من قبل العمليات.' : 'Bank reference could not be verified by dispatch.')}{' '}
+                      {isRTL ? 'يرجى مراجعة الدعم أو إعادة رفع إيصال واضح وصحيح.' : 'Please reach out to customer dispatch support or submit a new booking with clear proof.'}
                     </div>
                   </div>
                 )}
 
                 {/* Assigned Captain Banner if Driver Assigned */}
-                {assignedDriver && (
-                  <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-between gap-2.5 text-xs flex-wrap">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-xs">
-                        {assignedDriver.profile?.full_name?.charAt(0) || assignedDriver.full_name?.charAt(0) || 'C'}
-                      </div>
-                      <div>
-                        <div className="font-bold text-primary flex items-center gap-1 text-xs">
-                          <UserCheck className="w-3 h-3 text-emerald-500" /> Assigned Captain: {assignedDriver.profile?.full_name || assignedDriver.full_name}
+                {assignedDriver && (() => {
+                  const ratingInfo = formatDriverRating(assignedDriver.rating, assignedDriver.rating_count);
+                  const driverPhone = assignedDriver.profile?.phone || assignedDriver.phone;
+                  const waNumber = driverPhone ? driverPhone.replace(/\D/g, '') : null;
+                  const vehPlate = (assignedDriver.assigned_vehicle as any)?.plate_number || (assignedDriver.vehicle as any)?.plate_number || (isRTL ? 'أسطول VIP' : 'VIP Fleet');
+                  const vehModel = (assignedDriver.assigned_vehicle as any)?.make
+                    ? `${(assignedDriver.assigned_vehicle as any).make} ${(assignedDriver.assigned_vehicle as any).model || ''}`
+                    : (assignedDriver.vehicle as any)?.make
+                    ? `${(assignedDriver.vehicle as any).make} ${(assignedDriver.vehicle as any).model || ''}`
+                    : (assignedDriver.assigned_vehicle as any)?.name || (isRTL ? 'نقل تنفيذي' : 'Executive Transport');
+
+                  return (
+                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-between gap-3 text-xs flex-wrap">
+                      <div className="flex items-center gap-3">
+                        {assignedDriver.avatar_url || assignedDriver.profile?.avatar_url ? (
+                          <img
+                            src={assignedDriver.avatar_url || assignedDriver.profile?.avatar_url || ''}
+                            alt={assignedDriver.profile?.full_name || 'Captain'}
+                            className="w-11 h-11 rounded-xl object-cover border border-emerald-500/40 shadow-sm shrink-0"
+                          />
+                        ) : (
+                          <div className="w-11 h-11 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-base shrink-0 border border-emerald-500/30">
+                            {assignedDriver.profile?.full_name?.charAt(0) || assignedDriver.full_name?.charAt(0) || 'C'}
+                          </div>
+                        )}
+                        <div className="space-y-0.5">
+                          <div className="font-bold text-primary flex items-center gap-1.5 text-xs sm:text-sm">
+                            <UserCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                            <span>{isRTL ? 'الكابتن' : 'Captain'} {assignedDriver.profile?.full_name || assignedDriver.full_name || (isRTL ? 'سائق VIP' : 'Chauffeur')}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-[11px] flex-wrap text-muted">
+                            <span className="inline-flex items-center gap-1 text-amber-500 font-bold">
+                              <Star className="w-3 h-3 fill-amber-500" />
+                              {ratingInfo.isNew ? (
+                                <span className="text-secondary font-medium">{isRTL ? 'كابتن معتمد جديد' : 'New Captain'}</span>
+                              ) : (
+                                <span>{ratingInfo.display} ({ratingInfo.countLabel})</span>
+                              )}
+                            </span>
+                            <span>&bull;</span>
+                            <span className="text-secondary font-semibold">
+                              {assignedDriver.total_rides ?? 0} {isRTL ? 'رحلة مكتملة' : 'completed rides'}
+                            </span>
+                            <span>&bull;</span>
+                            <span className="font-mono text-primary font-medium">
+                              {vehPlate} &bull; {vehModel}
+                            </span>
+                          </div>
                         </div>
-                        <div className="text-muted text-[10.5px]">
-                          {(assignedDriver.assigned_vehicle as any)?.name || (assignedDriver.assigned_vehicle as any)?.make || (assignedDriver.vehicle as any)?.make || 'VIP Vehicle'} &bull; Plate: {(assignedDriver.assigned_vehicle as any)?.plate_number || (assignedDriver.assigned_vehicle as any)?.category?.toUpperCase() || (assignedDriver.vehicle as any)?.license_plate || 'VIP KSA'}
-                        </div>
                       </div>
+
+                      {driverPhone && (
+                        <div className="flex items-center gap-1.5">
+                          <a
+                            href={`tel:${driverPhone}`}
+                            className="text-xs px-2.5 py-1.5 bg-surface hover:bg-elevated border border-base rounded-xl text-primary flex items-center gap-1 font-semibold transition-colors"
+                          >
+                            <Phone className="w-3 h-3 text-emerald-500" /> {isRTL ? 'اتصال' : 'Call'}
+                          </a>
+                          {waNumber && (
+                            <a
+                              href={`https://wa.me/${waNumber}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl flex items-center gap-1 font-semibold shadow-sm transition-colors"
+                            >
+                              <MessageSquare className="w-3 h-3" /> {isRTL ? 'واتساب' : 'WhatsApp'}
+                            </a>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    {(assignedDriver.profile?.phone || assignedDriver.phone) && (
-                      <a
-                        href={`tel:${assignedDriver.profile?.phone || assignedDriver.phone}`}
-                        className="text-xs px-2.5 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-lg text-emerald-700 dark:text-emerald-300 flex items-center gap-1 font-bold transition-colors"
-                      >
-                        <Phone className="w-3 h-3" /> Call Captain
-                      </a>
-                    )}
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* Details Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
@@ -673,15 +779,15 @@ export default function CustomerBookingsPage() {
                     <div className="flex items-start gap-2 text-secondary">
                       <MapPin className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
                       <span className="text-[11px] sm:text-xs">
-                        <strong className="text-primary">Pickup:</strong> {b.pickup_address}
+                        <strong className="text-primary">{isRTL ? 'نقطة الانطلاق:' : 'Pickup:'}</strong> {b.pickup_address}
                       </span>
                     </div>
 
                     {/* Intermediate Stops */}
                     {b.intermediate_stops && b.intermediate_stops.length > 0 && (
-                      <div className="space-y-1 pl-2.5 border-l-2 border-dashed border-cyan-500/40 my-1">
+                      <div className="space-y-1 pl-2.5 rtl:pl-0 rtl:pr-2.5 border-l-2 rtl:border-l-0 rtl:border-r-2 border-dashed border-cyan-500/40 my-1">
                         <span className="text-[9.5px] uppercase font-bold text-cyan-600 dark:text-cyan-400 block">
-                          Intermediate Stops ({b.intermediate_stops.length}):
+                          {isRTL ? `محطات التوقف الإضافية (${b.intermediate_stops.length}):` : `Intermediate Stops (${b.intermediate_stops.length}):`}
                         </span>
                         {b.intermediate_stops.map((stop, i) => (
                           <div key={stop.id || i} className="flex items-start gap-1.5 text-secondary text-[10.5px]">
@@ -697,41 +803,41 @@ export default function CustomerBookingsPage() {
                     <div className="flex items-start gap-2 text-secondary">
                       <Navigation className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
                       <span className="text-[11px] sm:text-xs">
-                        <strong className="text-primary">Dropoff:</strong> {b.destination_address}
+                        <strong className="text-primary">{isRTL ? 'الوجهة:' : 'Dropoff:'}</strong> {b.destination_address}
                       </span>
                     </div>
                     {b.notes && (
                       <div className="text-muted text-[10.5px] bg-surface/70 p-2 rounded-lg border border-base">
-                        <strong className="text-secondary">Notes:</strong> {b.notes}
+                        <strong className="text-secondary">{isRTL ? 'الملاحظات:' : 'Notes:'}</strong> {b.notes}
                       </div>
                     )}
                     {b.special_instructions && (
                       <div className="text-muted text-[10.5px] bg-surface/70 p-2 rounded-lg border border-base">
-                        <strong className="text-secondary">Special Instructions:</strong> {b.special_instructions}
+                        <strong className="text-secondary">{isRTL ? 'تعليمات خاصة:' : 'Special Instructions:'}</strong> {b.special_instructions}
                       </div>
                     )}
                     {b.dispatcher_notes && (
                       <div className="text-[10.5px] bg-amber-500/10 text-amber-800 dark:text-amber-200 p-2 rounded-lg border border-amber-500/30">
-                        <strong>Dispatcher Note:</strong> {b.dispatcher_notes}
+                        <strong>{isRTL ? 'ملاحظة المشرف:' : 'Dispatcher Note:'}</strong> {b.dispatcher_notes}
                       </div>
                     )}
                     {b.cancellation_reason && (
                       <div className="text-rose-700 dark:text-rose-300 text-[10.5px] bg-rose-50 dark:bg-rose-950/40 p-2 rounded-lg border border-rose-200 dark:border-rose-900/30">
-                        <strong>Cancellation Reason:</strong> {b.cancellation_reason}
+                        <strong>{isRTL ? 'سبب الإلغاء:' : 'Cancellation Reason:'}</strong> {b.cancellation_reason}
                       </div>
                     )}
                   </div>
 
                   {/* Pricing and Actions */}
-                  <div className="md:col-span-4 flex flex-col sm:flex-row md:flex-col items-start sm:items-end justify-between gap-2.5 text-left sm:text-right pt-2 sm:pt-0 border-t sm:border-t-0 border-base">
+                  <div className="md:col-span-4 flex flex-col sm:flex-row md:flex-col items-start sm:items-end justify-between gap-2.5 text-left sm:text-right rtl:text-right rtl:sm:text-left pt-2 sm:pt-0 border-t sm:border-t-0 border-base">
                     <div>
-                      <span className="text-[11px] text-muted block">Total Fare</span>
+                      <span className="text-[11px] text-muted block">{isRTL ? 'إجمالي الأجرة' : 'Total Fare'}</span>
                       {b.booking_method === 'custom' && !b.confirmed_fare && !b.final_fare ? (
-                        <div className="flex flex-col sm:items-end">
+                        <div className="flex flex-col sm:items-end rtl:sm:items-start">
                           <span className="text-[11px] font-bold text-amber-500 italic bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/30 inline-block">
-                            To be confirmed by dispatcher
+                            {isRTL ? 'سيتم تأكيد السعر من المشرف' : 'To be confirmed by dispatcher'}
                           </span>
-                          <span className="text-[9.5px] text-muted mt-0.5">Quotation pending review</span>
+                          <span className="text-[9.5px] text-muted mt-0.5">{isRTL ? 'التسعير قيد المراجعة' : 'Quotation pending review'}</span>
                         </div>
                       ) : (
                         <div>
@@ -740,21 +846,21 @@ export default function CustomerBookingsPage() {
                           </span>
                           {b.confirmed_fare && (
                             <span className="text-[8.5px] uppercase font-bold text-emerald-500 block">
-                              Dispatcher Confirmed
+                              {isRTL ? 'سعر معتمد من المشرف' : 'Dispatcher Confirmed'}
                             </span>
                           )}
                         </div>
                       )}
                     </div>
 
-                    <div className="flex items-center gap-1.5 flex-wrap justify-start sm:justify-end w-full sm:w-auto">
+                    <div className="flex items-center gap-1.5 flex-wrap justify-start sm:justify-end rtl:justify-start rtl:sm:justify-start w-full sm:w-auto">
                       {b.payment_screenshot_url ? (
                         <button
                           type="button"
                           onClick={() => setViewReceiptUrl(b.payment_screenshot_url!)}
                           className="bg-surface hover:bg-elevated border border-base text-secondary hover:text-primary text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
                         >
-                          <Eye className="w-3 h-3 text-amber-500" /> Payment Proof
+                          <Eye className="w-3 h-3 text-amber-500" /> {isRTL ? 'إيصال الدفع' : 'Payment Proof'}
                         </button>
                       ) : (b.confirmed_fare || b.final_fare) && b.status !== 'cancelled' && b.status !== 'rejected' ? (
                         <button
@@ -765,7 +871,7 @@ export default function CustomerBookingsPage() {
                           }}
                           className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition-colors cursor-pointer shadow-sm"
                         >
-                          <FileText className="w-3 h-3" /> Upload Proof
+                          <FileText className="w-3 h-3" /> {isRTL ? 'رفع الإيصال' : 'Upload Proof'}
                         </button>
                       ) : null}
 
@@ -778,16 +884,50 @@ export default function CustomerBookingsPage() {
                             href={`/customer/track?ref=${encodeURIComponent(b.booking_reference)}`}
                             className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 transition-colors shadow-sm"
                           >
-                            <Navigation className="w-3 h-3" /> Live Radar
+                            <Navigation className="w-3 h-3" /> {isRTL ? 'الرادار المباشر' : 'Live Radar'}
                           </Link>
                         )}
+
+                      {/* Post-Ride Rating Action for Completed Journeys */}
+                      {['trip_completed', 'completed', 'payment_completed', 'ride_completed'].includes(b.status) && (() => {
+                        const existingRating = ratings.find((r) => r.booking_id === b.id);
+                        if (existingRating) {
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => setViewReviewModal({ booking: b, rating: existingRating })}
+                              className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1 font-semibold transition-colors cursor-pointer"
+                              title={isRTL ? 'عرض التقييم المسجل' : 'View recorded review'}
+                            >
+                              <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
+                              <span>{isRTL ? `تم التقييم ${existingRating.rating}.0 ★` : `Rated ${existingRating.rating}.0 ★`}</span>
+                            </button>
+                          );
+                        }
+
+                        // Show Rate Chauffeur button if not yet rated
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRateModalBooking(b);
+                              setRateModalRatingVal(5);
+                              setRateModalFeedback('');
+                            }}
+                            className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                          >
+                            <Star className="w-3.5 h-3.5 fill-slate-950 text-slate-950" />
+                            <span>{isRTL ? 'تقييم الكابتن' : 'Rate Chauffeur'}</span>
+                          </button>
+                        );
+                      })()}
 
                       {canCancel && (
                         <button
                           onClick={() => setCancelModalBookingId(b.id)}
                           className="bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800/50 text-xs px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
                         >
-                          Cancel
+                          {isRTL ? 'إلغاء الرحلة' : 'Cancel'}
                         </button>
                       )}
                     </div>
@@ -801,16 +941,17 @@ export default function CustomerBookingsPage() {
 
       {/* Payment Proof View Modal */}
       {viewReceiptUrl && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4">
+        <div dir={dir} className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4">
           <div className="bg-card border border-base rounded-2xl p-4 sm:p-5 max-w-md w-full space-y-3 shadow-2xl relative">
             <div className="flex items-center justify-between border-b border-base pb-2.5">
               <div className="flex items-center gap-2 text-primary font-bold text-xs sm:text-sm">
-                <ShieldCheck className="w-4 h-4 text-emerald-400" /> Verified Payment Proof
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                <span>{isRTL ? 'إيصال الدفع الموثق' : 'Verified Payment Proof'}</span>
               </div>
               <button
                 onClick={() => setViewReceiptUrl(null)}
                 className="p-1 rounded-lg hover:bg-elevated text-muted hover:text-primary transition-colors cursor-pointer"
-                aria-label="Close modal"
+                aria-label={isRTL ? 'إغلاق' : 'Close modal'}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -832,13 +973,13 @@ export default function CustomerBookingsPage() {
                 rel="noreferrer"
                 className="text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 font-semibold text-xs"
               >
-                Open in new tab &rarr;
+                {isRTL ? 'فتح في علامة تبويب جديدة' : 'Open in new tab'} &rarr;
               </a>
               <button
                 onClick={() => setViewReceiptUrl(null)}
                 className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-surface hover:bg-elevated border border-base text-primary cursor-pointer transition-colors"
               >
-                Close
+                {isRTL ? 'إغلاق' : 'Close'}
               </button>
             </div>
           </div>
@@ -847,23 +988,29 @@ export default function CustomerBookingsPage() {
 
       {/* Cancel Modal */}
       {cancelModalBookingId && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-fade-in">
+        <div dir={dir} className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-fade-in">
           <div className="bg-card border border-base rounded-2xl p-4 sm:p-5 max-w-sm w-full space-y-3 shadow-2xl">
-            <h3 className="text-sm sm:text-base font-bold text-primary">Confirm Cancellation</h3>
+            <h3 className="text-sm sm:text-base font-bold text-primary">
+              {isRTL ? 'تأكيد إلغاء الحجز' : 'Confirm Cancellation'}
+            </h3>
             <p className="text-xs text-muted">
-              Are you sure you want to cancel this booking? Cancellation policy applies.
+              {isRTL
+                ? 'هل أنت متأكد من رغبتك في إلغاء هذا الحجز؟ تطبق شروط وسياسة الإلغاء.'
+                : 'Are you sure you want to cancel this booking? Cancellation policy applies.'}
             </p>
             <div className="space-y-1">
-              <label className="text-[11px] text-secondary font-semibold">Cancellation Reason</label>
+              <label className="text-[11px] text-secondary font-semibold">
+                {isRTL ? 'سبب الإلغاء' : 'Cancellation Reason'}
+              </label>
               <select
                 value={cancelReason}
                 onChange={(e) => setCancelReason(e.target.value)}
                 className="w-full bg-input border border-base rounded-xl px-3 py-1.5 h-8.5 sm:h-9 text-xs text-primary focus:outline-none focus:border-emerald-500"
               >
-                <option value="Change of travel plan">Change of travel plan</option>
-                <option value="Flight delayed / rescheduled">Flight delayed / rescheduled</option>
-                <option value="Booked by mistake">Booked by mistake</option>
-                <option value="Found alternative transport">Found alternative transport</option>
+                <option value="Change of travel plan">{isRTL ? 'تغيير في خطة السفر' : 'Change of travel plan'}</option>
+                <option value="Flight delayed / rescheduled">{isRTL ? 'تأخر أو تغيير موعد الرحلة الجوية' : 'Flight delayed / rescheduled'}</option>
+                <option value="Booked by mistake">{isRTL ? 'تم الحجز بالخطأ' : 'Booked by mistake'}</option>
+                <option value="Found alternative transport">{isRTL ? 'تم العثور على وسيلة نقل بديلة' : 'Found alternative transport'}</option>
               </select>
             </div>
             <div className="flex items-center justify-end gap-2 pt-2">
@@ -873,7 +1020,7 @@ export default function CustomerBookingsPage() {
                 disabled={isCancelling}
                 className="px-3 py-1.5 rounded-xl text-xs font-semibold text-secondary hover:text-primary hover:bg-elevated border border-base transition-colors cursor-pointer"
               >
-                Dismiss
+                {isRTL ? 'تراجع' : 'Dismiss'}
               </button>
               <button
                 type="button"
@@ -883,10 +1030,10 @@ export default function CustomerBookingsPage() {
               >
                 {isCancelling ? (
                   <>
-                    <Loader2 className="w-3 h-3 animate-spin" /> Cancelling…
+                    <Loader2 className="w-3 h-3 animate-spin" /> {isRTL ? 'جاري الإلغاء...' : 'Cancelling…'}
                   </>
                 ) : (
-                  'Confirm Cancel'
+                  isRTL ? 'تأكيد الإلغاء' : 'Confirm Cancel'
                 )}
               </button>
             </div>
@@ -896,15 +1043,16 @@ export default function CustomerBookingsPage() {
 
       {/* Upload Payment Proof Modal */}
       {paymentUploadBooking && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-fade-in">
+        <div dir={dir} className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-fade-in">
           <div className="bg-card border border-base rounded-2xl p-4 sm:p-5 max-w-md w-full space-y-3 shadow-2xl">
             <div className="flex items-center justify-between border-b border-base pb-2.5">
               <div>
                 <h3 className="text-sm sm:text-base font-bold text-primary flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-emerald-500" /> Upload Payment Receipt
+                  <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                  <span>{isRTL ? 'رفع إيصال التحويل البنكي' : 'Upload Payment Receipt'}</span>
                 </h3>
                 <p className="text-[10.5px] text-muted">
-                  Booking Ref:{' '}
+                  {isRTL ? 'رقم الحجز: ' : 'Booking Ref: '}
                   <strong className="text-amber-500 font-mono">
                     {paymentUploadBooking.booking_reference}
                   </strong>
@@ -921,7 +1069,7 @@ export default function CustomerBookingsPage() {
 
             <div className="p-2.5 bg-surface rounded-xl border border-base space-y-1 text-xs">
               <div className="flex justify-between">
-                <span className="text-muted">Confirmed Fare:</span>
+                <span className="text-muted">{isRTL ? 'الأجرة المؤكدة:' : 'Confirmed Fare:'}</span>
                 <strong className="text-emerald-500 font-black">
                   {formatCurrency(
                     paymentUploadBooking.confirmed_fare || paymentUploadBooking.final_fare || 0,
@@ -931,7 +1079,7 @@ export default function CustomerBookingsPage() {
               </div>
               {paymentUploadBooking.dispatcher_notes && (
                 <div className="text-[10.5px] text-secondary pt-1 border-t border-base/50">
-                  <span className="text-muted">Payment note: </span>
+                  <span className="text-muted">{isRTL ? 'ملاحظة السداد: ' : 'Payment note: '}</span>
                   {paymentUploadBooking.dispatcher_notes}
                 </div>
               )}
@@ -940,7 +1088,7 @@ export default function CustomerBookingsPage() {
             <form onSubmit={handleUploadPaymentSubmit} className="space-y-3">
               <div>
                 <label className="block text-xs font-bold text-primary mb-1">
-                  Select Transfer Screenshot / Receipt (PNG, JPG, WebP)
+                  {isRTL ? 'اختر صورة الإيصال (PNG, JPG, WebP)' : 'Select Transfer Screenshot / Receipt (PNG, JPG, WebP)'}
                 </label>
                 <input
                   type="file"
@@ -950,7 +1098,7 @@ export default function CustomerBookingsPage() {
                     const f = e.target.files?.[0];
                     if (f) setUploadFile(f);
                   }}
-                  className="w-full text-xs text-secondary file:mr-2.5 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-500/10 file:text-emerald-500 hover:file:bg-emerald-500/20 cursor-pointer"
+                  className="w-full text-xs text-secondary file:mr-2.5 rtl:file:mr-0 rtl:file:ml-2.5 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-500/10 file:text-emerald-500 hover:file:bg-emerald-500/20 cursor-pointer"
                 />
               </div>
 
@@ -960,20 +1108,237 @@ export default function CustomerBookingsPage() {
                   onClick={() => setPaymentUploadBooking(null)}
                   className="px-3 py-1.5 rounded-xl text-xs font-semibold text-secondary hover:text-primary hover:bg-elevated border border-base transition-colors cursor-pointer"
                 >
-                  Cancel
+                  {isRTL ? 'إلغاء' : 'Cancel'}
                 </button>
                 <button
                   type="submit"
                   disabled={!uploadFile || isUploading}
                   className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow transition-colors disabled:opacity-50 cursor-pointer"
                 >
-                  {isUploading ? 'Uploading…' : 'Submit Receipt'}
+                  {isUploading ? (isRTL ? 'جاري الرفع...' : 'Uploading…') : (isRTL ? 'إرسال الإيصال' : 'Submit Receipt')}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      {/* Rate Chauffeur Modal */}
+      {rateModalBooking && (() => {
+        const modalDriver =
+          rateModalBooking.driver ||
+          (rateModalBooking.assigned_driver_id ? drivers.find((d) => d.id === rateModalBooking.assigned_driver_id) : undefined);
+        const driverName = modalDriver?.profile?.full_name || modalDriver?.full_name || (isRTL ? 'الكابتن التنفيذي' : 'Executive Chauffeur');
+
+        return (
+          <div dir={dir} className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-fade-in">
+            <div className="bg-card border border-base rounded-2xl p-5 max-w-md w-full space-y-4 shadow-2xl relative">
+              <div className="flex items-center justify-between border-b border-base pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-primary">{isRTL ? 'تقييم رحلتك الفاخرة' : 'Rate Your Journey'}</h3>
+                    <p className="text-[11px] text-muted font-mono">{rateModalBooking.booking_reference}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRateModalBooking(null)}
+                  className="p-1 rounded-lg text-muted hover:text-primary hover:bg-surface transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Driver & Trip dossier */}
+              <div className="p-3 bg-surface rounded-xl border border-base flex items-center gap-3">
+                {modalDriver?.avatar_url || modalDriver?.profile?.avatar_url ? (
+                  <img
+                    src={modalDriver.avatar_url || modalDriver.profile?.avatar_url || ''}
+                    alt={driverName}
+                    className="w-10 h-10 rounded-full object-cover border border-base"
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center font-bold text-sm">
+                    {driverName.slice(0, 1)}
+                  </div>
+                )}
+                <div className="text-xs">
+                  <div className="font-bold text-primary">{driverName}</div>
+                  <div className="text-[11px] text-muted">
+                    {rateModalBooking.pickup_address} &rarr; {rateModalBooking.destination_address}
+                  </div>
+                </div>
+              </div>
+
+              {/* Rating Form */}
+              <form onSubmit={handleRatingSubmitModal} className="space-y-4">
+                <div className="text-center space-y-1.5">
+                  <span className="text-xs font-semibold text-secondary">
+                    {isRTL ? 'كيف كانت تجربتك في هذه الرحلة؟' : 'How would you rate this ride?'}
+                  </span>
+                  <div className="flex items-center justify-center gap-2 py-1">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setRateModalRatingVal(star)}
+                        className="text-2xl transition-transform hover:scale-125 cursor-pointer"
+                        title={`${star} Star${star > 1 ? 's' : ''}`}
+                      >
+                        <Star
+                          className={`w-7 h-7 ${
+                            star <= rateModalRatingVal
+                              ? 'text-amber-500 fill-amber-500'
+                              : 'text-slate-300 dark:text-slate-600'
+                          }`}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                  <span className="text-xs font-bold text-amber-500">
+                    {rateModalRatingVal === 5
+                      ? (isRTL ? '5.0 ★ خدمة VIP استثنائية' : '5.0 ★ Exceptional VIP Service')
+                      : rateModalRatingVal === 4
+                      ? (isRTL ? '4.0 ★ جيد جداً' : '4.0 ★ Very Good')
+                      : rateModalRatingVal === 3
+                      ? (isRTL ? '3.0 ★ مرضي' : '3.0 ★ Satisfactory')
+                      : rateModalRatingVal === 2
+                      ? (isRTL ? '2.0 ★ يحتاج تحسين' : '2.0 ★ Needs Improvement')
+                      : (isRTL ? '1.0 ★ ضعيف' : '1.0 ★ Poor')}
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-primary mb-1">
+                    {isRTL ? 'ملاحظاتك وتعليقك (اختياري)' : 'Your Review & Comments (Optional)'}
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={rateModalFeedback}
+                    onChange={(e) => setRateModalFeedback(e.target.value)}
+                    placeholder={isRTL ? 'شاركنا تفاصيل تجربتك مع الكابتن والخدمة...' : 'Share details of your experience with this chauffeur...'}
+                    className="w-full bg-input border border-base rounded-xl p-2.5 text-xs text-primary focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-1 border-t border-base">
+                  <button
+                    type="button"
+                    onClick={() => setRateModalBooking(null)}
+                    className="px-3.5 py-2 rounded-xl text-xs font-semibold text-secondary hover:text-primary hover:bg-elevated border border-base transition-colors cursor-pointer"
+                  >
+                    {isRTL ? 'إلغاء' : 'Cancel'}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingRating}
+                    className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow transition-colors disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+                  >
+                    {isSubmittingRating ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>{isRTL ? 'جاري الإرسال...' : 'Submitting…'}</span>
+                      </>
+                    ) : (
+                      isRTL ? 'إرسال التقييم' : 'Submit Review'
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* View Recorded Review Modal */}
+      {viewReviewModal && (() => {
+        const { booking: b, rating: r } = viewReviewModal;
+        const modalDriver =
+          b.driver || (b.assigned_driver_id ? drivers.find((d) => d.id === b.assigned_driver_id) : undefined);
+        const driverName = modalDriver?.profile?.full_name || modalDriver?.full_name || (isRTL ? 'الكابتن التنفيذي' : 'Executive Chauffeur');
+
+        return (
+          <div dir={dir} className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-fade-in">
+            <div className="bg-card border border-base rounded-2xl p-5 max-w-md w-full space-y-4 shadow-2xl relative">
+              <div className="flex items-center justify-between border-b border-base pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 flex items-center justify-center">
+                    <CheckCircle2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-primary">{isRTL ? 'تم تسجيل تقييم الرحلة' : 'Journey Review Recorded'}</h3>
+                    <p className="text-[11px] text-muted font-mono">{b.booking_reference}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setViewReviewModal(null)}
+                  className="p-1 rounded-lg text-muted hover:text-primary hover:bg-surface transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Thank you banner */}
+              <div className="p-3.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800/40 rounded-xl text-center space-y-1">
+                <div className="text-xs text-emerald-800 dark:text-emerald-300 font-bold flex items-center justify-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <span>{isRTL ? 'شكراً لك! تم حفظ تقييمك بنجاح' : 'Thank you! Your review has been recorded'}</span>
+                </div>
+                <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                  {isRTL ? 'تم التسجيل في ' : 'Recorded on '} {formatDateTime(r.created_at)}
+                </p>
+              </div>
+
+              {/* Review details */}
+              <div className="p-3.5 bg-surface border border-base rounded-xl space-y-2.5 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted">{isRTL ? 'الكابتن:' : 'Chauffeur:'}</span>
+                  <span className="font-bold text-primary">{driverName}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted">{isRTL ? 'تقييمك:' : 'Your Rating:'}</span>
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Star
+                        key={star}
+                        className={`w-4 h-4 ${
+                          star <= r.rating ? 'text-amber-500 fill-amber-500' : 'text-slate-300 dark:text-slate-600'
+                        }`}
+                      />
+                    ))}
+                    <span className="font-bold text-amber-500 ml-1">{r.rating}.0 ★</span>
+                  </div>
+                </div>
+                {r.feedback && (
+                  <div className="pt-2 border-t border-base/60">
+                    <span className="text-muted block text-[11px] mb-1">{isRTL ? 'تعليقك:' : 'Your Comment:'}</span>
+                    <p className="text-primary italic bg-input p-2 rounded-lg border border-base">
+                      &ldquo;{r.feedback}&rdquo;
+                    </p>
+                  </div>
+                )}
+                <div className="text-[10px] text-muted text-center pt-1">
+                  {isRTL ? 'تقييم واحد لكل رحلة مكتملة • محفوظ بصورة آمنة' : '1 review per completed ride policy • Permanently stored in Supabase'}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end pt-1">
+                <button
+                  type="button"
+                  onClick={() => setViewReviewModal(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-surface hover:bg-elevated text-primary border border-base transition-colors cursor-pointer"
+                >
+                  {isRTL ? 'إغلاق' : 'Close'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

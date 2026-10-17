@@ -31,6 +31,7 @@ import BrandLogo from '@/components/ui/BrandLogo';
 import CustomerMobileSidebar from '@/components/customer/CustomerMobileSidebar';
 import AdminMobileSidebar from '@/components/admin/AdminMobileSidebar';
 import UserProfileDropdown from '@/components/layout/UserProfileDropdown';
+import { useLanguage } from '@/context/LanguageContext';
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -1063,16 +1064,17 @@ function NotificationDropdownContent({
   markNotificationAsRead,
   clearNotifications,
 }: NotificationDropdownProps) {
+  const { dir, isRTL } = useLanguage();
   return (
-    <div className="bg-white text-slate-900">
+    <div className="bg-white text-slate-900" dir={dir}>
       {/* Header */}
       <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
         <span className="text-xs font-bold text-slate-800 flex items-center gap-2">
           <Bell className="w-3.5 h-3.5 text-amber-500" />
-          Notifications
+          {isRTL ? 'الإشعارات' : 'Notifications'}
           {unreadCount > 0 && (
             <span className="px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold">
-              {unreadCount} new
+              {unreadCount} {isRTL ? 'جديد' : 'new'}
             </span>
           )}
         </span>
@@ -1081,7 +1083,7 @@ function NotificationDropdownContent({
             onClick={clearNotifications}
             className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 hover:underline cursor-pointer"
           >
-            Clear all
+            {isRTL ? 'مسح الكل' : 'Clear all'}
           </button>
         )}
       </div>
@@ -1092,10 +1094,10 @@ function NotificationDropdownContent({
           <div className="p-8 text-center bg-white">
             <Bell className="w-8 h-8 text-slate-300 mx-auto mb-2" />
             <p className="text-xs font-semibold text-slate-700">
-              You&apos;re all caught up
+              {isRTL ? 'لا توجد إشعارات حالياً' : "You're all caught up"}
             </p>
             <p className="text-[11px] text-slate-500 mt-1">
-              Trip updates will appear here
+              {isRTL ? 'ستظهر تحديثات الرحلة هنا فور توفرها' : 'Trip updates will appear here'}
             </p>
           </div>
         ) : (
@@ -1104,7 +1106,7 @@ function NotificationDropdownContent({
               key={n.id}
               type="button"
               onClick={() => markNotificationAsRead(n.id)}
-              className={`w-full text-left px-4 py-3 text-xs transition-colors cursor-pointer ${
+              className={`w-full text-left rtl:text-right px-4 py-3 text-xs transition-colors cursor-pointer ${
                 n.read
                   ? 'bg-white text-slate-600 hover:bg-slate-50'
                   : 'bg-emerald-50/70 text-slate-900 hover:bg-emerald-50 font-medium'

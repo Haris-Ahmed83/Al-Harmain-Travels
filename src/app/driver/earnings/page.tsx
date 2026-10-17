@@ -99,8 +99,14 @@ export default function DriverEarningsPage() {
             <span className="text-xs font-bold uppercase tracking-wider">Quality Score</span>
             <Star className="w-5 h-5 fill-amber-500" />
           </div>
-          <span className="type-page-title">★ {currentDriver.rating}</span>
-          <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-2 font-medium">Eligible for VIP Pilgrim Missions</p>
+          <span className="type-page-title">
+            ★ {currentDriver.rating !== null && currentDriver.rating !== undefined ? Number(currentDriver.rating).toFixed(1) : 'New'}
+          </span>
+          <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-2 font-medium">
+            {currentDriver.rating !== null && currentDriver.rating !== undefined
+              ? (currentDriver.rating_count ? `${currentDriver.rating_count} verified reviews • MOT Eligible` : 'Eligible for VIP Pilgrim Missions')
+              : 'Verified Chauffeur • Awaiting First Rating'}
+          </p>
         </div>
       </div>
 

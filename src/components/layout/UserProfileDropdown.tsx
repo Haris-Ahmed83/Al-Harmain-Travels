@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { BrandEmblem } from '@/components/ui/BrandLogo';
 import { toast } from 'sonner';
+import { useLanguage } from '@/context/LanguageContext';
 
 interface UserProfileDropdownProps {
   /** Optional custom class for the outer wrapper */
@@ -34,6 +35,7 @@ export default function UserProfileDropdown({
 }: UserProfileDropdownProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const { t, language, dir, isRTL } = useLanguage();
   const {
     currentUser,
     userRole,
@@ -227,14 +229,14 @@ export default function UserProfileDropdown({
   const getFormattedRole = (role: UserRole): string => {
     switch (role) {
       case 'admin':
-        return 'Admin';
+        return isRTL ? 'المشرف العام' : 'Admin';
       case 'dispatcher':
-        return 'Dispatcher';
+        return isRTL ? 'الترحيل والعمليات' : 'Dispatcher';
       case 'driver':
-        return 'Driver';
+        return isRTL ? 'سائق VIP' : 'Driver';
       case 'customer':
       default:
-        return 'Customer';
+        return isRTL ? 'عميل VIP' : 'Customer';
     }
   };
 
@@ -356,11 +358,12 @@ export default function UserProfileDropdown({
               : undefined
           }
           className="rounded-2xl bg-white text-slate-900 border border-slate-200/90 shadow-xl shadow-slate-900/10 z-[100] overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150 p-4 select-none"
+          dir={dir}
         >
           {isAuthLoading ? (
             <div className="py-8 flex flex-col items-center justify-center gap-2.5 text-slate-500 text-xs">
               <Loader2 className="w-5 h-5 animate-spin text-emerald-600" />
-              <span>Verifying account status...</span>
+              <span>{isRTL ? 'التحقق من حالة الحساب...' : 'Verifying account status...'}</span>
             </div>
           ) : isAuthenticated ? (
             <>
@@ -385,13 +388,13 @@ export default function UserProfileDropdown({
                   {/* User Email & Identity Details */}
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-normal text-slate-500 leading-tight">
-                      Signed in as
+                      {isRTL ? 'مسجل الدخول باسم' : 'Signed in as'}
                     </p>
                     <p
                       className="text-sm font-semibold text-slate-900 truncate mt-0.5 tracking-tight"
                       title={resolvedEmail}
                     >
-                      {resolvedEmail || 'Verified User'}
+                      {resolvedEmail || (isRTL ? 'مستخدم موثق' : 'Verified User')}
                     </p>
 
                     {/* Compact Role Badge matching reference design */}
@@ -419,7 +422,7 @@ export default function UserProfileDropdown({
                   className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:text-slate-950 hover:bg-slate-50 active:bg-slate-100 transition-colors focus:outline-none focus:bg-slate-50 focus:ring-1 focus:ring-emerald-500/20"
                 >
                   <LayoutDashboard className="w-4 h-4 text-slate-500 shrink-0" />
-                  <span>Dashboard</span>
+                  <span>{isRTL ? 'لوحة التحكم' : 'Dashboard'}</span>
                 </Link>
 
                 {/* 2. My Profile */}
@@ -430,7 +433,7 @@ export default function UserProfileDropdown({
                   className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:text-slate-950 hover:bg-slate-50 active:bg-slate-100 transition-colors focus:outline-none focus:bg-slate-50 focus:ring-1 focus:ring-emerald-500/20"
                 >
                   <User className="w-4 h-4 text-slate-500 shrink-0" />
-                  <span>My Profile</span>
+                  <span>{isRTL ? 'الملف الشخصي' : 'My Profile'}</span>
                 </Link>
 
                 <div className="my-1 border-t border-slate-100" />
@@ -441,14 +444,14 @@ export default function UserProfileDropdown({
                   role="menuitem"
                   disabled={isSigningOut}
                   onClick={handleSignOut}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-rose-500 hover:text-rose-600 hover:bg-rose-50/70 active:bg-rose-100/60 transition-colors text-left cursor-pointer disabled:opacity-50 focus:outline-none focus:bg-rose-50/70 focus:ring-1 focus:ring-rose-500/20"
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-rose-500 hover:text-rose-600 hover:bg-rose-50/70 active:bg-rose-100/60 transition-colors text-left rtl:text-right cursor-pointer disabled:opacity-50 focus:outline-none focus:bg-rose-50/70 focus:ring-1 focus:ring-rose-500/20"
                 >
                   {isSigningOut ? (
                     <Loader2 className="w-4 h-4 animate-spin text-rose-500 shrink-0" />
                   ) : (
-                    <LogOut className="w-4 h-4 text-rose-500 shrink-0" />
+                    <LogOut className={`w-4 h-4 text-rose-500 shrink-0 ${isRTL ? 'rotate-180' : ''}`} />
                   )}
-                  <span>Sign Out</span>
+                  <span>{isSigningOut ? (isRTL ? 'جاري تسجيل الخروج...' : 'Signing out...') : (isRTL ? 'تسجيل الخروج' : 'Sign Out')}</span>
                 </button>
               </div>
             </>
@@ -462,15 +465,15 @@ export default function UserProfileDropdown({
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-normal text-slate-500 leading-tight">
-                      Welcome Guest
+                      {isRTL ? 'مرحباً بالضيف الكريم' : 'Welcome Guest'}
                     </p>
                     <p className="text-sm font-semibold text-slate-900 truncate mt-0.5 tracking-tight">
-                      Al Harmain Travels
+                      {isRTL ? 'شركة الحرمين للنقل' : 'Al Harmain Travels'}
                     </p>
                     <div className="mt-1.5 flex items-center">
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-medium border bg-[#edf5ef] text-[#244b32] border-[#cde2d3] shadow-2xs">
                         <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-[#244b32]" />
-                        <span>VIP Guest</span>
+                        <span>{isRTL ? 'ضيف VIP' : 'VIP Guest'}</span>
                       </span>
                     </div>
                   </div>
@@ -485,8 +488,8 @@ export default function UserProfileDropdown({
                   onClick={() => setIsOpen(false)}
                   className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50/80 active:bg-emerald-100/70 transition-colors focus:outline-none focus:bg-emerald-50/80"
                 >
-                  <LogIn className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>Sign In</span>
+                  <LogIn className={`w-4 h-4 text-emerald-600 shrink-0 ${isRTL ? 'rotate-180' : ''}`} />
+                  <span>{isRTL ? 'تسجيل الدخول' : 'Sign In'}</span>
                 </Link>
 
                 <Link
@@ -496,17 +499,17 @@ export default function UserProfileDropdown({
                   className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-amber-700 hover:text-amber-800 hover:bg-amber-50/80 active:bg-amber-100/70 transition-colors focus:outline-none focus:bg-amber-50/80"
                 >
                   <UserPlus className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>Create Account</span>
+                  <span>{isRTL ? 'إنشاء حساب جديد' : 'Create Account'}</span>
                 </Link>
               </div>
 
               {/* Discreet Brand Footer */}
               <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400">
                 <div className="flex items-center gap-1.5">
-                  <BrandEmblem size="xs" className="scale-75 origin-left" />
-                  <span className="font-semibold text-slate-600">Al Harmain Travels</span>
+                  <BrandEmblem size="xs" className="scale-75 origin-left rtl:origin-right" />
+                  <span className="font-semibold text-slate-600">{isRTL ? 'شركة الحرمين للنقل الفاخر' : 'Al Harmain Travels'}</span>
                 </div>
-                <span>Licensed Chauffeur</span>
+                <span>{isRTL ? 'نقل مرخص ومعتمد' : 'Licensed Chauffeur'}</span>
               </div>
             </>
           )}

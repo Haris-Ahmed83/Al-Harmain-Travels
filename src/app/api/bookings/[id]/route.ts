@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase/client';
 import { calculateDistanceKm, estimateDurationMinutes } from '@/lib/geo';
+import { fetchDriverDetails } from '@/lib/driver-stats';
 
 export async function GET(
   req: NextRequest,
@@ -43,10 +44,13 @@ export async function GET(
     let etaMinutes = null;
     let etaFormatted = null;
 
-    if (booking.assigned_driver) {
-      const d = booking.assigned_driver;
-      const driverLat = d.location?.latitude ?? 21.4225;
-      const driverLng = d.location?.longitude ?? 39.8262;
+    const driverId = booking.assigned_driver_id || booking.assigned_driver?.id;
+    if (driverId) {
+      const enrichedDriver = await fetchDriverDetails(supabase, driverId);
+      const d = enrichedDriver || booking.assigned_driver;
+
+      const driverLat = d?.location?.latitude ?? 21.4225;
+      const driverLng = d?.location?.longitude ?? 39.8262;
       const pickupLat = booking.pickup_latitude ?? driverLat;
       const pickupLng = booking.pickup_longitude ?? driverLng;
 
@@ -60,16 +64,18 @@ export async function GET(
 
       sanitizedDriver = {
         id: d.id,
-        name: d.profile?.full_name || 'Captain',
-        photo: d.profile?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-        rating: Number(d.rating) || 5.0,
+        name: d.profile?.full_name || d.full_name || 'Captain',
+        phone: d.profile?.phone || d.phone || null,
+        photo: d.avatar_url || d.profile?.avatar_url || null,
+        rating: d.rating !== null && d.rating !== undefined ? Number(d.rating) : null,
+        rating_count: d.rating_count ?? 0,
         totalRides: Number(d.total_rides) || 0,
         vehicle: d.assigned_vehicle ? {
-          make: d.assigned_vehicle.name,
-          model: `(${d.assigned_vehicle.seating_capacity} Seats)`,
-          color: 'Obsidian Black',
-          plateNumber: d.assigned_vehicle.category?.toUpperCase() || 'VIP KSA',
-          vehicleType: d.assigned_vehicle.category,
+          make: d.assigned_vehicle.make || (d.assigned_vehicle as any).name,
+          model: d.assigned_vehicle.model || `(${d.assigned_vehicle.seating_capacity} Seats)`,
+          color: d.assigned_vehicle.color || 'Obsidian Black',
+          plateNumber: d.assigned_vehicle.plate_number || 'KSA 3312',
+          vehicleType: d.assigned_vehicle.vehicle_type,
         } : null,
         location: {
           latitude: driverLat,

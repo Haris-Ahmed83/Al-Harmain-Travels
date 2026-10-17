@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
+import { useLanguage } from '@/context/LanguageContext';
 import { EmergencyContact, Profile } from '@/types';
 import { isBookingForCustomer } from '@/lib/assignment-utils';
 import {
@@ -48,6 +49,7 @@ export default function CustomerProfilePage() {
     isDataLoading,
   } = useApp();
 
+  const { language, setLanguage, dir, isRTL, t } = useLanguage();
   const router = useRouter();
 
   // Tab State
@@ -57,7 +59,6 @@ export default function CustomerProfilePage() {
   const [fullName, setFullName] = useState(currentUser.full_name);
   const [dateOfBirth, setDateOfBirth] = useState(currentUser.date_of_birth || '');
   const [gender, setGender] = useState<'male' | 'female' | 'other'>(currentUser.gender || 'male');
-  const [preferredLang, setPreferredLang] = useState('en');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   // Sync profile form state when currentUser loads from Supabase
@@ -140,7 +141,7 @@ export default function CustomerProfilePage() {
   const handleSavePersonalInfo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fullName.trim() || fullName.trim().length < 3) {
-      toast.error('Please enter a valid legal name (at least 3 characters).');
+      toast.error(isRTL ? 'يرجى إدخال اسم قانوني صالح (3 أحرف على الأقل).' : 'Please enter a valid legal name (at least 3 characters).');
       return;
     }
 
@@ -149,6 +150,7 @@ export default function CustomerProfilePage() {
       full_name: fullName.trim(),
       date_of_birth: dateOfBirth,
       gender,
+      preferred_language: language,
     });
     setIsSavingProfile(false);
   };
@@ -320,8 +322,8 @@ export default function CustomerProfilePage() {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="absolute -bottom-1 -right-1 p-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md transition-transform group-hover:scale-110 cursor-pointer"
-              title="Change Profile Photo"
+              className={`absolute -bottom-1 ${isRTL ? '-left-1' : '-right-1'} p-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md transition-transform group-hover:scale-110 cursor-pointer`}
+              title={t('profile.changePhoto', 'Change Profile Photo')}
             >
               <Camera className="w-3 h-3" />
             </button>
@@ -338,11 +340,11 @@ export default function CustomerProfilePage() {
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-base sm:text-lg font-bold text-primary">{currentUser.full_name}</h1>
               <span className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full">
-                Verified Pilgrim
+                {t('vipPilgrim', 'VIP Pilgrim')}
               </span>
             </div>
-            <p className="text-xs text-muted">{currentUser.email || 'Verified Customer'}</p>
-            <p className="text-[11px] text-secondary font-mono pt-0.5">{currentUser.phone || 'No phone set'}</p>
+            <p className="text-xs text-muted">{currentUser.email || (isRTL ? 'عميل موثق' : 'Verified Customer')}</p>
+            <p className="text-[11px] text-secondary font-mono pt-0.5">{currentUser.phone || (isRTL ? 'لم يُسجل هاتف' : 'No phone set')}</p>
           </div>
         </div>
 
@@ -350,7 +352,7 @@ export default function CustomerProfilePage() {
         <div className="flex flex-row md:flex-col items-center md:items-end gap-1.5 shrink-0">
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface border border-base text-[11px] font-semibold text-secondary">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-            <span>Customer ID: #{currentUser.id.slice(-6).toUpperCase()}</span>
+            <span>{isRTL ? 'معرّف العميل' : 'Customer ID'}: #{currentUser.id.slice(-6).toUpperCase()}</span>
           </div>
           {currentUser.avatar_url && (
             <button
@@ -359,7 +361,7 @@ export default function CustomerProfilePage() {
               className="text-[11px] text-rose-500 hover:text-rose-400 hover:underline inline-flex items-center gap-1 cursor-pointer"
             >
               <Trash2 className="w-3 h-3" />
-              Remove photo
+              {t('profile.removePhoto', 'Remove photo')}
             </button>
           )}
         </div>
@@ -376,7 +378,7 @@ export default function CustomerProfilePage() {
           }`}
         >
           <User className="w-3.5 h-3.5" />
-          <span>Personal Information</span>
+          <span>{t('profile.tabPersonal', 'Personal Information')}</span>
         </button>
 
         <button
@@ -388,7 +390,7 @@ export default function CustomerProfilePage() {
           }`}
         >
           <Phone className="w-3.5 h-3.5" />
-          <span>Emergency Contacts ({emergencyContacts.length})</span>
+          <span>{t('profile.tabEmergency', 'Emergency Contacts')} ({emergencyContacts.length})</span>
         </button>
 
         <button
@@ -400,7 +402,7 @@ export default function CustomerProfilePage() {
           }`}
         >
           <Lock className="w-3.5 h-3.5" />
-          <span>Security &amp; Password</span>
+          <span>{t('profile.tabSecurity', 'Security & Password')}</span>
         </button>
 
         <button
@@ -412,7 +414,7 @@ export default function CustomerProfilePage() {
           }`}
         >
           <Sparkles className="w-3.5 h-3.5" />
-          <span>Account &amp; Pilgrim Tier</span>
+          <span>{t('profile.tabStatus', 'Account & Pilgrim Tier')}</span>
         </button>
       </div>
 
@@ -424,7 +426,7 @@ export default function CustomerProfilePage() {
             <div className="surface-card p-4 sm:p-5 rounded-2xl space-y-3 sm:space-y-3.5">
               <h3 className="text-xs sm:text-sm font-bold text-primary flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                <span>Verification Badges</span>
+                <span>{isRTL ? 'شارات التحقق والاعتماد' : 'Verification Badges'}</span>
               </h3>
 
               <div className="space-y-2.5 text-xs">
@@ -433,18 +435,18 @@ export default function CustomerProfilePage() {
                   <div className="flex items-center justify-between">
                     <span className="text-secondary font-semibold flex items-center gap-1.5 text-[11px]">
                       <Mail className="w-3.5 h-3.5 text-emerald-500" />
-                      Email Status
+                      {isRTL ? 'حالة البريد' : 'Email Status'}
                     </span>
                     {currentUser.email_verified !== false ? (
                       <span className="text-emerald-500 font-bold flex items-center gap-1 text-[10px]">
                         <CheckCircle2 className="w-3 h-3" />
-                        Verified
+                        {isRTL ? 'تم التحقق' : 'Verified'}
                       </span>
                     ) : (
-                      <span className="text-amber-500 font-bold text-[10px]">Unverified</span>
+                      <span className="text-amber-500 font-bold text-[10px]">{isRTL ? 'غير مؤكد' : 'Unverified'}</span>
                     )}
                   </div>
-                  <p className="text-[11px] text-muted truncate">{currentUser.email || 'Verified Customer'}</p>
+                  <p className="text-[11px] text-muted truncate">{currentUser.email || (isRTL ? 'عميل موثق' : 'Verified Customer')}</p>
                 </div>
 
                 {/* Phone Card */}
@@ -452,14 +454,14 @@ export default function CustomerProfilePage() {
                   <div className="flex items-center justify-between">
                     <span className="text-secondary font-semibold flex items-center gap-1.5 text-[11px]">
                       <Phone className="w-3.5 h-3.5 text-amber-500" />
-                      Contact Phone
+                      {t('profile.phoneNumber', 'Contact Phone')}
                     </span>
                     <span className="text-emerald-500 font-bold flex items-center gap-1 text-[10px]">
                       <CheckCircle2 className="w-3 h-3" />
-                      Active
+                      {isRTL ? 'نشط' : 'Active'}
                     </span>
                   </div>
-                  <p className="text-[11px] font-mono text-muted">{currentUser.phone || 'None recorded'}</p>
+                  <p className="text-[11px] font-mono text-muted">{currentUser.phone || t('profile.noneRecorded', 'None recorded')}</p>
 
                   <button
                     type="button"
@@ -467,7 +469,7 @@ export default function CustomerProfilePage() {
                     className="w-full py-1.5 px-3 rounded-xl bg-card hover:bg-elevated border border-base text-amber-600 dark:text-amber-400 font-bold text-[11px] transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                   >
                     <Edit2 className="w-3 h-3" />
-                    <span>Change Phone Number</span>
+                    <span>{t('profile.changePhone', 'Change Phone Number')}</span>
                   </button>
                 </div>
               </div>
@@ -477,31 +479,36 @@ export default function CustomerProfilePage() {
             <div className="surface-card p-4 sm:p-5 rounded-2xl space-y-3 text-xs">
               <h3 className="text-xs sm:text-sm font-bold text-primary flex items-center gap-2">
                 <Globe className="w-4 h-4 text-teal-500" />
-                <span>Preferred Language</span>
+                <span>{t('profile.preferredLanguage', 'Preferred Language')}</span>
               </h3>
-              <p className="text-[11px] text-muted">Captain &amp; Dispatcher communication language:</p>
-              <div className="grid grid-cols-3 gap-2">
+              <p className="text-[11px] text-muted">
+                {t('profile.languageDesc', 'Captain & Dispatcher communication language:')}
+              </p>
+              <div className="grid grid-cols-2 gap-2.5">
                 {[
-                  { id: 'en', label: 'English' },
-                  { id: 'ar', label: 'العربية' },
-                  { id: 'ur', label: 'اردو' },
-                ].map((l) => (
-                  <button
-                    key={l.id}
-                    type="button"
-                    onClick={() => {
-                      setPreferredLang(l.id);
-                      toast.success(`Language preference set to ${l.label}`);
-                    }}
-                    className={`py-1.5 px-2 rounded-xl border text-center text-xs font-bold transition-colors cursor-pointer ${
-                      preferredLang === l.id
-                        ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
-                        : 'bg-surface border-base text-secondary hover:bg-elevated'
-                    }`}
-                  >
-                    {l.label}
-                  </button>
-                ))}
+                  { id: 'en', label: 'English', native: 'English' },
+                  { id: 'ar', label: 'العربية (Arabic)', native: 'العربية' },
+                ].map((l) => {
+                  const isSelected = language === l.id;
+                  return (
+                    <button
+                      key={l.id}
+                      type="button"
+                      id={`lang-select-${l.id}`}
+                      onClick={async () => {
+                        await setLanguage(l.id);
+                      }}
+                      className={`py-2 px-3 rounded-xl border text-center text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                        isSelected
+                          ? 'bg-emerald-600 text-white border-emerald-500 shadow-md ring-2 ring-emerald-500/20'
+                          : 'bg-surface border-base text-secondary hover:bg-elevated hover:border-emerald-500/30'
+                      }`}
+                    >
+                      <span>{l.label}</span>
+                      {isSelected && <Check className="w-3.5 h-3.5 text-white shrink-0" />}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -509,24 +516,24 @@ export default function CustomerProfilePage() {
           {/* Right Form: Personal Details */}
           <div className="lg:col-span-8 surface-card p-4 sm:p-6 space-y-4 sm:space-y-5 rounded-2xl">
             <div className="border-b border-base pb-3">
-              <h2 className="text-sm sm:text-base font-bold text-primary">Edit Personal Details</h2>
-              <p className="text-xs text-muted">Keep your pilgrim profile information accurate for airport clearance.</p>
+              <h2 className="text-sm sm:text-base font-bold text-primary">{t('profile.editDetails', 'Edit Personal Details')}</h2>
+              <p className="text-xs text-muted">{t('profile.editDetailsDesc', 'Keep your pilgrim profile information accurate for airport clearance.')}</p>
             </div>
 
             <form onSubmit={handleSavePersonalInfo} className="space-y-4 text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4">
                 {/* Legal Name */}
                 <div>
-                  <label className="type-label">Full Legal Name *</label>
+                  <label className="type-label">{t('profile.fullName', 'Full Legal Name *')}</label>
                   <div className="relative">
-                    <User className="w-3.5 h-3.5 text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <User className={`w-3.5 h-3.5 text-muted absolute ${isRTL ? 'right-3' : 'left-3'} top-1/2 -translate-y-1/2 pointer-events-none`} />
                     <input
                       type="text"
                       required
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
-                      className="field-input pl-9 h-8.5 sm:h-9 py-1.5 px-3 text-xs rounded-xl"
-                      placeholder="e.g. Dr. Abdullah Rahman"
+                      className={`field-input ${isRTL ? 'pr-9 pl-3' : 'pl-9 pr-3'} h-8.5 sm:h-9 py-1.5 text-xs rounded-xl`}
+                      placeholder={t('profile.fullNamePlaceholder', 'e.g. Dr. Abdullah Rahman')}
                     />
                   </div>
                 </div>
@@ -534,23 +541,23 @@ export default function CustomerProfilePage() {
                 {/* Email (Readonly) */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="type-label !mb-0">Primary Email Address</label>
+                    <label className="type-label !mb-0">{t('profile.primaryEmail', 'Primary Email Address')}</label>
                     <span className="text-[10px] text-emerald-500 font-bold flex items-center gap-1">
                       <CheckCircle2 className="w-3 h-3" />
-                      Verified &amp; Locked
+                      {t('profile.verifiedLocked', 'Verified & Locked')}
                     </span>
                   </div>
                   <div className="relative">
-                    <Mail className="w-3.5 h-3.5 text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <Mail className={`w-3.5 h-3.5 text-muted absolute ${isRTL ? 'right-3' : 'left-3'} top-1/2 -translate-y-1/2 pointer-events-none`} />
                     <input
                       type="email"
                       disabled
                       value={currentUser.email || ''}
-                      className="w-full pl-9 pr-3 py-1.5 h-8.5 sm:h-9 rounded-xl bg-surface border border-base text-muted cursor-not-allowed text-xs font-mono"
+                      className={`w-full ${isRTL ? 'pr-9 pl-3' : 'pl-9 pr-3'} py-1.5 h-8.5 sm:h-9 rounded-xl bg-surface border border-base text-muted cursor-not-allowed text-xs font-mono`}
                     />
                   </div>
                   <span className="text-[10px] text-muted mt-1 block">
-                    Contact Executive Support to change registered email.
+                    {isRTL ? 'تواصل مع الدعم التنفيذي لتعديل البريد الإلكتروني المسجل.' : 'Contact Executive Support to change registered email.'}
                   </span>
                 </div>
               </div>
@@ -558,28 +565,28 @@ export default function CustomerProfilePage() {
               {/* Date of Birth & Gender Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4">
                 <div>
-                  <label className="type-label">Date of Birth</label>
+                  <label className="type-label">{t('profile.dateOfBirth', 'Date of Birth')}</label>
                   <div className="relative">
-                    <Calendar className="w-3.5 h-3.5 text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <Calendar className={`w-3.5 h-3.5 text-muted absolute ${isRTL ? 'right-3' : 'left-3'} top-1/2 -translate-y-1/2 pointer-events-none`} />
                     <input
                       type="date"
                       value={dateOfBirth}
                       onChange={(e) => setDateOfBirth(e.target.value)}
-                      className="field-input pl-9 h-8.5 sm:h-9 py-1.5 px-3 text-xs rounded-xl"
+                      className={`field-input ${isRTL ? 'pr-9 pl-3' : 'pl-9 pr-3'} h-8.5 sm:h-9 py-1.5 text-xs rounded-xl`}
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="type-label">Gender</label>
+                  <label className="type-label">{t('profile.gender', 'Gender')}</label>
                   <select
                     value={gender}
                     onChange={(e) => setGender(e.target.value as 'male' | 'female' | 'other')}
                     className="field-input h-8.5 sm:h-9 py-1.5 px-3 text-xs rounded-xl"
                   >
-                    <option value="male">Male (ذكر)</option>
-                    <option value="female">Female (أنثى)</option>
-                    <option value="other">Prefer not to say</option>
+                    <option value="male">{t('profile.genderMale', 'Male')}</option>
+                    <option value="female">{t('profile.genderFemale', 'Female')}</option>
+                    <option value="other">{t('profile.genderOther', 'Other')}</option>
                   </select>
                 </div>
               </div>
@@ -589,17 +596,17 @@ export default function CustomerProfilePage() {
                 <button
                   type="submit"
                   disabled={isSavingProfile}
-                  className="btn-brand py-2.5 px-5 text-xs rounded-xl cursor-pointer"
+                  className="btn-brand py-2.5 px-5 text-xs rounded-xl cursor-pointer flex items-center gap-2"
                 >
                   {isSavingProfile ? (
                     <>
                       <span className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                      <span>Saving Details…</span>
+                      <span>{t('profile.savingProfile', 'Saving Details…')}</span>
                     </>
                   ) : (
                     <>
                       <Save className="w-3.5 h-3.5" />
-                      <span>Save Profile Changes</span>
+                      <span>{t('profile.savePersonal', 'Save Profile Changes')}</span>
                     </>
                   )}
                 </button>
@@ -617,20 +624,20 @@ export default function CustomerProfilePage() {
               <div>
                 <h2 className="text-sm sm:text-base font-bold text-primary flex items-center gap-2">
                   <Phone className="w-4 h-4 text-amber-500" />
-                  <span>Emergency Contacts</span>
+                  <span>{t('profile.emergencyTitle', 'Emergency Contacts')}</span>
                 </h2>
                 <p className="text-xs text-muted mt-0.5">
-                  Trusted contacts notified in the unlikely event of an urgent itinerary disruption or medical situation.
+                  {t('profile.emergencySubtitle', 'Trusted contacts notified in the unlikely event of an urgent itinerary disruption or medical situation.')}
                 </p>
               </div>
 
               <button
                 type="button"
                 onClick={openAddContactModal}
-                className="btn-brand py-2 px-3.5 text-xs shrink-0 flex items-center gap-1.5 rounded-xl"
+                className="btn-brand py-2 px-3.5 text-xs shrink-0 flex items-center gap-1.5 rounded-xl cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Add Emergency Contact</span>
+                <span>{t('profile.addContact', 'Add Emergency Contact')}</span>
               </button>
             </div>
 
@@ -658,9 +665,9 @@ export default function CustomerProfilePage() {
                 <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center mx-auto">
                   <Phone className="w-5 h-5" />
                 </div>
-                <h4 className="text-xs sm:text-sm font-bold text-primary">No Emergency Contacts Registered</h4>
+                <h4 className="text-xs sm:text-sm font-bold text-primary">{isRTL ? 'لم يتم تسجيل أي جهات اتصال للطوارئ' : 'No Emergency Contacts Registered'}</h4>
                 <p className="text-xs text-muted max-w-sm mx-auto">
-                  Add at least one family member or guardian for trip safety during your Umrah and intercity transfers.
+                  {t('profile.noEmergencyContacts', 'Add at least one family member or guardian for trip safety during your Umrah and intercity transfers.')}
                 </p>
                 <button
                   type="button"
@@ -668,7 +675,7 @@ export default function CustomerProfilePage() {
                   className="btn-secondary py-1.5 px-3.5 text-xs inline-flex items-center gap-1.5 rounded-xl cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>Add First Contact</span>
+                  <span>{isRTL ? 'إضافة أول جهة اتصال' : 'Add First Contact'}</span>
                 </button>
               </div>
             ) : (
@@ -689,7 +696,7 @@ export default function CustomerProfilePage() {
                           {contact.is_primary && (
                             <span className="px-1.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-400/40 text-amber-600 dark:text-amber-400 text-[9px] font-bold flex items-center gap-1">
                               <Star className="w-2.5 h-2.5 fill-current" />
-                              Primary
+                              {t('profile.primaryContact', 'Primary')}
                             </span>
                           )}
                         </div>
@@ -700,16 +707,16 @@ export default function CustomerProfilePage() {
                         <button
                           type="button"
                           onClick={() => openEditContactModal(contact)}
-                          className="p-1 rounded-lg text-muted hover:text-primary hover:bg-card border border-transparent hover:border-base transition-colors"
-                          title="Edit Contact"
+                          className="p-1 rounded-lg text-muted hover:text-primary hover:bg-card border border-transparent hover:border-base transition-colors cursor-pointer"
+                          title={isRTL ? 'تعديل' : 'Edit Contact'}
                         >
                           <Edit2 className="w-3 h-3" />
                         </button>
                         <button
                           type="button"
                           onClick={() => setContactToDelete(contact)}
-                          className="p-1 rounded-lg text-muted hover:text-rose-500 hover:bg-card border border-transparent hover:border-base transition-colors"
-                          title="Delete Contact"
+                          className="p-1 rounded-lg text-muted hover:text-rose-500 hover:bg-card border border-transparent hover:border-base transition-colors cursor-pointer"
+                          title={isRTL ? 'حذف' : 'Delete Contact'}
                         >
                           <Trash2 className="w-3 h-3" />
                         </button>
@@ -737,7 +744,7 @@ export default function CustomerProfilePage() {
                           className="text-[10px] font-bold text-amber-600 dark:text-amber-400 hover:underline inline-flex items-center gap-1 cursor-pointer"
                         >
                           <Star className="w-2.5 h-2.5" />
-                          <span>Set as Primary Contact</span>
+                          <span>{t('profile.setPrimary', 'Set as Primary Contact')}</span>
                         </button>
                       </div>
                     )}
@@ -757,7 +764,7 @@ export default function CustomerProfilePage() {
             <div className="surface-card p-4 sm:p-5 rounded-2xl space-y-3.5 text-xs">
               <h3 className="text-xs sm:text-sm font-bold text-primary flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                <span>Security Overview</span>
+                <span>{t('profile.securityTitle', 'Security Overview')}</span>
               </h3>
 
               <div className="space-y-2.5">
@@ -765,7 +772,7 @@ export default function CustomerProfilePage() {
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-primary flex items-center gap-1.5 text-xs">
                       <Laptop className="w-3.5 h-3.5 text-emerald-500" />
-                      Current Active Session
+                      {isRTL ? 'الجلسة الحالية النشطة' : 'Current Active Session'}
                     </span>
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
                   </div>
@@ -773,16 +780,16 @@ export default function CustomerProfilePage() {
                     Windows · Chrome Desktop <br />
                     IP: 178.20.xxx.xxx (KSA / Web)
                   </p>
-                  <span className="text-[10px] text-emerald-500 font-semibold block">Active right now</span>
+                  <span className="text-[10px] text-emerald-500 font-semibold block">{isRTL ? 'نشط الآن' : 'Active right now'}</span>
                 </div>
 
                 <div className="p-3 rounded-xl bg-surface border border-base space-y-1.5">
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-primary flex items-center gap-1.5 text-xs">
                       <Smartphone className="w-3.5 h-3.5 text-muted" />
-                      Mobile App Session
+                      {isRTL ? 'جلسة تطبيق الجوال' : 'Mobile App Session'}
                     </span>
-                    <span className="text-[10px] text-muted">2 days ago</span>
+                    <span className="text-[10px] text-muted">{isRTL ? 'منذ يومين' : '2 days ago'}</span>
                   </div>
                   <p className="text-[11px] text-muted">iOS App · Jeddah Gateway</p>
                 </div>
@@ -790,11 +797,11 @@ export default function CustomerProfilePage() {
 
               <button
                 type="button"
-                onClick={() => toast.success('All other remote devices logged out.')}
+                onClick={() => toast.success(isRTL ? 'تم تسجيل الخروج من كافة الأجهزة الأخرى.' : 'All other remote devices logged out.')}
                 className="w-full py-2 px-3 rounded-xl bg-surface hover:bg-elevated border border-base text-rose-500 font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <LogOut className="w-3.5 h-3.5" />
-                <span>Sign Out All Other Sessions</span>
+                <span>{isRTL ? 'تسجيل الخروج من الجلسات الأخرى' : 'Sign Out All Other Sessions'}</span>
               </button>
             </div>
           </div>
@@ -804,14 +811,14 @@ export default function CustomerProfilePage() {
             <div className="border-b border-base pb-3">
               <h2 className="text-sm sm:text-base font-bold text-primary flex items-center gap-2">
                 <Lock className="w-4 h-4 text-amber-500" />
-                <span>Change Password</span>
+                <span>{t('profile.updatePassword', 'Change Password')}</span>
               </h2>
-              <p className="text-xs text-muted">Protect your account with a secure, confidential password.</p>
+              <p className="text-xs text-muted">{t('profile.securitySubtitle', 'Protect your account with a secure, confidential password.')}</p>
             </div>
 
             <form onSubmit={handleChangePasswordSubmit} className="space-y-3.5 text-xs">
               <div>
-                <label className="type-label">Current Password *</label>
+                <label className="type-label">{isRTL ? 'كلمة المرور الحالية *' : 'Current Password *'}</label>
                 <input
                   type="password"
                   required
@@ -823,11 +830,11 @@ export default function CustomerProfilePage() {
               </div>
 
               <div>
-                <label className="type-label">New Password *</label>
+                <label className="type-label">{t('profile.newPassword', 'New Password *')}</label>
                 <input
                   type="password"
                   required
-                  placeholder="Min. 8 characters with upper, lower &amp; numbers"
+                  placeholder={isRTL ? '8 أحرف على الأقل تحتوي على حروف وأرقام' : 'Min. 8 characters with upper, lower & numbers'}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   className="field-input h-8.5 sm:h-9 py-1.5 px-3 text-xs rounded-xl"
@@ -835,11 +842,11 @@ export default function CustomerProfilePage() {
               </div>
 
               <div>
-                <label className="type-label">Confirm New Password *</label>
+                <label className="type-label">{t('profile.confirmPassword', 'Confirm New Password *')}</label>
                 <input
                   type="password"
                   required
-                  placeholder="Re-enter new password"
+                  placeholder={isRTL ? 'أعد إدخال كلمة المرور الجديدة' : 'Re-enter new password'}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   className="field-input h-8.5 sm:h-9 py-1.5 px-3 text-xs rounded-xl"
@@ -850,17 +857,17 @@ export default function CustomerProfilePage() {
                 <button
                   type="submit"
                   disabled={isChangingPassword}
-                  className="btn-brand py-2.5 px-5 text-xs rounded-xl"
+                  className="btn-brand py-2.5 px-5 text-xs rounded-xl cursor-pointer flex items-center gap-1.5"
                 >
                   {isChangingPassword ? (
                     <>
                       <span className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                      <span>Updating Password…</span>
+                      <span>{isRTL ? 'جاري التحديث…' : 'Updating Password…'}</span>
                     </>
                   ) : (
                     <>
                       <Lock className="w-3.5 h-3.5" />
-                      <span>Update Password</span>
+                      <span>{t('profile.updatePassword', 'Update Password')}</span>
                     </>
                   )}
                 </button>
@@ -874,10 +881,10 @@ export default function CustomerProfilePage() {
                   <div className="space-y-0.5">
                     <h4 className="text-xs sm:text-sm font-bold text-rose-400 flex items-center gap-1.5">
                       <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                      <span>Danger Zone: Delete Account</span>
+                      <span>{t('profile.dangerZone', 'Danger Zone: Delete Account')}</span>
                     </h4>
                     <p className="text-[11px] text-muted max-w-lg">
-                      Permanently delete your account, saved preferences, and auth credentials. This action is irreversible.
+                      {t('profile.deleteWarning', 'Permanently delete your account, saved preferences, and auth credentials. This action is irreversible.')}
                     </p>
                   </div>
                   <button
@@ -889,7 +896,7 @@ export default function CustomerProfilePage() {
                     className="px-3.5 py-2 rounded-xl bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/40 text-xs font-bold transition-all duration-200 shrink-0 cursor-pointer flex items-center gap-1.5"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                    <span>Delete Account</span>
+                    <span>{t('profile.deleteAccount', 'Delete Account')}</span>
                   </button>
                 </div>
               </div>
@@ -904,41 +911,43 @@ export default function CustomerProfilePage() {
           <div className="border-b border-base pb-3">
             <h2 className="text-sm sm:text-base font-bold text-primary flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-amber-500" />
-              <span>Customer Account &amp; Pilgrim Tier</span>
+              <span>{t('profile.statusTitle', 'Customer Account & Pilgrim Tier')}</span>
             </h2>
-            <p className="text-xs text-muted">Review your verified privileges, lifetime rides, and booking tier.</p>
+            <p className="text-xs text-muted">{t('profile.statusSubtitle', 'Review your verified privileges, lifetime rides, and booking tier.')}</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
             <div className="p-3.5 sm:p-4 rounded-xl bg-surface border border-base space-y-1">
-              <span className="text-[10px] font-bold text-muted uppercase tracking-wider">Membership Tier</span>
-              <div className="text-base sm:text-lg font-bold text-amber-600 dark:text-amber-400">VIP Pilgrim Gold</div>
-              <p className="text-[10px] text-secondary pt-0.5">Direct Haram drop-off priority included.</p>
+              <span className="text-[10px] font-bold text-muted uppercase tracking-wider">{isRTL ? 'فئة العضوية' : 'Membership Tier'}</span>
+              <div className="text-base sm:text-lg font-bold text-amber-600 dark:text-amber-400">{isRTL ? 'حاج ومعتمر ذهبي VIP' : 'VIP Pilgrim Gold'}</div>
+              <p className="text-[10px] text-secondary pt-0.5">{isRTL ? 'تشمل أولوية التوصيل المباشر لأبواب الحرم.' : 'Direct Haram drop-off priority included.'}</p>
             </div>
 
             <div className="p-3.5 sm:p-4 rounded-xl bg-surface border border-base space-y-1">
-              <span className="text-[10px] font-bold text-muted uppercase tracking-wider">Completed Transfers</span>
-              <div className="text-base sm:text-lg font-bold text-primary">{completedRidesCount} Journeys</div>
-              <p className="text-[10px] text-secondary pt-0.5">Across Makkah, Madinah &amp; Jeddah.</p>
+              <span className="text-[10px] font-bold text-muted uppercase tracking-wider">{t('profile.completedTrips', 'Completed Transfers')}</span>
+              <div className="text-base sm:text-lg font-bold text-primary">{completedRidesCount} {isRTL ? 'رحلة' : 'Journeys'}</div>
+              <p className="text-[10px] text-secondary pt-0.5">{isRTL ? 'بين مكة والمدينة وجدة.' : 'Across Makkah, Madinah & Jeddah.'}</p>
             </div>
 
             <div className="p-3.5 sm:p-4 rounded-xl bg-surface border border-base space-y-1">
-              <span className="text-[10px] font-bold text-muted uppercase tracking-wider">Account State</span>
+              <span className="text-[10px] font-bold text-muted uppercase tracking-wider">{isRTL ? 'حالة الحساب' : 'Account State'}</span>
               <div className="text-base sm:text-lg font-bold text-emerald-500 flex items-center gap-1.5">
                 <CheckCircle2 className="w-4 h-4" />
-                Active &amp; In Good Standing
+                {t('profile.accountActive', 'Active & In Good Standing')}
               </div>
-              <p className="text-[10px] text-secondary pt-0.5">Protected by Two-Factor OTP.</p>
+              <p className="text-[10px] text-secondary pt-0.5">{isRTL ? 'محمي بالتحقق الثنائي والتوثيق المباشر.' : 'Protected by Two-Factor OTP.'}</p>
             </div>
           </div>
 
           <div className="p-3.5 sm:p-4 rounded-xl bg-surface/60 border border-base text-xs text-secondary leading-relaxed space-y-1.5">
             <h4 className="font-bold text-primary flex items-center gap-1.5 text-xs">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-              <span>Data Protection &amp; Saudi Transport Authority (TGA) Compliance</span>
+              <span>{isRTL ? 'حماية البيانات والامتثال لمعايير الهيئة العامة للنقل (TGA)' : 'Data Protection & Saudi Transport Authority (TGA) Compliance'}</span>
             </h4>
             <p className="text-muted text-[11px]">
-              Al Harmain Travels strictly encrypts all customer identifiers, emergency contacts, and GPS itinerary logs in compliance with Kingdom of Saudi Arabia regulatory standards. Customer data is never shared with unauthorized third parties.
+              {isRTL
+                ? 'تلتزم شركة الحرمين للنقل الفاخر بتشفير كافة بيانات العملاء، جهات الاتصال للطوارئ وسجلات مسارات الرحلات وفقاً للأنظمة واللوائح المعتمدة في المملكة العربية السعودية. لا تتم مشاركة أي بيانات مع أي جهات غير مصرح لها.'
+                : 'Al Harmain Travels strictly encrypts all customer identifiers, emergency contacts, and GPS itinerary logs in compliance with Kingdom of Saudi Arabia regulatory standards. Customer data is never shared with unauthorized third parties.'}
             </p>
           </div>
         </div>
@@ -948,12 +957,12 @@ export default function CustomerProfilePage() {
       {isCropModalOpen && previewPhotoUrl && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 animate-fade-in backdrop-blur-sm">
           <div className="w-full max-w-xs sm:max-w-sm surface-card p-4 sm:p-5 space-y-4 rounded-2xl shadow-xl">
-            <h3 className="text-sm sm:text-base font-bold text-primary text-center">Preview Profile Photo</h3>
+            <h3 className="text-sm sm:text-base font-bold text-primary text-center">{isRTL ? 'معاينة الصورة الشخصية' : 'Preview Profile Photo'}</h3>
             <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-2xl overflow-hidden mx-auto border-2 border-amber-500 shadow-md">
               <img src={previewPhotoUrl} alt="Preview" className="w-full h-full object-cover" />
             </div>
             <p className="text-xs text-muted text-center">
-              This photo will be visible to your assigned captain for pickup identification.
+              {isRTL ? 'ستظهر هذه الصورة للسائق المخصص للتعرف عليك عند الاستقبال في المطار أو الفندق.' : 'This photo will be visible to your assigned captain for pickup identification.'}
             </p>
             <div className="flex gap-2">
               <button
@@ -965,7 +974,7 @@ export default function CustomerProfilePage() {
                 }}
                 className="btn-secondary flex-1 py-2 text-xs rounded-xl cursor-pointer"
               >
-                Cancel
+                {t('cancel', 'Cancel')}
               </button>
               <button
                 type="button"
@@ -973,7 +982,7 @@ export default function CustomerProfilePage() {
                 onClick={handleConfirmPhotoUpload}
                 className="btn-brand flex-1 py-2 text-xs rounded-xl cursor-pointer"
               >
-                {isUploadingPhoto ? 'Uploading…' : 'Save Photo'}
+                {isUploadingPhoto ? (isRTL ? 'جاري الرفع…' : 'Uploading…') : (isRTL ? 'حفظ الصورة' : 'Save Photo')}
               </button>
             </div>
           </div>
@@ -987,12 +996,12 @@ export default function CustomerProfilePage() {
             <div className="flex items-center justify-between border-b border-base pb-2.5">
               <h3 className="text-sm sm:text-base font-bold text-primary flex items-center gap-2">
                 <Phone className="w-4 h-4 text-amber-500" />
-                <span>Update Contact Phone</span>
+                <span>{isRTL ? 'تحديث رقم هاتف التواصل' : 'Update Contact Phone'}</span>
               </h3>
               <button
                 type="button"
                 onClick={() => setIsPhoneModalOpen(false)}
-                className="p-1 rounded-lg text-muted hover:text-primary"
+                className="p-1 rounded-lg text-muted hover:text-primary cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1000,17 +1009,17 @@ export default function CustomerProfilePage() {
 
             <form onSubmit={handleSavePhone} className="space-y-3.5 text-xs">
               <div>
-                <label className="type-label">Phone Number (with Country Code)</label>
+                <label className="type-label">{isRTL ? 'رقم الهاتف (مع رمز الدولة)' : 'Phone Number (with Country Code)'}</label>
                 <input
                   type="tel"
                   required
                   placeholder="+966 50 123 4567"
                   value={newPhoneNumber}
                   onChange={(e) => setNewPhoneNumber(e.target.value)}
-                  className="field-input h-8.5 sm:h-9 py-1.5 px-3 text-xs rounded-xl"
+                  className="field-input h-8.5 sm:h-9 py-1.5 px-3 text-xs rounded-xl font-mono"
                 />
                 <span className="text-[10px] text-muted mt-1 block">
-                  Used by dispatchers and captains for coordinating Umrah transfers.
+                  {isRTL ? 'يستخدم من قبل المشرفين والكباتن لتنسيق وتسهيل استقبالكم.' : 'Used by dispatchers and captains for coordinating Umrah transfers.'}
                 </span>
               </div>
 
@@ -1020,14 +1029,14 @@ export default function CustomerProfilePage() {
                   onClick={() => setIsPhoneModalOpen(false)}
                   className="btn-secondary py-2 px-3.5 text-xs rounded-xl cursor-pointer"
                 >
-                  Cancel
+                  {t('cancel', 'Cancel')}
                 </button>
                 <button
                   type="submit"
                   disabled={isUpdatingPhone}
                   className="btn-brand py-2 px-4 text-xs rounded-xl cursor-pointer"
                 >
-                  {isUpdatingPhone ? 'Saving…' : 'Update Phone'}
+                  {isUpdatingPhone ? (isRTL ? 'جاري الحفظ…' : 'Saving…') : (isRTL ? 'تحديث الهاتف' : 'Update Phone')}
                 </button>
               </div>
             </form>
@@ -1042,12 +1051,12 @@ export default function CustomerProfilePage() {
             <div className="flex items-center justify-between border-b border-base pb-2.5">
               <h3 className="text-sm sm:text-base font-bold text-primary flex items-center gap-2">
                 <Phone className="w-4 h-4 text-amber-500" />
-                <span>{editingContact ? 'Edit Emergency Contact' : 'Add Emergency Contact'}</span>
+                <span>{editingContact ? (isRTL ? 'تعديل جهة الاتصال' : 'Edit Emergency Contact') : (isRTL ? 'إضافة جهة اتصال للطوارئ' : 'Add Emergency Contact')}</span>
               </h3>
               <button
                 type="button"
                 onClick={() => setIsContactModalOpen(false)}
-                className="p-1 rounded-lg text-muted hover:text-primary"
+                className="p-1 rounded-lg text-muted hover:text-primary cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1055,11 +1064,11 @@ export default function CustomerProfilePage() {
 
             <form onSubmit={handleSaveContact} className="space-y-3.5 text-xs">
               <div>
-                <label className="type-label">Contact Full Name *</label>
+                <label className="type-label">{isRTL ? 'الاسم الكامل لجهة الاتصال *' : 'Contact Full Name *'}</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Mariam Rahman"
+                  placeholder={isRTL ? 'مثال: مريم الرحمن' : 'e.g. Mariam Rahman'}
                   value={contactName}
                   onChange={(e) => setContactName(e.target.value)}
                   className="field-input h-8.5 sm:h-9 py-1.5 px-3 text-xs rounded-xl"
@@ -1068,44 +1077,44 @@ export default function CustomerProfilePage() {
 
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label className="type-label">Relationship *</label>
+                  <label className="type-label">{isRTL ? 'صلة القرابة *' : 'Relationship *'}</label>
                   <select
                     value={contactRelation}
                     onChange={(e) => setContactRelation(e.target.value)}
                     className="field-input h-8.5 sm:h-9 py-1.5 px-3 text-xs rounded-xl"
                   >
-                    <option value="Spouse">Spouse (زوج / زوجة)</option>
-                    <option value="Parent">Parent (والد / والدة)</option>
-                    <option value="Child">Son / Daughter (ابن / ابنة)</option>
-                    <option value="Sibling">Brother / Sister (أخ / أخت)</option>
-                    <option value="Friend">Friend / Companion</option>
-                    <option value="Guardian">Guardian (ولي أمر)</option>
-                    <option value="Colleague">Colleague</option>
-                    <option value="Other">Other</option>
+                    <option value="Spouse">{isRTL ? 'زوج / زوجة' : 'Spouse (زوج / زوجة)'}</option>
+                    <option value="Parent">{isRTL ? 'والد / والدة' : 'Parent (والد / والدة)'}</option>
+                    <option value="Child">{isRTL ? 'ابن / ابنة' : 'Son / Daughter (ابن / ابنة)'}</option>
+                    <option value="Sibling">{isRTL ? 'أخ / أخت' : 'Brother / Sister (أخ / أخت)'}</option>
+                    <option value="Friend">{isRTL ? 'صديق / مرافق' : 'Friend / Companion'}</option>
+                    <option value="Guardian">{isRTL ? 'ولي أمر' : 'Guardian (ولي أمر)'}</option>
+                    <option value="Colleague">{isRTL ? 'زميل' : 'Colleague'}</option>
+                    <option value="Other">{isRTL ? 'غير ذلك' : 'Other'}</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="type-label">Phone Number *</label>
+                  <label className="type-label">{isRTL ? 'رقم الهاتف *' : 'Phone Number *'}</label>
                   <input
                     type="tel"
                     required
                     placeholder="+966 50 123 4567"
                     value={contactPhone}
                     onChange={(e) => setContactPhone(e.target.value)}
-                    className="field-input h-8.5 sm:h-9 py-1.5 px-3 text-xs rounded-xl"
+                    className="field-input h-8.5 sm:h-9 py-1.5 px-3 text-xs rounded-xl font-mono"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="type-label">Email Address (Optional)</label>
+                <label className="type-label">{isRTL ? 'البريد الإلكتروني (اختياري)' : 'Email Address (Optional)'}</label>
                 <input
                   type="email"
                   placeholder="contact@example.com"
                   value={contactEmail}
                   onChange={(e) => setContactEmail(e.target.value)}
-                  className="field-input h-8.5 sm:h-9 py-1.5 px-3 text-xs rounded-xl"
+                  className="field-input h-8.5 sm:h-9 py-1.5 px-3 text-xs rounded-xl font-mono"
                 />
               </div>
 
@@ -1117,7 +1126,7 @@ export default function CustomerProfilePage() {
                     onChange={(e) => setContactIsPrimary(e.target.checked)}
                     className="w-3.5 h-3.5 rounded border-base text-amber-500 focus:ring-amber-400"
                   />
-                  <span>Mark as Primary Emergency Contact</span>
+                  <span>{isRTL ? 'تعيين كجهة اتصال رئيسية للطوارئ' : 'Mark as Primary Emergency Contact'}</span>
                 </label>
               </div>
 
@@ -1127,14 +1136,14 @@ export default function CustomerProfilePage() {
                   onClick={() => setIsContactModalOpen(false)}
                   className="btn-secondary py-2 px-3.5 text-xs rounded-xl cursor-pointer"
                 >
-                  Cancel
+                  {t('cancel', 'Cancel')}
                 </button>
                 <button
                   type="submit"
                   disabled={isSavingContact}
                   className="btn-brand py-2 px-4 text-xs rounded-xl cursor-pointer"
                 >
-                  {isSavingContact ? 'Saving…' : editingContact ? 'Save Changes' : 'Add Contact'}
+                  {isSavingContact ? (isRTL ? 'جاري الحفظ…' : 'Saving…') : editingContact ? t('save', 'Save Changes') : (isRTL ? 'إضافة جهة الاتصال' : 'Add Contact')}
                 </button>
               </div>
             </form>
@@ -1149,9 +1158,13 @@ export default function CustomerProfilePage() {
             <div className="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto">
               <Trash2 className="w-5 h-5" />
             </div>
-            <h3 className="text-sm sm:text-base font-bold text-primary">Remove Emergency Contact?</h3>
+            <h3 className="text-sm sm:text-base font-bold text-primary">{isRTL ? 'حذف جهة اتصال الطوارئ؟' : 'Remove Emergency Contact?'}</h3>
             <p className="text-xs text-muted">
-              Are you sure you want to remove <strong className="text-primary">{contactToDelete.name}</strong> ({contactToDelete.relationship})?
+              {isRTL ? (
+                <>هل أنت متأكد من حذف <strong className="text-primary">{contactToDelete.name}</strong> ({contactToDelete.relationship})؟</>
+              ) : (
+                <>Are you sure you want to remove <strong className="text-primary">{contactToDelete.name}</strong> ({contactToDelete.relationship})?</>
+              )}
             </p>
             <div className="flex gap-2 pt-1">
               <button
@@ -1159,14 +1172,14 @@ export default function CustomerProfilePage() {
                 onClick={() => setContactToDelete(null)}
                 className="btn-secondary flex-1 py-2 text-xs rounded-xl cursor-pointer"
               >
-                Cancel
+                {t('cancel', 'Cancel')}
               </button>
               <button
                 type="button"
                 onClick={handleConfirmDeleteContact}
                 className="px-3 py-2 rounded-xl font-bold bg-rose-600 hover:bg-rose-500 text-white flex-1 text-xs cursor-pointer"
               >
-                Delete
+                {isRTL ? 'حذف' : 'Delete'}
               </button>
             </div>
           </div>

@@ -34,6 +34,8 @@ import {
   ExternalLink,
   ChevronRight,
   Info,
+  Star,
+  MessageSquare,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { TableSkeletonRows, StatCardSkeleton } from '@/components/ui/DataStateSkeletons';
@@ -103,6 +105,8 @@ export default function AdminUsersPage() {
     drivers,
     vehicles,
     rateVehicles,
+    ratings,
+    bookings,
     adminCreateUser,
     adminUpdateUser,
     adminAssignVehicle,
@@ -1865,9 +1869,17 @@ export default function AdminUsersPage() {
             <div className="space-y-4">
               {/* Profile Card */}
               <div className="p-4 rounded-2xl bg-surface/60 border border-base flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-surface border border-base flex items-center justify-center text-xl font-black text-amber-500 shadow-sm shrink-0">
-                  {selectedUser.full_name?.slice(0, 1).toUpperCase()}
-                </div>
+                {selectedUser.avatar_url || selectedDriver?.avatar_url || selectedDriver?.profile?.avatar_url ? (
+                  <img
+                    src={selectedUser.avatar_url || selectedDriver?.avatar_url || selectedDriver?.profile?.avatar_url || ''}
+                    alt={selectedUser.full_name}
+                    className="w-14 h-14 rounded-2xl object-cover border border-base shadow-sm shrink-0"
+                  />
+                ) : (
+                  <div className="w-14 h-14 rounded-2xl bg-surface border border-base flex items-center justify-center text-xl font-black text-amber-500 shadow-sm shrink-0">
+                    {selectedUser.full_name?.slice(0, 1).toUpperCase()}
+                  </div>
+                )}
                 <div className="space-y-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <h4 className="font-bold text-base text-primary truncate">{selectedUser.full_name}</h4>
@@ -1890,7 +1902,7 @@ export default function AdminUsersPage() {
                     <span className="text-primary font-medium">{selectedUser.email || 'None'}</span>
                     {selectedUser.email_verified ? (
                       <span className="text-[10px] text-emerald-500 font-bold flex items-center gap-0.5">
-                        <CheckCircle2 className="w-3 h-3" /> Verified
+                        <CheckCircle2 className="w-3 mx-auto" /> Verified
                       </span>
                     ) : (
                       <span className="text-[10px] text-amber-500 font-bold flex items-center gap-0.5">
@@ -1943,7 +1955,7 @@ export default function AdminUsersPage() {
                     <div className="p-2.5 rounded-xl bg-surface border border-base">
                       <div className="text-[10px] text-muted">Rating / Completed</div>
                       <div className="font-mono font-bold text-amber-500 mt-0.5">
-                        ★ {selectedDriver.rating || '5.0'} ({selectedDriver.total_rides || 0} rides)
+                        ★ {selectedDriver.rating !== null && selectedDriver.rating !== undefined ? Number(selectedDriver.rating).toFixed(1) : 'New'} ({ratings.filter((r) => r.driver_id === selectedDriver.id).length} reviews • {selectedDriver.total_rides || 0} rides)
                       </div>
                     </div>
 
@@ -1959,6 +1971,88 @@ export default function AdminUsersPage() {
                       )}
                     </div>
                   </div>
+
+                  {/* Passenger Ratings & Reviews Breakdown */}
+                  {(() => {
+                    const driverReviews = ratings.filter((r) => r.driver_id === selectedDriver.id);
+                    return (
+                      <div className="pt-2 border-t border-amber-500/20 space-y-2">
+                        <div className="flex items-center justify-between text-xs font-bold text-amber-600 dark:text-amber-400">
+                          <span className="flex items-center gap-1.5">
+                            <Star className="w-3.5 h-3.5 fill-amber-500" />
+                            <span>Passenger Reviews &amp; Ratings</span>
+                          </span>
+                          <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/20 font-mono">
+                            {driverReviews.length} {driverReviews.length === 1 ? 'review' : 'reviews'}
+                          </span>
+                        </div>
+
+                        {driverReviews.length === 0 ? (
+                          <div className="p-3 rounded-xl bg-surface/60 border border-base text-center text-xs text-muted">
+                            No passenger reviews recorded for this driver yet.
+                          </div>
+                        ) : (
+                          <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
+                            {driverReviews.map((rev) => {
+                              const b = bookings.find((bk) => bk.id === rev.booking_id);
+                              const passengerName =
+                                rev.booking?.passenger_name ||
+                                b?.passenger_name ||
+                                rev.customer?.full_name ||
+                                'Verified Passenger';
+
+                              return (
+                                <div
+                                  key={rev.id}
+                                  className="p-2.5 rounded-xl bg-surface border border-base space-y-1 text-xs"
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-bold text-primary">{passengerName}</span>
+                                    <div className="flex items-center gap-1">
+                                      {[1, 2, 3, 4, 5].map((s) => (
+                                        <Star
+                                          key={s}
+                                          className={`w-3 h-3 ${
+                                            s <= rev.rating
+                                              ? 'text-amber-500 fill-amber-500'
+                                              : 'text-slate-300 dark:text-slate-600'
+                                          }`}
+                                        />
+                                      ))}
+                                      <span className="font-bold text-amber-500 text-[11px] ml-0.5">
+                                        {rev.rating}.0
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {(b || rev.booking) && (
+                                    <div className="text-[10px] text-muted flex items-center justify-between">
+                                      <span className="font-mono text-amber-600 dark:text-amber-400">
+                                        {b?.booking_reference || (rev.booking as any)?.booking_reference}
+                                      </span>
+                                      <span>
+                                        {new Date(rev.created_at).toLocaleDateString('en-GB', {
+                                          day: '2-digit',
+                                          month: 'short',
+                                          year: 'numeric',
+                                        })}
+                                      </span>
+                                    </div>
+                                  )}
+
+                                  {rev.feedback && (
+                                    <p className="text-[11px] text-primary italic bg-input/40 p-1.5 rounded-lg border border-base">
+                                      &ldquo;{rev.feedback}&rdquo;
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>

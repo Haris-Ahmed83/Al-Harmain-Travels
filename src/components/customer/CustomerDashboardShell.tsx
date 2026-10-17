@@ -4,22 +4,15 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
-import { useTheme } from '@/context/ThemeContext';
+import { useLanguage } from '@/context/LanguageContext';
 import {
   Compass,
   Clock,
   Navigation,
   UserCheck,
-  ChevronLeft,
-  ChevronRight,
-  Sun,
-  Moon,
   Sparkles,
-  PhoneCall,
   LogOut,
-  ExternalLink,
 } from 'lucide-react';
-import { BrandEmblem } from '@/components/ui/BrandLogo';
 import { isBookingForCustomer } from '@/lib/assignment-utils';
 
 interface CustomerDashboardShellProps {
@@ -29,27 +22,17 @@ interface CustomerDashboardShellProps {
 export default function CustomerDashboardShell({ children }: CustomerDashboardShellProps) {
   const pathname = usePathname();
   const { currentUser, activeCustomerBooking, bookings, signOut } = useApp();
-  const { isDark, toggleTheme } = useTheme();
+  const { dir, isRTL, t } = useLanguage();
 
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const [hasMounted, setHasMounted] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
 
-  // Restore collapsed state preference on mount
+  // When route changes, blur active element and reset hover state
   useEffect(() => {
-    setHasMounted(true);
-    const stored = localStorage.getItem('alharmain-customer-sidebar-collapsed');
-    if (stored === 'true') {
-      setIsCollapsed(true);
+    setIsHovered(false);
+    if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
     }
-  }, []);
-
-  const handleToggleCollapse = () => {
-    setIsCollapsed((prev) => {
-      const next = !prev;
-      localStorage.setItem('alharmain-customer-sidebar-collapsed', String(next));
-      return next;
-    });
-  };
+  }, [pathname]);
 
   // Count active trips
   const activeBookingsCount = useMemo(() => {
@@ -66,114 +49,118 @@ export default function CustomerDashboardShell({ children }: CustomerDashboardSh
     }).length;
   }, [bookings, currentUser]);
 
-  // Primary 4 Customer Navigation Items (single source of truth)
+  // Primary 4 Customer Navigation Items (single source of truth with translation)
   const navLinks = [
     {
       href: '/customer',
-      label: 'Book Ride',
-      subtitle: 'Reserve VIP Fleet',
+      label: t('nav.bookRide', 'Book Ride'),
+      subtitle: t('nav.bookRideSub', 'Reserve VIP Fleet'),
       icon: Compass,
       exact: true,
       badge: null,
     },
     {
       href: '/customer/bookings',
-      label: 'My Trips',
-      subtitle: 'History & Active',
+      label: t('nav.myTrips', 'My Trips'),
+      subtitle: t('nav.myTripsSub', 'History & Active'),
       icon: Clock,
       exact: false,
       badge: activeBookingsCount > 0 ? activeBookingsCount : null,
     },
     {
       href: '/customer/track',
-      label: 'Live Radar',
-      subtitle: 'Real-time GPS Radar',
+      label: t('nav.liveRadar', 'Live Radar'),
+      subtitle: t('nav.liveRadarSub', 'Real-time GPS Radar'),
       icon: Navigation,
       exact: false,
-      badge: activeCustomerBooking ? 'LIVE' : null,
+      badge: activeCustomerBooking ? t('nav.live', 'LIVE') : null,
       isLive: !!activeCustomerBooking,
     },
     {
       href: '/customer/profile',
-      label: 'VIP Profile',
-      subtitle: 'Account & Places',
+      label: t('nav.vipProfile', 'VIP Profile'),
+      subtitle: t('nav.vipProfileSub', 'Account & Places'),
       icon: UserCheck,
       exact: false,
       badge: null,
     },
   ];
 
+  const slideHiddenClass = isRTL ? 'translate-x-3' : '-translate-x-3';
+
   return (
-    <div className="customer-portal relative min-h-[calc(100vh-5rem)] w-full bg-page text-primary antialiased overflow-x-hidden">
+    <div
+      dir={dir}
+      className="customer-portal relative min-h-[calc(100vh-5rem)] w-full bg-page text-primary antialiased overflow-x-hidden"
+    >
       {/* ─────────────────────────────────────────────────────────────
           1. DESKTOP SIDEBAR (lg+ screen size)
+          Compact icon-only by default (w-16), expands smoothly on hover (w-64).
+          When mouse leaves into main area, smoothly collapses back to w-16.
       ───────────────────────────────────────────────────────────── */}
       <aside
-        className={`hidden lg:flex flex-col shrink-0 fixed top-20 left-0 bottom-0 z-30 h-[calc(100vh-5rem)] border-r border-base bg-card/95 backdrop-blur-xl transition-all duration-300 overflow-hidden select-none ${isCollapsed ? 'w-16' : 'w-56'
-          }`}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        aria-label="Customer Sidebar Navigation"
+        aria-expanded={isHovered}
+        className={`hidden lg:flex flex-col shrink-0 fixed top-16 sm:top-20 bottom-0 z-40 ${
+          isRTL ? 'right-0 border-l' : 'left-0 border-r'
+        } border-base bg-white dark:bg-card transition-all duration-300 ease-in-out select-none overflow-hidden group/sidebar ${
+          isHovered
+            ? 'w-64 shadow-2xl shadow-black/10 dark:shadow-black/50 border-emerald-500/40'
+            : 'w-16 hover:w-64 hover:shadow-2xl hover:shadow-black/10 dark:hover:shadow-black/50 hover:border-emerald-500/40'
+        }`}
       >
         {/* Top Header / Profile Banner */}
-        <div className="p-3 border-b border-base flex items-center justify-between gap-2.5 shrink-0">
-          <div className={`flex items-center gap-2.5 min-w-0 ${isCollapsed ? 'justify-center w-full' : ''}`}>
-            <div className="relative shrink-0">
+        <div className="p-2 border-b border-base bg-white dark:bg-card flex items-center gap-1.5 shrink-0 h-16">
+          <div className="w-12 h-10 flex items-center justify-center shrink-0 relative">
+            <div className="relative">
               {currentUser.avatar_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={currentUser.avatar_url}
                   alt={currentUser.full_name}
-                  className="w-8 h-8 rounded-xl object-cover border-2 border-emerald-500/50 shadow-sm"
+                  className="w-8 h-8 rounded-xl object-cover border-2 border-emerald-500/50 shadow-xs"
                 />
               ) : (
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-900 text-amber-400 font-bold flex items-center justify-center border border-emerald-500/40 shadow-sm text-xs">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-900 text-amber-400 font-bold flex items-center justify-center border border-emerald-500/40 shadow-xs text-xs">
                   {currentUser.full_name?.charAt(0)?.toUpperCase() || 'P'}
                 </div>
               )}
-              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-card" />
+              <span
+                className={`absolute -bottom-0.5 ${
+                  isRTL ? '-left-0.5' : '-right-0.5'
+                } w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-card`}
+              />
             </div>
-
-            {!isCollapsed && (
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-bold text-primary truncate block">
-                    {currentUser.full_name?.split(' ')[0] || 'Passenger'}
-                  </span>
-                  <Sparkles className="w-3 h-3 text-amber-500 shrink-0" />
-                </div>
-                <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20">
-                  VIP Pilgrim
-                </span>
-              </div>
-            )}
           </div>
 
-          {!isCollapsed && (
-            <button
-              onClick={handleToggleCollapse}
-              className="p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated border border-transparent hover:border-base transition-colors"
-              title="Collapse sidebar"
-              aria-label="Collapse sidebar"
-            >
-              <ChevronLeft className="w-3.5 h-3.5" />
-            </button>
-          )}
+          <div
+            className={`flex-1 min-w-0 ${
+              isRTL ? 'pr-1.5 pl-2 text-right' : 'pl-1.5 pr-2 text-left'
+            } overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out ${
+              isHovered
+                ? 'opacity-100 max-w-[170px] translate-x-0 pointer-events-auto'
+                : `opacity-0 max-w-0 pointer-events-none ${slideHiddenClass} group-hover/sidebar:opacity-100 group-hover/sidebar:max-w-[170px] group-hover/sidebar:translate-x-0 group-hover/sidebar:pointer-events-auto`
+            }`}
+          >
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-bold text-primary truncate block">
+                {currentUser.full_name?.split(' ')[0] || (isRTL ? 'مسافر كريم' : 'Passenger')}
+              </span>
+              <Sparkles className="w-3 h-3 text-amber-500 shrink-0" />
+            </div>
+            <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20 mt-0.5">
+              {t('vipPilgrim', 'VIP Pilgrim')}
+            </span>
+          </div>
         </div>
 
-        {/* Collapsed expand trigger */}
-        {isCollapsed && (
-          <div className="pt-2 px-2 flex justify-center shrink-0">
-            <button
-              onClick={handleToggleCollapse}
-              className="p-1.5 rounded-lg text-muted hover:text-primary hover:bg-elevated border border-base transition-colors"
-              title="Expand sidebar"
-              aria-label="Expand sidebar"
-            >
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
-
         {/* Navigation Links */}
-        <nav className="p-2 space-y-1 flex-1 overflow-hidden" aria-label="Customer Sidebar Navigation">
+        <nav
+          className="p-2 space-y-1.5 flex-1 overflow-y-auto overflow-x-hidden scrollbar-none bg-white dark:bg-card"
+          aria-label="Customer Sidebar Navigation"
+        >
           {navLinks.map((item) => {
             const Icon = item.icon;
             const isActive = item.exact ? pathname === item.href : pathname.startsWith(item.href);
@@ -182,126 +169,115 @@ export default function CustomerDashboardShell({ children }: CustomerDashboardSh
               <Link
                 key={item.href}
                 href={item.href}
-                title={isCollapsed ? item.label : undefined}
-                className={`flex items-center gap-2.5 px-2.5 py-2 rounded-xl font-medium text-xs transition-all relative group ${isActive
-                  ? 'bg-emerald-600 text-white font-bold shadow-sm shadow-emerald-900/20'
-                  : 'text-secondary hover:text-primary hover:bg-elevated border border-transparent hover:border-base'
-                  } ${isCollapsed ? 'justify-center px-0' : ''}`}
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                }}
+                className={`flex items-center rounded-xl font-medium text-xs transition-all duration-200 relative group/item h-11 w-full ${
+                  isActive
+                    ? 'bg-emerald-600 text-white font-bold shadow-sm shadow-emerald-900/20'
+                    : 'text-secondary hover:text-primary hover:bg-elevated border border-transparent hover:border-base'
+                }`}
               >
-                <div className="relative shrink-0">
+                {/* Fixed Icon container (always centered at 32px from sidebar edge) */}
+                <div className="w-12 h-10 flex items-center justify-center shrink-0 relative">
                   <Icon
-                    className={`w-4 h-4 transition-transform group-hover:scale-105 ${isActive ? 'text-amber-300' : 'text-emerald-700 dark:text-emerald-400'
-                      }`}
+                    className={`w-4 h-4 transition-transform group-hover/item:scale-110 ${
+                      isActive ? 'text-amber-300' : 'text-emerald-700 dark:text-emerald-400'
+                    }`}
                   />
                   {item.isLive && (
-                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                    <span
+                      className={`absolute top-1.5 ${
+                        isRTL ? 'left-2.5' : 'right-2.5'
+                      } w-2 h-2 rounded-full bg-amber-400 animate-ping`}
+                    />
+                  )}
+                  {item.badge && !item.isLive && (
+                    <span
+                      className={`group-hover/sidebar:hidden absolute top-1.5 ${
+                        isRTL ? 'left-2.5' : 'right-2.5'
+                      } w-2 h-2 rounded-full bg-emerald-500 ${isHovered ? 'hidden' : ''}`}
+                    />
                   )}
                 </div>
 
-                {!isCollapsed && (
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="truncate">{item.label}</span>
-                      {item.badge && (
-                        <span
-                          className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold ${item.badge === 'LIVE'
+                {/* Animated label, subtitle, and badge */}
+                <div
+                  className={`flex-1 min-w-0 ${
+                    isRTL ? 'pr-1.5 pl-2 text-right' : 'pl-1.5 pr-2 text-left'
+                  } overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out ${
+                    isHovered
+                      ? 'opacity-100 max-w-[180px] translate-x-0 pointer-events-auto'
+                      : `opacity-0 max-w-0 pointer-events-none ${slideHiddenClass} group-hover/sidebar:opacity-100 group-hover/sidebar:max-w-[180px] group-hover/sidebar:translate-x-0 group-hover/sidebar:pointer-events-auto`
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-1.5">
+                    <span className="truncate text-xs font-semibold">{item.label}</span>
+                    {item.badge && (
+                      <span
+                        className={`shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
+                          item.badge === t('nav.live', 'LIVE') || item.badge === 'LIVE'
                             ? 'bg-amber-400 text-slate-950 animate-pulse'
                             : isActive
-                              ? 'bg-white/20 text-white'
-                              : 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30'
-                            }`}
-                        >
-                          {item.badge}
-                        </span>
-                      )}
-                    </div>
-                    <span
-                      className={`text-[9.5px] block truncate ${isActive ? 'text-emerald-100' : 'text-muted'
+                            ? 'bg-white/20 text-white'
+                            : 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30'
                         }`}
-                    >
-                      {item.subtitle}
-                    </span>
+                      >
+                        {item.badge}
+                      </span>
+                    )}
                   </div>
-                )}
+                  <span
+                    className={`text-[9.5px] block truncate mt-0.5 ${
+                      isActive ? 'text-emerald-100' : 'text-muted'
+                    }`}
+                  >
+                    {item.subtitle}
+                  </span>
+                </div>
               </Link>
             );
           })}
         </nav>
 
-        {/* Live Active Journey Mini-Card in Sidebar (when trip active) */}
-        {!isCollapsed && activeCustomerBooking && (
-          <div className="mx-2 mb-2 p-2.5 rounded-xl bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent border border-emerald-500/30 space-y-1.5 shrink-0">
-            <div className="flex items-center justify-between">
-              <span className="inline-flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                Active Ride
-              </span>
-              <span className="font-mono text-[9px] font-bold text-amber-700 dark:text-amber-400">
-                #{activeCustomerBooking.booking_reference.slice(-5)}
-              </span>
+        {/* Sidebar Footer: Sign Out */}
+        <div className="p-2 border-t border-base bg-white dark:bg-card mt-auto shrink-0">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.currentTarget.blur();
+              signOut();
+            }}
+            className="w-full flex items-center rounded-xl text-xs font-medium text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer h-11"
+            aria-label={t('signOut', 'Sign Out')}
+          >
+            <div className="w-12 h-10 flex items-center justify-center shrink-0">
+              <LogOut className="w-4 h-4 shrink-0 transition-transform group-hover/item:scale-105" />
             </div>
-            <p className="text-[10px] text-secondary truncate font-medium">
-              {activeCustomerBooking.destination_address || 'Destination'}
-            </p>
-            <Link
-              href="/customer/track"
-              className="w-full py-1.5 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10.5px] font-bold flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+            <div
+              className={`flex-1 min-w-0 ${
+                isRTL ? 'pr-1.5 pl-2 text-right' : 'pl-1.5 pr-2 text-left'
+              } overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out ${
+                isHovered
+                  ? 'opacity-100 max-w-[170px] translate-x-0 pointer-events-auto'
+                  : `opacity-0 max-w-0 pointer-events-none ${slideHiddenClass} group-hover/sidebar:opacity-100 group-hover/sidebar:max-w-[170px] group-hover/sidebar:translate-x-0 group-hover/sidebar:pointer-events-auto`
+              }`}
             >
-              <Navigation className="w-3 h-3" />
-              <span>Track Chauffeur</span>
-            </Link>
-          </div>
-        )}
-
-        {/* Sidebar Footer: Support & Sign Out */}
-        <div className="p-2 border-t border-base space-y-1 bg-surface/40 mt-auto shrink-0">
-          {/* 24/7 VIP Concierge */}
-          {!isCollapsed && (
-            <a
-              href="https://wa.me/966500000000"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[10.5px] text-muted hover:text-primary hover:bg-elevated transition-colors"
-            >
-              <span className="flex items-center gap-1.5">
-                <PhoneCall className="w-3 h-3 text-emerald-500" />
-                VIP 24/7 Concierge
-              </span>
-              <ExternalLink className="w-2.5 h-2.5" />
-            </a>
-          )}
-
-          {/* Sign Out */}
-          {!isCollapsed && (
-            <button
-              onClick={() => signOut()}
-              className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[10.5px] font-medium text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-            >
-              <LogOut className="w-3 h-3" />
-              <span>Sign Out</span>
-            </button>
-          )}
-
-          {/* Official Brand Badge */}
-          <div className="pt-2 border-t border-base/60 flex items-center justify-center">
-            {isCollapsed ? (
-              <BrandEmblem size="xs" className="scale-90" />
-            ) : (
-              <div className="flex items-center gap-2 px-1 text-[10px] text-muted w-full">
-                <BrandEmblem size="xs" className="scale-75 origin-left" />
-                <span className="font-semibold tracking-wide truncate">Al Harmain VIP Chauffeur</span>
-              </div>
-            )}
-          </div>
+              <span className="truncate font-semibold">{t('signOut', 'Sign Out')}</span>
+            </div>
+          </button>
         </div>
       </aside>
 
       {/* ─────────────────────────────────────────────────────────────
           2. MAIN CONTENT AREA
+          Fixed padding (lg:pl-16 or lg:pr-16) ensures dashboard content
+          NEVER shifts or resizes when the sidebar expands on hover.
       ───────────────────────────────────────────────────────────── */}
       <main
-        className={`min-w-0 w-full overflow-x-hidden pb-20 lg:pb-6 transition-all duration-300 ${isCollapsed ? 'lg:pl-16' : 'lg:pl-56'
-          }`}
+        className={`min-w-0 w-full overflow-x-hidden pb-20 lg:pb-6 ${
+          isRTL ? 'lg:pr-16 lg:pl-0' : 'lg:pl-16 lg:pr-0'
+        }`}
       >
         {children}
       </main>
@@ -323,21 +299,23 @@ export default function CustomerDashboardShell({ children }: CustomerDashboardSh
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex flex-col items-center justify-center py-1.5 px-1.5 rounded-xl transition-all relative ${isActive
-                  ? 'text-emerald-700 dark:text-emerald-400 font-bold'
-                  : 'text-muted hover:text-primary'
-                  }`}
+                className={`flex flex-col items-center justify-center py-1.5 px-1.5 rounded-xl transition-all relative ${
+                  isActive
+                    ? 'text-emerald-700 dark:text-emerald-400 font-bold'
+                    : 'text-muted hover:text-primary'
+                }`}
               >
                 <div className="relative">
                   <Icon
-                    className={`w-4 h-4 transition-transform ${isActive ? 'scale-105 text-emerald-700 dark:text-emerald-400' : ''
-                      }`}
+                    className={`w-4 h-4 transition-transform ${
+                      isActive ? 'scale-105 text-emerald-700 dark:text-emerald-400' : ''
+                    }`}
                   />
                   {item.isLive && (
-                    <span className="absolute -top-1 -right-1.5 w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                    <span className={`absolute -top-1 ${isRTL ? '-left-1.5' : '-right-1.5'} w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping`} />
                   )}
                   {item.badge && !item.isLive && (
-                    <span className="absolute -top-1 -right-2 px-1 py-0.2 bg-emerald-600 text-white rounded-full text-[8.5px] font-bold">
+                    <span className={`absolute -top-1 ${isRTL ? '-left-2' : '-right-2'} px-1 py-0.2 bg-emerald-600 text-white rounded-full text-[8.5px] font-bold`}>
                       {item.badge}
                     </span>
                   )}

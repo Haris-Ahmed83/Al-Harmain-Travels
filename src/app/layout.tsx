@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { AppProvider } from '@/context/AppContext';
 import { ThemeProvider } from '@/context/ThemeContext';
+import { LanguageProvider } from '@/context/LanguageContext';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 import AuthRecoveryListener from '@/components/auth/AuthRecoveryListener';
@@ -53,16 +54,18 @@ export default function RootLayout({
       </head>
       <body suppressHydrationWarning className="min-h-screen flex flex-col antialiased selection:bg-emerald-500 selection:text-white bg-[var(--background)] text-[var(--foreground)] font-sans text-body">
         <AppProvider>
-          <AuthRecoveryListener />
-          <a href="#main-content" className="skip-link">
-            Skip to main content
-          </a>
-          <Navbar />
-          <main id="main-content" className="flex-1 w-full pt-16 sm:pt-20">
-            {children}
-          </main>
-          <Footer />
-          <Toaster position="top-right" richColors theme="system" closeButton />
+          <LanguageProvider>
+            <AuthRecoveryListener />
+            <a href="#main-content" className="skip-link">
+              Skip to main content
+            </a>
+            <Navbar />
+            <main id="main-content" className="flex-1 w-full pt-16 sm:pt-20">
+              {children}
+            </main>
+            <Footer />
+            <Toaster position="top-right" richColors theme="system" closeButton />
+          </LanguageProvider>
         </AppProvider>
       </body>
     </html>

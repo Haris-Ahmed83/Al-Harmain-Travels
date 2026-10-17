@@ -177,6 +177,7 @@ export interface Profile {
   date_of_birth?: string | null;
   gender?: 'male' | 'female' | 'other' | null;
   status: UserStatus;
+  preferred_language?: 'en' | 'ar' | string;
   created_at: string;
   updated_at: string;
 }
@@ -241,7 +242,8 @@ export interface Driver {
   national_id?: string | null;
   assigned_vehicle_id?: string | null;
   status: DriverStatus;
-  rating: number;
+  rating: number | null;
+  rating_count?: number;
   total_rides: number;
   total_earnings: number;
   cash_collected: number;
@@ -250,6 +252,7 @@ export interface Driver {
   profile?: Profile;
   full_name?: string | null;
   phone?: string | null;
+  avatar_url?: string | null;
   assigned_vehicle?: Vehicle | null;
   vehicle?: Vehicle | null;
   location?: DriverLocation | null;
@@ -392,6 +395,27 @@ export interface RatingFeedback {
   feedback?: string | null;
   category: 'rating' | 'complaint' | 'suggestion';
   created_at: string;
+  booking?: Booking | {
+    booking_reference?: string;
+    pickup_address?: string;
+    destination_address?: string;
+    passenger_name?: string;
+    created_at?: string;
+  } | null;
+  customer?: Profile | {
+    full_name?: string;
+    avatar_url?: string | null;
+    phone?: string | null;
+  } | null;
+  driver?: Driver | {
+    id?: string;
+    rating?: number | null;
+    total_rides?: number;
+    profile?: {
+      full_name?: string;
+      avatar_url?: string | null;
+    } | null;
+  } | null;
 }
 
 export interface VehicleMaintenance {

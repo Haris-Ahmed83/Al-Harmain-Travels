@@ -6,6 +6,7 @@ import { useApp } from '@/context/AppContext';
 import { supabase } from '@/lib/supabase/client';
 import { calculateDistanceKm, estimateDurationMinutes } from '@/lib/geo';
 import { VehicleType } from '@/types';
+import { formatDriverRating } from '@/lib/driver-stats';
 import {
   Car,
   MapPin,
@@ -498,26 +499,45 @@ export default function DriverMatchingModal({
               {/* Driver preview card (greyed until confirmed) */}
               <div className="p-3.5 rounded-xl bg-surface border border-base space-y-3 opacity-80">
                 <div className="flex items-center gap-3">
-                  <div className="relative">
-                    <img
-                      src={matchedDriver.photo || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
-                      alt={matchedDriver.name}
-                      className="w-12 h-12 rounded-xl object-cover border-2 border-amber-400/60 shadow-sm grayscale-[30%]"
-                    />
+                  <div className="relative shrink-0">
+                    {matchedDriver.photo ? (
+                      <img
+                        src={matchedDriver.photo}
+                        alt={matchedDriver.name}
+                        className="w-12 h-12 rounded-xl object-cover border-2 border-amber-400/60 shadow-sm"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 font-bold flex items-center justify-center text-base border border-amber-400/40">
+                        {matchedDriver.name?.charAt(0) || 'C'}
+                      </div>
+                    )}
                     <span className="absolute -bottom-1 -right-1 bg-amber-500 text-white rounded-full p-0.5 border border-white">
                       <Clock className="w-3 h-3" />
                     </span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <span className="text-[10px] uppercase font-bold text-amber-600 dark:text-amber-400 tracking-wider">Assigned Captain</span>
-                    <h3 className="text-sm font-bold text-primary truncate">{matchedDriver.name}</h3>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 font-bold">
-                        <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                        {matchedDriver.rating.toFixed(2)}
-                      </span>
+                    <h3 className="text-sm font-bold text-primary truncate">Captain {matchedDriver.name}</h3>
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                      {(() => {
+                        const rInfo = formatDriverRating(matchedDriver.rating);
+                        if (rInfo.isNew) {
+                          return (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/70 px-1.5 py-0.5 rounded border border-emerald-300 dark:border-emerald-800">
+                              <Star className="w-3 h-3 text-emerald-500 fill-emerald-500" />
+                              <span>New Captain (Verified)</span>
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 font-bold">
+                            <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                            {rInfo.display}
+                          </span>
+                        );
+                      })()}
                       <span className="text-muted text-xs">&bull;</span>
-                      <span className="text-xs text-secondary">{matchedDriver.totalRides}+ Trips</span>
+                      <span className="text-xs text-secondary">{matchedDriver.totalRides || 0} completed {matchedDriver.totalRides === 1 ? 'trip' : 'trips'}</span>
                     </div>
                   </div>
                 </div>
@@ -607,12 +627,18 @@ export default function DriverMatchingModal({
               {/* Driver Profile */}
               <div className="p-3.5 rounded-xl bg-surface border border-base space-y-3">
                 <div className="flex items-center gap-3">
-                  <div className="relative">
-                    <img
-                      src={matchedDriver.photo || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
-                      alt={matchedDriver.name}
-                      className="w-12 h-12 rounded-xl object-cover border-2 border-emerald-500 shadow-sm"
-                    />
+                  <div className="relative shrink-0">
+                    {matchedDriver.photo ? (
+                      <img
+                        src={matchedDriver.photo}
+                        alt={matchedDriver.name}
+                        className="w-12 h-12 rounded-xl object-cover border-2 border-emerald-500 shadow-sm"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-xl bg-emerald-600 text-white font-bold flex items-center justify-center text-lg shadow-sm border border-emerald-400">
+                        {matchedDriver.name?.charAt(0) || 'C'}
+                      </div>
+                    )}
                     <span className="absolute -bottom-1 -right-1 bg-emerald-600 text-white rounded-full p-0.5 border border-white">
                       <ShieldCheck className="w-3 h-3" />
                     </span>
@@ -621,14 +647,27 @@ export default function DriverMatchingModal({
                     <div className="flex items-center gap-1.5">
                       <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 tracking-wider">Executive Chauffeur</span>
                     </div>
-                    <h3 className="text-sm font-bold text-primary truncate">{matchedDriver.name}</h3>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 font-bold">
-                        <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                        {matchedDriver.rating.toFixed(2)}
-                      </span>
+                    <h3 className="text-sm font-bold text-primary truncate">Captain {matchedDriver.name}</h3>
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                      {(() => {
+                        const rInfo = formatDriverRating(matchedDriver.rating);
+                        if (rInfo.isNew) {
+                          return (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/70 px-1.5 py-0.5 rounded border border-emerald-300 dark:border-emerald-800">
+                              <Star className="w-3 h-3 text-emerald-500 fill-emerald-500" />
+                              <span>New Captain (Verified)</span>
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 font-bold">
+                            <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                            {rInfo.display}
+                          </span>
+                        );
+                      })()}
                       <span className="text-muted text-xs">&bull;</span>
-                      <span className="text-xs text-secondary">{matchedDriver.totalRides}+ Trips</span>
+                      <span className="text-xs text-secondary">{matchedDriver.totalRides || 0} completed {matchedDriver.totalRides === 1 ? 'trip' : 'trips'}</span>
                     </div>
                   </div>
                 </div>

@@ -6,7 +6,7 @@ import { useApp } from '@/context/AppContext';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
 import { formatFareSAR } from '@/lib/fixed-fare';
 import { SAUDI_LANDMARKS } from '@/lib/geo';
-import { VehicleType, Booking, BookingStatus } from '@/types';
+import { VehicleType, Booking, BookingStatus, RatingFeedback } from '@/types';
 import {
   PhoneCall,
   PlusCircle,
@@ -29,6 +29,7 @@ import {
   FileCheck,
   DollarSign,
   MessageSquare,
+  Star,
 } from 'lucide-react';
 import { TableSkeletonRows } from '@/components/ui/DataStateSkeletons';
 import { toast } from 'sonner';
@@ -48,6 +49,7 @@ export default function DispatcherQueuePage() {
     reassignDriver,
     autoAssignDriver,
     settings,
+    ratings,
     isDataLoading,
   } = useApp();
 
@@ -78,6 +80,9 @@ export default function DispatcherQueuePage() {
 
   // Quick receipt view modal
   const [viewScreenshotUrl, setViewScreenshotUrl] = useState<string | null>(null);
+
+  // Review view modal
+  const [selectedReviewBooking, setSelectedReviewBooking] = useState<{ booking: Booking; rating: RatingFeedback } | null>(null);
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -706,7 +711,29 @@ export default function DispatcherQueuePage() {
                           b.status !== 'pending_verification' &&
                           b.status !== 'confirmed' &&
                           b.status !== 'driver_assigned' && (
-                            <span className="text-[11px] text-muted italic">In Progress / Logged</span>
+                            ['completed', 'trip_completed', 'ride_completed', 'payment_completed'].includes(b.status) ? (
+                              (() => {
+                                const bRating = ratings.find((r) => r.booking_id === b.id);
+                                if (bRating) {
+                                  return (
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedReviewBooking({ booking: b, rating: bRating })}
+                                      className="px-2 py-0.5 rounded-lg text-[11px] font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/30 flex items-center gap-1 transition-colors cursor-pointer"
+                                      title="Click to view passenger review"
+                                    >
+                                      <Star className="w-3 h-3 fill-amber-500" />
+                                      <span>Rated {bRating.rating}.0 ★</span>
+                                    </button>
+                                  );
+                                }
+                                return (
+                                  <span className="text-[11px] text-muted italic">Completed (Unrated)</span>
+                                );
+                              })()
+                            ) : (
+                              <span className="text-[11px] text-muted italic">In Progress / Logged</span>
+                            )
                           )}
                       </div>
                     </td>
@@ -1534,6 +1561,84 @@ export default function DispatcherQueuePage() {
           </div>
         </div>
       )}
+
+      {/* Passenger Review Detail Modal */}
+      {selectedReviewBooking && (() => {
+        const { booking: b, rating: r } = selectedReviewBooking;
+        const assignedDriver =
+          b.driver || (b.assigned_driver_id ? drivers.find((d) => d.id === b.assigned_driver_id) : undefined);
+        const driverName = assignedDriver?.profile?.full_name || assignedDriver?.full_name || 'Assigned Chauffeur';
+
+        return (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+            <div className="bg-card border border-base rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl relative">
+              <div className="flex items-center justify-between border-b border-base pb-3">
+                <div className="flex items-center gap-2">
+                  <Star className="w-5 h-5 text-amber-400 fill-amber-400" />
+                  <h3 className="type-card-title">Passenger Rating &amp; Review</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedReviewBooking(null)}
+                  className="text-muted hover:text-primary transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-3.5 bg-surface rounded-2xl border border-base space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-muted">Booking Reference:</span>
+                  <span className="font-mono font-bold text-amber-400">{b.booking_reference}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted">Passenger:</span>
+                  <span className="font-bold text-primary">{b.passenger_name} ({b.passenger_phone})</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted">Chauffeur:</span>
+                  <span className="font-bold text-primary">{driverName}</span>
+                </div>
+                <div className="flex justify-between items-center pt-1.5 border-t border-base/50">
+                  <span className="text-muted">Rating Given:</span>
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Star
+                        key={star}
+                        className={`w-3.5 h-3.5 ${
+                          star <= r.rating ? 'text-amber-500 fill-amber-500' : 'text-slate-600'
+                        }`}
+                      />
+                    ))}
+                    <span className="font-bold text-amber-500 ml-1">{r.rating}.0 / 5.0</span>
+                  </div>
+                </div>
+                {r.feedback && (
+                  <div className="pt-2 border-t border-base/50">
+                    <span className="text-muted block text-[11px] mb-1">Feedback:</span>
+                    <p className="text-primary italic bg-input/40 p-2.5 rounded-xl border border-base">
+                      &ldquo;{r.feedback}&rdquo;
+                    </p>
+                  </div>
+                )}
+                <div className="text-[10.5px] text-muted pt-1">
+                  Submitted: {formatDateTime(r.created_at)}
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-1">
+                <button
+                  type="button"
+                  onClick={() => setSelectedReviewBooking(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-surface hover:bg-elevated border border-base text-primary transition-colors cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

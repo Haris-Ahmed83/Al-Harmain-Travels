@@ -1,8 +1,21 @@
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ─────────────────────────────────────────────────
+   ARABIC & RTL TYPOGRAPHY
+───────────────────────────────────────────────── */
+[dir="rtl"] {
+  font-family: 'Cairo', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+}
+[dir="rtl"] input,
+[dir="rtl"] select,
+[dir="rtl"] textarea,
+[dir="rtl"] button {
+  font-family: 'Cairo', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+}
 
 /* ─────────────────────────────────────────────────
    PREMIUM LIGHT DESIGN TOKENS  —  Only light theme

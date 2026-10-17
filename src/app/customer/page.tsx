@@ -20,6 +20,7 @@ import {
 } from '@/types';
 import CustomRouteBookingPanel from '@/components/customer/CustomRouteBookingPanel';
 import FixedFareBookingPanel from '@/components/customer/FixedFareBookingPanel';
+import { useLanguage } from '@/context/LanguageContext';
 import { usePickupLocation } from '@/hooks/usePickupLocation';
 import {
   getCurrentLocation,
@@ -66,6 +67,7 @@ import {
   Sparkles,
   ArrowRight,
   ChevronRight,
+  ChevronLeft,
   X,
   RotateCcw,
   Check,
@@ -158,6 +160,7 @@ const CATEGORY_TO_VEHICLE_TYPE: Record<VehicleCategory, VehicleType> = {
 };
 
 export default function CustomerHomePage() {
+  const { t, language, dir, isRTL } = useLanguage();
   const {
     currentUser,
     activeCustomerBooking,
@@ -185,12 +188,42 @@ export default function CustomerHomePage() {
   // Active assigned driver info for active trip card (if available)
   const activeDriver = activeCustomerBooking?.driver || null;
 
-  // Real-time recent bookings for current authenticated customer
-  const customerRecentBookings = useMemo(() => {
+  // ── Paginated Recent & Active Bookings ────────────────────────────────
+  const BOOKINGS_PER_PAGE = 4;
+  const [bookingsPage, setBookingsPage] = useState<number>(0);
+
+  // Always sort newest-first by created_at (DESC), filter for this customer.
+  const allCustomerBookings = useMemo(() => {
     return bookings
       .filter((b) => isBookingForCustomer(b, currentUser))
-      .slice(0, 4);
+      .slice()
+      .sort((a, b) => {
+        const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return tb - ta; // newest first
+      });
   }, [bookings, currentUser]);
+
+  const totalBookingPages = Math.max(1, Math.ceil(allCustomerBookings.length / BOOKINGS_PER_PAGE));
+
+  // Reset to first page when a new booking arrives so it is immediately visible
+  const prevBookingCountRef = useRef<number>(allCustomerBookings.length);
+  useEffect(() => {
+    if (allCustomerBookings.length > prevBookingCountRef.current) {
+      setBookingsPage(0);
+    }
+    prevBookingCountRef.current = allCustomerBookings.length;
+  }, [allCustomerBookings.length]);
+
+  // Clamp the page index whenever the total changes
+  useEffect(() => {
+    setBookingsPage((p) => Math.min(p, Math.max(0, totalBookingPages - 1)));
+  }, [totalBookingPages]);
+
+  const customerRecentBookings = useMemo(() => {
+    const start = bookingsPage * BOOKINGS_PER_PAGE;
+    return allCustomerBookings.slice(start, start + BOOKINGS_PER_PAGE);
+  }, [allCustomerBookings, bookingsPage]);
 
   const {
     status: gpsStatus,
@@ -955,7 +988,7 @@ export default function CustomerHomePage() {
   // ─── Render ────────────────────────────────────────────────────────────
 
   return (
-    <div className="page-shell space-y-4 sm:space-y-5 pb-20 sm:pb-6">
+    <div className="page-shell space-y-4 sm:space-y-5 pb-20 sm:pb-6" dir={dir}>
 
       {/* ── Active Journey Banner ──────────────────────────────────────── */}
       {activeCustomerBooking && (
@@ -964,16 +997,16 @@ export default function CustomerHomePage() {
             <div className="space-y-1">
               <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-700/80 text-emerald-200 text-[11px] font-bold border border-emerald-500/40">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                <span>ACTIVE JOURNEY: {activeCustomerBooking.status.replace(/_/g, ' ').toUpperCase()}</span>
+                <span>{isRTL ? 'الرحلة النشطة:' : 'ACTIVE JOURNEY:'} {activeCustomerBooking.status.replace(/_/g, ' ').toUpperCase()}</span>
               </div>
               <div className="text-white font-semibold text-xs sm:text-sm">
-                Ref: <span className="text-amber-300 font-mono">{activeCustomerBooking.booking_reference}</span> &bull; {activeCustomerBooking.pickup_address} &rarr; {activeCustomerBooking.destination_address}
+                {isRTL ? 'المرجع:' : 'Ref:'} <span className="text-amber-300 font-mono">{activeCustomerBooking.booking_reference}</span> &bull; {activeCustomerBooking.pickup_address} &rarr; {activeCustomerBooking.destination_address}
               </div>
               {activeDriver && (
                 <div className="text-emerald-200 text-xs flex flex-wrap items-center gap-1.5 pt-0.5">
                   <Car className="w-3.5 h-3.5 text-amber-400" />
                   <span>
-                    Chauffeur: <strong className="text-white font-bold">{activeDriver.profile?.full_name || activeDriver.full_name || 'Assigned Chauffeur'}</strong>
+                    {isRTL ? 'الكابتن:' : 'Chauffeur:'} <strong className="text-white font-bold">{activeDriver.profile?.full_name || activeDriver.full_name || (isRTL ? 'كابتن معتمد' : 'Assigned Chauffeur')}</strong>
                     {(activeDriver.assigned_vehicle?.plate_number || activeDriver.vehicle?.plate_number) ? ` (${activeDriver.assigned_vehicle?.plate_number || activeDriver.vehicle?.plate_number})` : ''}
                   </span>
                 </div>
@@ -984,7 +1017,7 @@ export default function CustomerHomePage() {
               className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs shadow-sm transition-all self-start md:self-center shrink-0"
             >
               <Navigation className="w-3.5 h-3.5" />
-              <span>Open Live Tracking Radar</span>
+              <span>{isRTL ? 'فتح رادار التتبع المباشر' : 'Open Live Tracking Radar'}</span>
             </Link>
           </div>
         </div>
@@ -995,10 +1028,10 @@ export default function CustomerHomePage() {
         <div>
           <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 text-[11px] font-semibold mb-1">
             <Sparkles className="w-3 h-3 text-amber-500" />
-            Al Harmain Fixed-Fare Booking
+            {isRTL ? 'شركة الحرمين للنقل الفاخر' : 'Al Harmain Fixed-Fare Booking'}
           </span>
           <h1 className="text-lg sm:text-xl font-bold tracking-tight text-primary">
-            Where would you like to go, <span className="text-amber-600 dark:text-amber-400">{currentUser.full_name.split(' ')[0]}</span>?
+            {isRTL ? `إلى أين ترغب بالذهاب يا ${currentUser.full_name.split(' ')[0]}؟` : `Where would you like to go, ${currentUser.full_name.split(' ')[0]}?`}
           </h1>
         </div>
 
@@ -1011,7 +1044,7 @@ export default function CustomerHomePage() {
               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-xs font-semibold transition-colors cursor-pointer"
             >
               <Crosshair className="w-3 h-3 text-emerald-500" />
-              <span>Live GPS Active</span>
+              <span>{isRTL ? 'تحديد الموقع نشط' : 'Live GPS Active'}</span>
             </button>
           ) : (
             <button
@@ -1020,7 +1053,7 @@ export default function CustomerHomePage() {
               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-semibold transition-colors cursor-pointer"
             >
               <Crosshair className="w-3 h-3 text-amber-500" />
-              <span>Use GPS</span>
+              <span>{isRTL ? 'تحديد موقعي' : 'Use GPS'}</span>
             </button>
           )}
 
@@ -1031,7 +1064,7 @@ export default function CustomerHomePage() {
               className="text-xs font-semibold text-muted hover:text-rose-500 px-2.5 py-1 rounded-full border border-base bg-card hover:bg-elevated transition-colors inline-flex items-center gap-1.5 cursor-pointer"
             >
               <RotateCcw className="w-3 h-3" />
-              <span>Reset</span>
+              <span>{isRTL ? 'إعادة تعيين' : 'Reset'}</span>
             </button>
           )}
         </div>
@@ -1042,7 +1075,7 @@ export default function CustomerHomePage() {
         <button
           type="button"
           onClick={() => setBookingMethod('fixed')}
-          className={`p-2.5 sm:p-3 rounded-lg border text-left transition-all flex items-start gap-2.5 cursor-pointer ${bookingMethod === 'fixed'
+          className={`p-2.5 sm:p-3 rounded-lg border text-left rtl:text-right transition-all flex items-start gap-2.5 cursor-pointer ${bookingMethod === 'fixed'
               ? 'bg-gradient-to-r from-emerald-500/15 to-emerald-500/5 border-emerald-500/50 shadow-sm text-primary'
               : 'bg-surface/50 border-transparent hover:bg-surface text-secondary hover:text-primary'
             }`}
@@ -1057,13 +1090,13 @@ export default function CustomerHomePage() {
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <span className="font-bold text-xs">Fixed Fare Booking</span>
+              <span className="font-bold text-xs">{isRTL ? 'حجز بأسعار ثابتة' : 'Fixed Fare Booking'}</span>
               <span className="px-1.5 py-0.2 rounded-full text-[9.5px] font-bold bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                Predefined Rates
+                {isRTL ? 'أسعار محددة' : 'Predefined Rates'}
               </span>
             </div>
             <p className="text-[10.5px] text-muted mt-0.5 leading-snug">
-              Predefined routes (Jeddah, Makkah, Madinah, Ziyarat) with guaranteed fixed prices.
+              {isRTL ? 'مسارات مسبقة التحديد (جدة، مكة، المدينة، المزارات) بأسعار ثابتة ومضمونة.' : 'Predefined routes (Jeddah, Makkah, Madinah, Ziyarat) with guaranteed fixed prices.'}
             </p>
           </div>
         </button>
@@ -1071,7 +1104,7 @@ export default function CustomerHomePage() {
         <button
           type="button"
           onClick={() => setBookingMethod('custom')}
-          className={`p-2.5 sm:p-3 rounded-lg border text-left transition-all flex items-start gap-2.5 cursor-pointer ${bookingMethod === 'custom'
+          className={`p-2.5 sm:p-3 rounded-lg border text-left rtl:text-right transition-all flex items-start gap-2.5 cursor-pointer ${bookingMethod === 'custom'
               ? 'bg-gradient-to-r from-amber-500/15 to-amber-500/5 border-amber-500/50 shadow-sm text-primary'
               : 'bg-surface/50 border-transparent hover:bg-surface text-secondary hover:text-primary'
             }`}
@@ -1086,13 +1119,13 @@ export default function CustomerHomePage() {
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <span className="font-bold text-xs">Custom Route Booking</span>
+              <span className="font-bold text-xs">{isRTL ? 'حجز مسار مخصص' : 'Custom Route Booking'}</span>
               <span className="px-1.5 py-0.2 rounded-full text-[9.5px] font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                Dispatcher Confirmed
+                {isRTL ? 'بتأكيد الترحيل' : 'Dispatcher Confirmed'}
               </span>
             </div>
             <p className="text-[10.5px] text-muted mt-0.5 leading-snug">
-              Choose your own pickup &amp; destination with optional stops. Fare confirmed by dispatcher.
+              {isRTL ? 'حدد نقطة الانطلاق والوجهة مع توقفات اختيارية. يتم تأكيد السعر من قبل المشرف.' : 'Choose your own pickup & destination with optional stops. Fare confirmed by dispatcher.'}
             </p>
           </div>
         </button>
@@ -1228,7 +1261,7 @@ export default function CustomerHomePage() {
       </div>
 
       {/* ── Customer Recent & Active Rides Card ─────────────────────── */}
-      {customerRecentBookings.length > 0 && (
+      {allCustomerBookings.length > 0 && (
         <div className="rounded-2xl bg-card border border-base p-4 sm:p-5 shadow-lg space-y-3 animate-fade-up">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
@@ -1236,16 +1269,16 @@ export default function CustomerHomePage() {
                 <Clock className="w-3.5 h-3.5" />
               </div>
               <div>
-                <h3 className="font-bold text-primary text-sm sm:text-base">Your Recent &amp; Active Bookings</h3>
-                <p className="text-[11px] text-muted">Real-time status updates from our VIP dispatch radar</p>
+                <h3 className="font-bold text-primary text-sm sm:text-base">{isRTL ? 'رحلاتك الأخيرة والنشطة' : 'Your Recent & Active Bookings'}</h3>
+                <p className="text-[11px] text-muted">{isRTL ? 'تحديثات الحالة اللحظية من رادار ترحيل VIP' : 'Real-time status updates from our VIP dispatch radar'}</p>
               </div>
             </div>
             <Link
               href="/customer/bookings"
               className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1"
             >
-              <span>View All Trips</span>
-              <ChevronRight className="w-3.5 h-3.5" />
+              <span>{isRTL ? 'عرض جميع الرحلات' : 'View All Trips'}</span>
+              <ChevronRight className={`w-3.5 h-3.5 ${isRTL ? 'rotate-180' : ''}`} />
             </Link>
           </div>
 
@@ -1272,7 +1305,7 @@ export default function CustomerHomePage() {
                         {isActive && (
                           <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[9px] font-extrabold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                            LIVE
+                            {isRTL ? 'مباشر' : 'LIVE'}
                           </span>
                         )}
                       </div>
@@ -1297,14 +1330,14 @@ export default function CustomerHomePage() {
                     <div className="text-muted text-[11px]">
                       {b.final_fare || b.confirmed_fare || b.estimated_fare ? (
                         <span className="font-bold text-primary">
-                          SAR {b.final_fare || b.confirmed_fare || b.estimated_fare}
+                          {isRTL ? 'ر.س ' : 'SAR '}{b.final_fare || b.confirmed_fare || b.estimated_fare}
                         </span>
                       ) : (
-                        <span className="italic text-amber-500">Fare pending review</span>
+                        <span className="italic text-amber-500">{isRTL ? 'السعر قيد المراجعة' : 'Fare pending review'}</span>
                       )}
                       {b.driver?.profile?.full_name && (
                         <span className="block text-[10px] text-muted">
-                          Chauffeur: {b.driver.profile.full_name}
+                          {isRTL ? 'الكابتن:' : 'Chauffeur:'} {b.driver.profile.full_name}
                         </span>
                       )}
                     </div>
@@ -1315,14 +1348,14 @@ export default function CustomerHomePage() {
                           className="px-2 py-1 rounded-lg bg-emerald-600 text-white text-[10.5px] font-semibold hover:bg-emerald-700 transition-colors shadow-sm flex items-center gap-1"
                         >
                           <Navigation className="w-3 h-3" />
-                          <span>Track Live</span>
+                          <span>{isRTL ? 'تتبع مباشر' : 'Track Live'}</span>
                         </Link>
                       )}
                       <Link
                         href="/customer/bookings"
                         className="px-2 py-1 rounded-lg bg-elevated hover:bg-surface text-secondary text-[10.5px] font-semibold transition-colors"
                       >
-                        Details
+                        {isRTL ? 'التفاصيل' : 'Details'}
                       </Link>
                     </div>
                   </div>
@@ -1330,6 +1363,38 @@ export default function CustomerHomePage() {
               );
             })}
           </div>
+
+          {/* ── Pagination Controls ──────────────────────────────────── */}
+          {totalBookingPages > 1 && (
+            <div className="flex items-center justify-between pt-2 border-t border-base/60">
+              <span className="text-[11px] text-muted">
+                Page {bookingsPage + 1} of {totalBookingPages}
+                <span className="ml-1 text-muted/70">({allCustomerBookings.length} total)</span>
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={bookingsPage === 0}
+                  onClick={() => setBookingsPage((p) => Math.max(0, p - 1))}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-elevated hover:bg-surface text-secondary border border-base/60 hover:border-emerald-500/40"
+                  aria-label="Previous page"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  Prev
+                </button>
+                <button
+                  type="button"
+                  disabled={bookingsPage >= totalBookingPages - 1}
+                  onClick={() => setBookingsPage((p) => Math.min(totalBookingPages - 1, p + 1))}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-elevated hover:bg-surface text-secondary border border-base/60 hover:border-emerald-500/40"
+                  aria-label="Next page"
+                >
+                  Next
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

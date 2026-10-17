@@ -47,7 +47,7 @@ export default function AdminAuditLogsPage() {
         action: 'DRIVER_VERIFIED',
         entity: 'Drivers',
         user: d.profile?.full_name || 'Captain',
-        details: `Captain verified with MOT license ${d.license_number}. Rating: ${d.rating}★ (${d.total_rides} completed trips).`,
+        details: `Captain verified with MOT license ${d.license_number}. Rating: ${d.rating !== null && d.rating !== undefined ? `${Number(d.rating).toFixed(1)}★` : 'New'} (${d.total_rides ?? 0} completed trips).`,
         ip: `192.168.2.${(idx % 250) + 10}`,
         timestamp: d.created_at || new Date().toISOString(),
         level: 'info' as 'warning' | 'info',

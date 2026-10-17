@@ -427,7 +427,7 @@ export default function DriverCockpitPage() {
               Completed Trips
             </span>
             <div className="text-2xl font-extrabold text-primary">
-              {completedAssignments.length > 0 ? completedAssignments.length : currentDriver.total_rides}
+              {currentDriver.total_rides ?? (completedAssignments.length > 0 ? completedAssignments.length : 0)}
             </div>
             <span className="text-[11px] text-secondary block">Verified VIP missions</span>
           </div>
@@ -443,9 +443,13 @@ export default function DriverCockpitPage() {
               Chauffeur Rating
             </span>
             <div className="text-2xl font-extrabold text-amber-500 flex items-center gap-1">
-              <span>★ {currentDriver.rating || 5.0}</span>
+              <span>★ {currentDriver.rating !== null && currentDriver.rating !== undefined ? Number(currentDriver.rating).toFixed(1) : 'New'}</span>
             </div>
-            <span className="text-[11px] text-secondary block">5.0 Customer Standard</span>
+            <span className="text-[11px] text-secondary block">
+              {currentDriver.rating !== null && currentDriver.rating !== undefined
+                ? (currentDriver.rating_count ? `${currentDriver.rating_count} customer reviews` : 'Customer Feedback')
+                : 'No reviews yet'}
+            </span>
           </div>
           <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 shrink-0">
             <Star className="w-5 h-5 fill-amber-500" />

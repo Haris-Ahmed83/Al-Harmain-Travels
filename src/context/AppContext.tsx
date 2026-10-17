@@ -48,6 +48,11 @@ import {
   isBookingCancelled,
   isBookingForCustomer,
 } from '@/lib/assignment-utils';
+import {
+  calculateDriverRating,
+  calculateDriverCompletedRides,
+  resolveDriverVehicle,
+} from '@/lib/driver-stats';
 
 export interface NotificationItem {
   id: string;
@@ -280,7 +285,9 @@ interface AppContextType {
 
   // Payments & Ratings
   recordPayment: (bookingId: string, method: 'cash' | 'online' | 'card', amount: number) => void;
-  submitRating: (data: Omit<RatingFeedback, 'id' | 'created_at'>) => void;
+  submitRating: (
+    data: Omit<RatingFeedback, 'id' | 'created_at'>
+  ) => Promise<{ success: boolean; alreadyRated?: boolean; message?: string; rating?: RatingFeedback; error?: string }>;
 
   // Helper getters
   activeCustomerBooking?: Booking;
@@ -440,6 +447,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         { data: dbRateServices },
         { data: dbRateRoutes },
         { data: dbRateTerminals },
+        { data: dbRatings },
       ] = await Promise.all([
         supabase.from('services').select('*').order('display_order', { ascending: true }),
         supabase.from('profiles').select('*'),
@@ -464,7 +472,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         supabase.from('rate_service_types').select('*').order('display_order', { ascending: true }),
         supabase.from('rate_routes').select('*').order('display_order', { ascending: true }),
         supabase.from('rate_terminals').select('*').order('display_order', { ascending: true }),
+        supabase.from('ratings_feedback').select('*').order('created_at', { ascending: false }),
       ]);
+
+      if (dbRatings) {
+        setRatings(dbRatings as RatingFeedback[]);
+      }
 
       if (dbFixedRates && dbFixedRates.length > 0) {
         setFixedFareRates(dbFixedRates as FixedFareRate[]);
@@ -538,50 +551,52 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           }))
         );
       }
-      if (dbDrivers) {
-        const currentRateVehs: RateVehicleType[] = (dbRateVehicles && dbRateVehicles.length > 0)
-          ? (dbRateVehicles as RateVehicleType[])
-          : rateVehicles;
-        const currentVehicles: Vehicle[] = (dbVehicles && dbVehicles.length > 0)
-          ? (dbVehicles as Vehicle[])
-          : vehicles;
 
-        const mappedDrivers = (dbDrivers as any[]).map((d) => {
-          if (d.assigned_vehicle_id) {
-            const rv = currentRateVehs.find((v) => v.id === d.assigned_vehicle_id || v.category === d.assigned_vehicle_id);
-            if (rv) {
-              return {
-                ...d,
-                assigned_vehicle: {
-                  id: rv.id,
-                  plate_number: rv.category.toUpperCase(),
-                  make: rv.name,
-                  model: `(${rv.seating_capacity} Seats)`,
-                  vehicle_type: rv.category as any,
-                  seating_capacity: rv.seating_capacity,
-                  status: rv.is_active ? 'assigned' : 'inactive',
-                  created_at: rv.created_at || new Date().toISOString(),
-                  updated_at: rv.updated_at || new Date().toISOString(),
-                },
-              };
-            }
-            const leg = currentVehicles.find((v) => v.id === d.assigned_vehicle_id);
-            if (leg) {
-              return {
-                ...d,
-                assigned_vehicle: leg,
-              };
-            }
-          }
-          return d;
+      const allRatings: RatingFeedback[] = (dbRatings as RatingFeedback[]) || [];
+      const currentRateVehs: RateVehicleType[] = (dbRateVehicles && dbRateVehicles.length > 0)
+        ? (dbRateVehicles as RateVehicleType[])
+        : rateVehicles;
+      const currentVehicles: Vehicle[] = (dbVehicles && dbVehicles.length > 0)
+        ? (dbVehicles as Vehicle[])
+        : vehicles;
+      const rawBookings: Booking[] = (dbBookings as Booking[]) || [];
+
+      let mappedDrivers: Driver[] = [];
+      if (dbDrivers) {
+        mappedDrivers = (dbDrivers as any[]).map((d) => {
+          const prof = (dbProfiles as Profile[] || []).find((p) => p.id === d.id) || d.profile;
+          const completedRides = calculateDriverCompletedRides(rawBookings, d.id);
+          const ratingStats = calculateDriverRating(allRatings, d.id);
+          const resolvedVeh = resolveDriverVehicle(d.assigned_vehicle_id, currentRateVehs, currentVehicles);
+
+          return {
+            ...d,
+            profile: prof || d.profile,
+            full_name: prof?.full_name || d.full_name || d.profile?.full_name || 'Captain',
+            phone: prof?.phone || d.phone || d.profile?.phone || null,
+            avatar_url: prof?.avatar_url || d.avatar_url || d.profile?.avatar_url || null,
+            rating: ratingStats.rating,
+            rating_count: ratingStats.count,
+            total_rides: completedRides,
+            assigned_vehicle: resolvedVeh || d.assigned_vehicle,
+            vehicle: resolvedVeh || d.vehicle,
+          };
         });
-        setDrivers(mappedDrivers as Driver[]);
+        setDrivers(mappedDrivers);
       }
+
       if (dbBookings) {
         const uniqueMap = new Map<string, Booking>();
-        for (const b of dbBookings as Booking[]) {
-          if (b.id && !uniqueMap.has(b.id)) {
-            uniqueMap.set(b.id, b);
+        for (const rawB of dbBookings as any[]) {
+          if (rawB.id && !uniqueMap.has(rawB.id)) {
+            const b = { ...rawB };
+            if (b.assigned_driver_id && mappedDrivers.length > 0) {
+              const matchedD = mappedDrivers.find((d) => d.id === b.assigned_driver_id);
+              if (matchedD) {
+                b.driver = matchedD;
+              }
+            }
+            uniqueMap.set(b.id, b as Booking);
           }
         }
         setBookings(Array.from(uniqueMap.values()));
@@ -901,6 +916,44 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       })
       .subscribe();
 
+    // Listen to real-time ratings & reviews
+    const ratingsChannel = supabase
+      .channel('public:ratings_feedback')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ratings_feedback' }, (payload) => {
+        if (payload.new && 'driver_id' in payload.new) {
+          const newRating = payload.new as RatingFeedback;
+          setRatings((prev) => {
+            const nextRatings = [...prev.filter((r) => r.id !== newRating.id), newRating];
+            if (newRating.driver_id) {
+              const driverStats = calculateDriverRating(nextRatings, newRating.driver_id);
+              setDrivers((prevDrivers) =>
+                prevDrivers.map((d) =>
+                  d.id === newRating.driver_id
+                    ? { ...d, rating: driverStats.rating, rating_count: driverStats.count }
+                    : d
+                )
+              );
+              setBookings((prevBookings) =>
+                prevBookings.map((b) =>
+                  b.assigned_driver_id === newRating.driver_id && b.driver
+                    ? {
+                        ...b,
+                        driver: {
+                          ...b.driver,
+                          rating: driverStats.rating,
+                          rating_count: driverStats.count,
+                        },
+                      }
+                    : b
+                )
+              );
+            }
+            return nextRatings;
+          });
+        }
+      })
+      .subscribe();
+
     return () => {
       supabase.removeChannel(locationChannel);
       supabase.removeChannel(bookingsChannel);
@@ -909,6 +962,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       supabase.removeChannel(profilesChannel);
       supabase.removeChannel(ratesChannel);
       supabase.removeChannel(notifsChannel);
+      supabase.removeChannel(ratingsChannel);
     };
     // Empty dependency array: channels are set up once on mount and torn down
     // on unmount. Using [drivers] here caused re-subscriptions (and channel
@@ -958,11 +1012,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             }
 
             const isConfirmed = !!session.user.email_confirmed_at || !!profile.email_verified;
+            const validLang = (profile as any)?.preferred_language === 'ar' ? 'ar' : 'en';
             const updatedProfile: Profile = {
               ...(profile as Profile),
+              preferred_language: validLang,
               email_verified: isConfirmed,
             };
             setCurrentUser(updatedProfile);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('alharmain_customer_language', validLang);
+            }
             setUserRole(updatedProfile.role as UserRole);
             setIsAuthenticated(true);
             syncRoleCookie(updatedProfile.role as UserRole);
@@ -1050,11 +1109,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             syncRoleCookie(null);
           } else {
             const isConfirmed = !!session.user.email_confirmed_at || !!profile.email_verified;
+            const validLang = (profile as any)?.preferred_language === 'ar' ? 'ar' : 'en';
             const updatedProfile: Profile = {
               ...(profile as Profile),
+              preferred_language: validLang,
               email_verified: isConfirmed,
             };
             setCurrentUser(updatedProfile);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('alharmain_customer_language', validLang);
+            }
             setUserRole(updatedProfile.role as UserRole);
             setIsAuthenticated(true);
             syncRoleCookie(updatedProfile.role as UserRole);
@@ -1208,12 +1272,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         profile.email_verified = true;
       }
 
+      const validLang = (profile as any)?.preferred_language === 'ar' ? 'ar' : 'en';
+      profile.preferred_language = validLang;
       setUserRole(profile.role);
       setCurrentUser(profile);
       setIsAuthenticated(true);
       syncRoleCookie(profile.role);
       if (typeof window !== 'undefined') {
         localStorage.removeItem('aht_pending_verification_email');
+        localStorage.setItem('alharmain_customer_language', validLang);
       }
       addNotification('Signed In', `Welcome back, ${profile.full_name}`, 'success', profile.role);
 
@@ -1522,15 +1589,25 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // Profile Management
   const updateUserProfile = async (updates: Partial<Profile>): Promise<boolean> => {
     try {
+      const sanitizedLang = updates.preferred_language !== undefined
+        ? (updates.preferred_language === 'ar' ? 'ar' : 'en')
+        : (currentUser.preferred_language === 'ar' ? 'ar' : 'en');
+
       const updatedUser: Profile = {
         ...currentUser,
         ...updates,
+        preferred_language: sanitizedLang,
         updated_at: new Date().toISOString(),
       };
       setCurrentUser(updatedUser);
       setUsersList((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
 
-      // Sync to Supabase
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('alharmain_customer_language', sanitizedLang);
+        localStorage.setItem('alharmain_preferred_language', sanitizedLang);
+      }
+
+      // Sync to Supabase profiles
       await supabase.from('profiles').update({
         full_name: updatedUser.full_name,
         phone: updatedUser.phone,
@@ -1539,11 +1616,23 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         gender: updatedUser.gender,
         email_verified: updatedUser.email_verified,
         phone_verified: updatedUser.phone_verified,
+        preferred_language: sanitizedLang,
         updated_at: updatedUser.updated_at,
       }).eq('id', updatedUser.id);
 
-      addNotification('Profile Updated', 'Your profile details have been saved successfully.', 'success', currentUser.role);
-      toast.success('Profile details saved successfully.');
+      // Also sync to customers table if user is a customer
+      if (updatedUser.role === 'customer') {
+        await supabase.from('customers').upsert({
+          id: updatedUser.id,
+          preferred_language: sanitizedLang,
+        }, { onConflict: 'id' });
+      }
+
+      const isLanguageOnlyUpdate = Object.keys(updates).length === 1 && updates.preferred_language !== undefined;
+      if (!isLanguageOnlyUpdate) {
+        addNotification('Profile Updated', 'Your profile details have been saved successfully.', 'success', currentUser.role);
+        toast.success('Profile details saved successfully.');
+      }
       return true;
     } catch (err) {
       console.error('Failed to update profile:', err);
@@ -3828,7 +3917,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
                   id: data.driver.id,
                   status: 'assigned',
                   rating: data.driver.rating,
-                  total_rides: data.driver.totalRides,
+                  rating_count: data.driver.rating_count ?? 0,
+                  total_rides: data.driver.totalRides ?? 0,
+                  avatar_url: data.driver.photo,
+                  phone: data.driver.phone,
+                  full_name: data.driver.name,
                   total_earnings: 0,
                   cash_collected: 0,
                   created_at: new Date().toISOString(),
@@ -3837,6 +3930,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
                     id: data.driver.id,
                     role: 'driver',
                     full_name: data.driver.name,
+                    phone: data.driver.phone,
                     avatar_url: data.driver.photo,
                     status: 'active',
                     created_at: new Date().toISOString(),
@@ -4126,6 +4220,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       );
 
       const nextDriverStatus: DriverStatus = hasOtherAssignments ? 'assigned' : 'available';
+      const updatedBookings = bookings.map((b) =>
+        b.id === bookingId ? { ...b, status: canonicalStatus } : b
+      );
+      const newCompletedRides = calculateDriverCompletedRides(updatedBookings, booking.assigned_driver_id);
 
       setDrivers((prev) =>
         prev.map((d) =>
@@ -4133,7 +4231,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             ? {
               ...d,
               status: nextDriverStatus,
-              total_rides: d.total_rides + 1,
+              total_rides: newCompletedRides,
               total_earnings: d.total_earnings + (booking.final_fare || booking.confirmed_fare || booking.estimated_fare || 0),
             }
             : d
@@ -4165,7 +4263,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
               !isBookingCancelled(b.status)
           );
           const nextDriverStatus = isCompleted ? (hasOtherAssignments ? 'assigned' : 'available') : 'on_trip';
-          await supabase.from('drivers').update({ status: nextDriverStatus, updated_at: now }).eq('id', booking.assigned_driver_id);
+          const updatePayload: any = { status: nextDriverStatus, updated_at: now };
+          if (isCompleted) {
+            const updatedBookings = bookings.map((b) =>
+              b.id === bookingId ? { ...b, status: canonicalStatus } : b
+            );
+            updatePayload.total_rides = calculateDriverCompletedRides(updatedBookings, booking.assigned_driver_id);
+          }
+          await supabase.from('drivers').update(updatePayload).eq('id', booking.assigned_driver_id);
         }
 
         await supabase.from('booking_status_history').insert({
@@ -4557,53 +4662,142 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     toast.success('Payment recorded successfully');
   };
 
-  const submitRating = async (data: Omit<RatingFeedback, 'id' | 'created_at'>) => {
-    const now = new Date().toISOString();
-    const newRating: RatingFeedback = {
-      id: 'rate-' + Date.now(),
-      ...data,
-      created_at: now,
-    };
-    setRatings((prev) => [newRating, ...prev]);
-
-    let newAvg: number | null = null;
-    if (data.driver_id) {
-      setDrivers((prev) =>
-        prev.map((d) => {
-          if (d.id === data.driver_id) {
-            newAvg = parseFloat(((d.rating * 9 + data.rating) / 10).toFixed(2));
-            return { ...d, rating: newAvg };
-          }
-          return d;
-        })
-      );
+  const submitRating = async (
+    data: Omit<RatingFeedback, 'id' | 'created_at'>
+  ): Promise<{ success: boolean; alreadyRated?: boolean; message?: string; rating?: RatingFeedback; error?: string }> => {
+    // 1. Prevent duplicate submissions locally if already present in state
+    const existing = ratings.find((r) => r.booking_id === data.booking_id);
+    if (existing) {
+      toast.success('Thank you! Your review has been recorded');
+      return {
+        success: false,
+        alreadyRated: true,
+        message: 'Thank you! Your review has been recorded',
+        rating: existing,
+      };
     }
 
     try {
-      const isBookingUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.booking_id);
-      if (isBookingUuid) {
-        await supabase.from('ratings_feedback').insert({
-          booking_id: data.booking_id,
-          customer_id: data.customer_id && data.customer_id !== 'guest' ? data.customer_id : null,
-          driver_id: data.driver_id || null,
-          rating: data.rating,
-          feedback: data.feedback || null,
-          category: data.category || 'rating',
+      // 2. Call server-side API endpoint for authoritative validation and DB unique constraint enforcement
+      const res = await fetch('/api/ratings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+
+      const resData = await res.json().catch(() => ({}));
+
+      if (res.status === 409 || resData.alreadyRated) {
+        // Already rated on server
+        const savedRating: RatingFeedback = resData.data || {
+          id: 'rate-' + Date.now(),
+          ...data,
+          created_at: new Date().toISOString(),
+        };
+
+        setRatings((prev) => {
+          if (prev.some((r) => r.booking_id === data.booking_id)) return prev;
+          return [savedRating, ...prev];
         });
 
-        if (data.driver_id && newAvg !== null) {
-          const isDriverUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.driver_id);
-          if (isDriverUuid) {
-            await supabase.from('drivers').update({ rating: newAvg, updated_at: now }).eq('id', data.driver_id);
-          }
-        }
+        toast.success('Thank you! Your review has been recorded');
+        return {
+          success: false,
+          alreadyRated: true,
+          message: 'Thank you! Your review has been recorded',
+          rating: savedRating,
+        };
       }
-    } catch (err) {
-      console.warn('Supabase submitRating error:', err);
-    }
 
-    addNotification('Feedback Submitted', 'Thank you for your rating!', 'success');
-    toast.success('Rating submitted. Thank you!');
+      if (!res.ok || !resData.success) {
+        throw new Error(resData.error || 'Failed to record rating.');
+      }
+
+      const recordedRating: RatingFeedback = resData.data;
+
+      // 3. Update local state with the newly created rating
+      setRatings((prev) => [
+        recordedRating,
+        ...prev.filter((r) => r.id !== recordedRating.id && r.booking_id !== recordedRating.booking_id),
+      ]);
+
+      // 4. Update driver stats in state
+      if (data.driver_id) {
+        const stats = calculateDriverRating([recordedRating, ...ratings], data.driver_id);
+        setDrivers((prev) =>
+          prev.map((d) =>
+            d.id === data.driver_id ? { ...d, rating: stats.rating, rating_count: stats.count } : d
+          )
+        );
+        setBookings((prev) =>
+          prev.map((b) =>
+            b.assigned_driver_id === data.driver_id && b.driver
+              ? { ...b, driver: { ...b.driver, rating: stats.rating, rating_count: stats.count } }
+              : b
+          )
+        );
+      }
+
+      addNotification('Feedback Submitted', 'Thank you! Your review has been recorded', 'success');
+      toast.success('Thank you! Your review has been recorded');
+
+      return {
+        success: true,
+        message: 'Thank you! Your review has been recorded',
+        rating: recordedRating,
+      };
+    } catch (err: any) {
+      console.warn('API submitRating error, executing direct Supabase fallback:', err);
+
+      // Resilient fallback to Supabase direct insert
+      try {
+        const isBookingUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.booking_id);
+        if (isBookingUuid) {
+          const { data: dbInsert, error: dbErr } = await supabase
+            .from('ratings_feedback')
+            .insert({
+              booking_id: data.booking_id,
+              customer_id: data.customer_id && data.customer_id !== 'guest' ? data.customer_id : null,
+              driver_id: data.driver_id || null,
+              rating: data.rating,
+              feedback: data.feedback || null,
+              category: data.category || 'rating',
+            })
+            .select()
+            .single();
+
+          if (dbErr) {
+            if (dbErr.code === '23505' || dbErr.message?.includes('duplicate key')) {
+              toast.success('Thank you! Your review has been recorded');
+              return { success: false, alreadyRated: true, message: 'Thank you! Your review has been recorded' };
+            }
+            throw dbErr;
+          }
+
+          const fallbackRating = dbInsert as RatingFeedback;
+          setRatings((prev) => [fallbackRating, ...prev.filter((r) => r.booking_id !== data.booking_id)]);
+
+          if (data.driver_id) {
+            const stats = calculateDriverRating([fallbackRating, ...ratings], data.driver_id);
+            setDrivers((prev) =>
+              prev.map((d) =>
+                d.id === data.driver_id ? { ...d, rating: stats.rating, rating_count: stats.count } : d
+              )
+            );
+          }
+
+          toast.success('Thank you! Your review has been recorded');
+          return { success: true, message: 'Thank you! Your review has been recorded', rating: fallbackRating };
+        }
+      } catch (fallbackErr: any) {
+        console.error('Supabase fallback submitRating error:', fallbackErr);
+        toast.error('Unable to submit rating. Please try again.');
+        return { success: false, error: fallbackErr?.message || 'Failed to submit rating.' };
+      }
+
+      toast.success('Thank you! Your review has been recorded');
+      return { success: true, message: 'Thank you! Your review has been recorded' };
+    }
   };
 
   // Helper active bookings

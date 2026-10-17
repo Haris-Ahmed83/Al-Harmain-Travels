@@ -1319,7 +1319,7 @@ export default function ChauffeurTerritoryRadar({
                   <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Rating & Trips</span>
                   <div className="flex items-center gap-1 font-semibold text-slate-800">
                     <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-                    <span>{selectedDriverData.driver.rating ? selectedDriverData.driver.rating.toFixed(2) : '4.95'}</span>
+                    <span>{selectedDriverData.driver.rating !== null && selectedDriverData.driver.rating !== undefined ? Number(selectedDriverData.driver.rating).toFixed(1) : 'New'}</span>
                     <span className="text-slate-400">({selectedDriverData.driver.total_rides || 0} rides)</span>
                   </div>
                 </div>

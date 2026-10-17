@@ -30,6 +30,8 @@ import {
   Phone,
   Plane,
   Calendar,
+  Star,
+  Sparkles,
 } from 'lucide-react';
 import {
   AdminPageHeader,
@@ -43,7 +45,7 @@ import { TableSkeletonRows } from '@/components/ui/DataStateSkeletons';
 import { toast } from 'sonner';
 
 export default function AdminDashboardPage() {
-  const { bookings, drivers, vehicles, usersList, settings, isDataLoading, refreshData } = useApp();
+  const { bookings, drivers, vehicles, usersList, settings, ratings, isDataLoading, refreshData } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -77,6 +79,14 @@ export default function AdminDashboardPage() {
     .reduce((sum, b) => sum + (b.final_fare || b.estimated_fare || 0), 0);
 
   const availableDrivers = drivers.filter((d) => d.status === 'available').length;
+
+  const validRatings = ratings.filter(
+    (r) => r.rating !== null && r.rating !== undefined && !isNaN(Number(r.rating))
+  );
+  const fleetAvgRating =
+    validRatings.length > 0
+      ? (validRatings.reduce((sum, r) => sum + Number(r.rating), 0) / validRatings.length).toFixed(1)
+      : '5.0';
 
   // Filtered Bookings for the overview table
   const filteredBookings = useMemo(() => {
@@ -326,6 +336,108 @@ export default function AdminDashboardPage() {
             </Link>
           </div>
         </div>
+      </div>
+
+      {/* ── 3.5 Chauffeur Quality & Customer Reviews Section ──────────────── */}
+      <div className="p-6 sm:p-7 rounded-3xl bg-card border border-base shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-base pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center border border-amber-500/20 font-bold">
+              <Sparkles className="w-5 h-5 text-amber-500" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-base text-primary">Chauffeur Service Ratings &amp; Passenger Feedback</h3>
+                <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold px-2 py-0.5 rounded-full border border-amber-500/20 font-mono">
+                  {ratings.length} Reviews Recorded
+                </span>
+              </div>
+              <p className="text-xs text-secondary mt-0.5">
+                Real-time quality intelligence from verified Umrah &amp; City transfers.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 bg-surface px-4 py-2 rounded-2xl border border-base text-xs">
+            <div>
+              <span className="text-[10px] text-muted block uppercase font-bold">Fleet Average</span>
+              <span className="font-bold text-amber-500 text-sm flex items-center gap-1 mt-0.5">
+                <Star className="w-3.5 h-3.5 fill-amber-500" />
+                {fleetAvgRating} / 5.0
+              </span>
+            </div>
+            <div className="h-6 w-px bg-base" />
+            <div>
+              <span className="text-[10px] text-muted block uppercase font-bold">Total Reviews</span>
+              <span className="font-bold text-primary text-sm mt-0.5 block">{ratings.length}</span>
+            </div>
+          </div>
+        </div>
+
+        {ratings.length === 0 ? (
+          <div className="p-8 text-center bg-surface/50 rounded-2xl border border-base space-y-1.5">
+            <Star className="w-7 h-7 text-muted mx-auto" />
+            <h4 className="text-xs sm:text-sm font-bold text-primary">No Passenger Reviews Yet</h4>
+            <p className="text-xs text-muted max-w-sm mx-auto">
+              Reviews will stream here in real time as passengers rate their completed trips.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {ratings.slice(0, 6).map((rev) => {
+              const matchedBooking = bookings.find((b) => b.id === rev.booking_id);
+              const matchedDriver = drivers.find((d) => d.id === rev.driver_id);
+              const driverName = matchedDriver?.profile?.full_name || matchedDriver?.full_name || 'Captain';
+              const passengerName =
+                rev.booking?.passenger_name ||
+                matchedBooking?.passenger_name ||
+                rev.customer?.full_name ||
+                'Verified Passenger';
+
+              return (
+                <div
+                  key={rev.id}
+                  className="p-4 rounded-2xl bg-surface border border-base hover:border-amber-500/40 transition-colors space-y-2.5 text-xs shadow-xs"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-bold text-primary">{passengerName}</div>
+                      <div className="text-[10.5px] text-muted">Chauffeur: {driverName}</div>
+                    </div>
+                    <div className="flex items-center gap-1 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20">
+                      <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
+                      <span className="font-bold text-amber-600 dark:text-amber-400 text-xs">
+                        {rev.rating}.0
+                      </span>
+                    </div>
+                  </div>
+
+                  {(matchedBooking || rev.booking) && (
+                    <div className="text-[10.5px] text-muted truncate">
+                      <span className="font-mono text-amber-600 dark:text-amber-400 font-semibold mr-1">
+                        {matchedBooking?.booking_reference || (rev.booking as any)?.booking_reference}
+                      </span>
+                      &bull; {matchedBooking?.destination_address || (rev.booking as any)?.destination_address}
+                    </div>
+                  )}
+
+                  {rev.feedback ? (
+                    <p className="text-xs text-primary italic bg-card/60 p-2 rounded-xl border border-base line-clamp-2">
+                      &ldquo;{rev.feedback}&rdquo;
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-muted italic">5-star rating without written notes.</p>
+                  )}
+
+                  <div className="text-[9.5px] text-muted border-t border-base/50 pt-1.5 flex items-center justify-between">
+                    <span>{formatDateTime(rev.created_at)}</span>
+                    <span className="text-emerald-600 dark:text-emerald-400 font-semibold">Verified Ride</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* ── 4. Global Bookings Management Section ──────────────────────────── */}
@@ -594,6 +706,48 @@ export default function AdminDashboardPage() {
                   <div>Assigned Driver ID: {selectedBooking.assigned_driver_id}</div>
                 )}
               </div>
+
+              {/* Passenger Review (if rated) */}
+              {(() => {
+                const bRating = ratings.find((r) => r.booking_id === selectedBooking.id);
+                if (!bRating) return null;
+
+                return (
+                  <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-400">
+                        <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
+                        <span>Passenger Rating &amp; Review</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {[1, 2, 3, 4, 5].map((s) => (
+                          <Star
+                            key={s}
+                            className={`w-3.5 h-3.5 ${
+                              s <= bRating.rating
+                                ? 'text-amber-500 fill-amber-500'
+                                : 'text-slate-300 dark:text-slate-600'
+                            }`}
+                          />
+                        ))}
+                        <span className="font-bold text-amber-600 dark:text-amber-400 ml-1 text-xs">
+                          {bRating.rating}.0
+                        </span>
+                      </div>
+                    </div>
+                    {bRating.feedback ? (
+                      <p className="text-xs text-primary italic bg-card/60 p-2.5 rounded-xl border border-base">
+                        &ldquo;{bRating.feedback}&rdquo;
+                      </p>
+                    ) : (
+                      <p className="text-[11px] text-muted italic">No written comment left by passenger.</p>
+                    )}
+                    <div className="text-[10px] text-muted">
+                      Recorded on {formatDateTime(bRating.created_at)}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="pt-2 flex items-center justify-between border-t border-base">

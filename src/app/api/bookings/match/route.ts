@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase/client';
 import { calculateDistanceKm, estimateDurationMinutes } from '@/lib/geo';
 import { VehicleType } from '@/types';
+import { fetchDriverDetails } from '@/lib/driver-stats';
 
 export async function POST(req: NextRequest) {
   try {
@@ -66,6 +67,8 @@ export async function POST(req: NextRequest) {
           // IMPORTANT: Driver has been DISPATCHED (status = driver_assigned in DB),
           // but they have NOT accepted yet. The customer modal must wait for
           // driver_accepted status via Realtime before showing "confirmed".
+          const realDriverDetails = await fetchDriverDetails(supabase, result.driver.id);
+
           return NextResponse.json({
             success: true,
             dispatched: true,        // a driver was found and notified
@@ -77,23 +80,23 @@ export async function POST(req: NextRequest) {
             destinationAddress: bookingRow.destination_address,
             driver: {
               id: result.driver.id,
-              name: result.driver.name,
-              photo:
-                result.driver.photo ||
-                'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-              rating: Number(result.driver.rating) || 4.95,
-              totalRides: Number(result.driver.total_rides) || 48,
+              name: realDriverDetails?.profile?.full_name || realDriverDetails?.full_name || result.driver.name,
+              phone: realDriverDetails?.profile?.phone || realDriverDetails?.phone || result.driver.phone || null,
+              photo: realDriverDetails?.avatar_url || realDriverDetails?.profile?.avatar_url || null,
+              rating: realDriverDetails?.rating ?? null,
+              rating_count: realDriverDetails?.rating_count ?? 0,
+              totalRides: realDriverDetails?.total_rides ?? 0,
               location: {
                 latitude: driverLat,
                 longitude: driverLng,
               },
             },
             vehicle: {
-              vehicleType: result.vehicle.vehicle_type,
-              make: result.vehicle.make,
-              model: result.vehicle.model,
-              color: result.vehicle.color || 'Obsidian Black',
-              plateNumber: result.vehicle.plate_number,
+              vehicleType: realDriverDetails?.assigned_vehicle?.vehicle_type || result.vehicle.vehicle_type,
+              make: realDriverDetails?.assigned_vehicle?.make || result.vehicle.make,
+              model: realDriverDetails?.assigned_vehicle?.model || result.vehicle.model,
+              color: realDriverDetails?.assigned_vehicle?.color || result.vehicle.color || 'Obsidian Black',
+              plateNumber: realDriverDetails?.assigned_vehicle?.plate_number || result.vehicle.plate_number,
             },
             etaMinutes,
             etaFormatted: `${etaMinutes} mins (${arrivalTime})`,

@@ -304,6 +304,7 @@ export const FALLBACK_GUEST_PROFILE: Profile = {
   email_verified: false,
   phone_verified: false,
   status: 'active',
+  preferred_language: 'en',
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
 };

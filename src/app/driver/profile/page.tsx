@@ -60,9 +60,17 @@ export default function DriverProfilePage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Left: Driver Card */}
         <div className="p-6 rounded-3xl bg-card border border-base space-y-6 text-center shadow-xl">
-          <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-800 text-amber-400 font-bold text-3xl flex items-center justify-center mx-auto shadow-xl border border-emerald-500/40">
-            {currentUser.full_name?.slice(0, 1) || 'C'}
-          </div>
+          {currentUser.avatar_url || driverData.avatar_url || driverData.profile?.avatar_url ? (
+            <img
+              src={currentUser.avatar_url || driverData.avatar_url || driverData.profile?.avatar_url || ''}
+              alt={currentUser.full_name || 'Driver'}
+              className="w-20 h-20 rounded-2xl object-cover mx-auto shadow-xl border border-emerald-500/40"
+            />
+          ) : (
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-800 text-amber-400 font-bold text-3xl flex items-center justify-center mx-auto shadow-xl border border-emerald-500/40">
+              {currentUser.full_name?.slice(0, 1) || 'C'}
+            </div>
+          )}
 
           <div>
             <h3 className="text-lg font-bold text-primary">{currentUser.full_name}</h3>
@@ -77,16 +85,25 @@ export default function DriverProfilePage() {
               <span className="text-muted">Overall Rating:</span>
               <span className="text-amber-500 font-bold flex items-center gap-1">
                 <Star className="w-3.5 h-3.5 fill-amber-500" />
-                {driverData.rating} / 5.0
+                {driverData.rating !== null && driverData.rating !== undefined ? (
+                  <>
+                    <span>{Number(driverData.rating).toFixed(1)} / 5.0</span>
+                    {driverData.rating_count ? (
+                      <span className="text-[10px] text-muted font-normal">({driverData.rating_count} reviews)</span>
+                    ) : null}
+                  </>
+                ) : (
+                  <span className="text-xs text-secondary font-medium">New Captain</span>
+                )}
               </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted">Total Rides Completed:</span>
-              <span className="text-primary font-bold">{driverData.total_rides}</span>
+              <span className="text-primary font-bold">{driverData.total_rides ?? 0}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted">License Number:</span>
-              <span className="text-secondary font-mono">{driverData.license_number || 'SA-DL-994821'}</span>
+              <span className="text-secondary font-mono">{driverData.license_number || 'MOT Verified'}</span>
             </div>
           </div>
         </div>
@@ -104,7 +121,7 @@ export default function DriverProfilePage() {
               </div>
             </div>
             <span className="px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/40 text-xs font-bold font-mono">
-              {driverData.assigned_vehicle?.plate_number || 'KSA 7788'}
+              {driverData.assigned_vehicle?.plate_number || 'VIP Fleet'}
             </span>
           </div>
 
@@ -112,14 +129,14 @@ export default function DriverProfilePage() {
             <div className="p-4 rounded-2xl bg-surface border border-base space-y-1">
               <span className="text-muted text-[10px] uppercase font-bold">Vehicle Model</span>
               <div className="text-primary font-bold text-sm">
-                {driverData.assigned_vehicle?.make} {driverData.assigned_vehicle?.model}
+                {driverData.assigned_vehicle?.make ? `${driverData.assigned_vehicle.make} ${driverData.assigned_vehicle.model || ''}` : driverData.assigned_vehicle?.model || 'Executive VIP Fleet'}
               </div>
             </div>
 
             <div className="p-4 rounded-2xl bg-surface border border-base space-y-1">
               <span className="text-muted text-[10px] uppercase font-bold">Vehicle Class</span>
               <div className="text-amber-600 dark:text-amber-400 font-bold text-sm uppercase">
-                {driverData.assigned_vehicle?.vehicle_type?.replace('_', ' ') || 'VIP GMC'}
+                {driverData.assigned_vehicle?.vehicle_type?.replace('_', ' ') || 'VIP Transportation'}
               </div>
             </div>
 

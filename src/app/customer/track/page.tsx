@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
+import { useLanguage } from '@/context/LanguageContext';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
 import { Booking, BookingStatus, Driver, AdditionalCharge } from '@/types';
 import { supabase } from '@/lib/supabase/client';
@@ -41,9 +42,11 @@ import {
   Banknote,
   Info,
   Download,
+  Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { createInvoicePdfBlobUrl } from '@/lib/pdf-invoice';
+import { formatDriverRating, fetchDriverDetails } from '@/lib/driver-stats';
 
 interface TrackingStepConfig {
   id: number;
@@ -185,8 +188,94 @@ export default function CustomerTrackPage() {
     userRole,
     settings,
     submitRating,
+    ratings,
     bookings: contextBookings,
   } = useApp();
+
+  const { language, dir, isRTL, t } = useLanguage();
+
+  const trackingSteps: TrackingStepConfig[] = useMemo(() => [
+    {
+      id: 1,
+      title: isRTL ? 'تم إرسال الطلب' : 'Submitted',
+      subtitle: isRTL ? 'تسجيل الحجز في النظام' : 'Booking Registered',
+      shortLabel: isRTL ? 'تم الإرسال' : 'Submitted',
+      description: isRTL
+        ? 'تم استلام طلب الرحلة وتسجيله في النظام المركزي لإدارة الأسطول.'
+        : 'Your ride request has been received and registered in the Al Harmain dispatch central system.',
+      icon: ({ className }) => <Send className={className} />,
+    },
+    {
+      id: 2,
+      title: isRTL ? 'تم تأكيد الدفع' : 'Payment Verified',
+      subtitle: isRTL ? 'تأكيد من العمليات' : 'Confirmed by Dispatch',
+      shortLabel: isRTL ? 'تم التحقق' : 'Verified',
+      description: isRTL
+        ? 'تم التحقق من عملية الدفع من قبل فريق العمليات والمتابعة المركزية.'
+        : 'Payment status and transaction verification confirmed by central staff operations.',
+      icon: ({ className }) => <CreditCard className={className} />,
+    },
+    {
+      id: 3,
+      title: isRTL ? 'تم تخصيص السائق' : 'Driver Assigned',
+      subtitle: isRTL ? 'اختيار الكابتن المعتمد' : 'Chauffeur Selected',
+      shortLabel: isRTL ? 'تم التعيين' : 'Assigned',
+      description: isRTL
+        ? 'تم تعيين كابتن معتمد وتجهيز المركبة الفاخرة لمهمتك.'
+        : 'A certified VIP captain and executive vehicle have been allocated for your journey.',
+      icon: ({ className }) => <UserCheck className={className} />,
+    },
+    {
+      id: 4,
+      title: isRTL ? 'قبول المهمة' : 'Driver Accepted',
+      subtitle: isRTL ? 'تأكيد المهمة' : 'Mission Confirmed',
+      shortLabel: isRTL ? 'تم القبول' : 'Accepted',
+      description: isRTL
+        ? 'أكد الكابتن استلام المهمة واستعداده لنقلك بكل أمان وراحة.'
+        : 'Your assigned captain has acknowledged and accepted your VIP transport mission.',
+      icon: ({ className }) => <CheckCircle2 className={className} />,
+    },
+    {
+      id: 5,
+      title: isRTL ? 'في الطريق إليك' : 'Heading to Pickup',
+      subtitle: isRTL ? 'الكابتن متوجه للموقع' : 'Captain En Route',
+      shortLabel: isRTL ? 'في الطريق' : 'En Route',
+      description: isRTL
+        ? 'السائق في طريقه الآن إلى نقطة الانطلاق المحددة.'
+        : 'Your chauffeur is actively driving toward your specified pickup address.',
+      icon: ({ className }) => <Navigation className={className} />,
+    },
+    {
+      id: 6,
+      title: isRTL ? 'وصل السائق' : 'Arrived at Pickup',
+      subtitle: isRTL ? 'بانتظاركم في الموقع' : 'At Pickup Location',
+      shortLabel: isRTL ? 'وصل الكابتن' : 'Arrived',
+      description: isRTL
+        ? 'وصل الكابتن إلى نقطة الانطلاق وهو بانتظار تشريفكم للانطلاق.'
+        : 'Your captain has arrived at the pickup point and is ready for boarding.',
+      icon: ({ className }) => <MapPin className={className} />,
+    },
+    {
+      id: 7,
+      title: isRTL ? 'الرحلة بدأت' : 'Trip Started',
+      subtitle: isRTL ? 'الركاب على متن المركبة' : 'Passenger Boarded',
+      shortLabel: isRTL ? 'الرحلة جارية' : 'In Transit',
+      description: isRTL
+        ? 'تم صعود الركاب. رحلتكم الفاخرة جارية الآن بأمان نحو وجهتكم المباركة.'
+        : 'Passengers have boarded. Your VIP transport journey is currently underway.',
+      icon: ({ className }) => <Car className={className} />,
+    },
+    {
+      id: 8,
+      title: isRTL ? 'اكتملت الرحلة' : 'Trip Completed',
+      subtitle: isRTL ? 'وصلتم بحفظ الله' : 'Safely Arrived',
+      shortLabel: isRTL ? 'مكتملة' : 'Completed',
+      description: isRTL
+        ? 'وصلتم بحفظ الله ورعايته إلى وجهتكم. شكراً لاختياركم الحرمين.'
+        : 'You have safely reached your destination. Official journey invoice and receipt generated.',
+      icon: ({ className }) => <Flag className={className} />,
+    },
+  ], [isRTL]);
 
   // Supabase state
   const [customerBookings, setCustomerBookings] = useState<Booking[]>([]);
@@ -211,6 +300,27 @@ export default function CustomerTrackPage() {
   const [ratingVal, setRatingVal] = useState<number>(5);
   const [feedbackText, setFeedbackText] = useState<string>('');
   const [ratingSubmitted, setRatingSubmitted] = useState<boolean>(false);
+  const [isSubmittingRating, setIsSubmittingRating] = useState<boolean>(false);
+
+  // Existing rating for selected booking (persisted from Supabase)
+  const existingRating = useMemo(() => {
+    if (!selectedBooking?.id) return null;
+    return ratings.find((r) => r.booking_id === selectedBooking.id) || null;
+  }, [ratings, selectedBooking?.id]);
+
+  const hasBeenRated = !!existingRating || ratingSubmitted;
+
+  // Synchronize rating form state with existing database record on mount / booking switch
+  useEffect(() => {
+    if (existingRating) {
+      setRatingVal(existingRating.rating);
+      setFeedbackText(existingRating.feedback || '');
+    } else {
+      setRatingVal(5);
+      setFeedbackText('');
+      setRatingSubmitted(false);
+    }
+  }, [existingRating, selectedBooking?.id]);
 
   useEffect(() => {
     return () => {
@@ -394,18 +504,16 @@ export default function CustomerTrackPage() {
               b.payment = b.payments[0];
             }
 
-            // If a booking has assigned_driver_id but driver relation didn't populate, fetch driver directly
-            if (b.assigned_driver_id && !b.driver) {
+            // If a booking has assigned_driver_id, fetch authoritative driver details from Supabase
+            if (b.assigned_driver_id) {
               try {
-                const { data: driverData } = await supabase
-                  .from('drivers')
-                  .select('*, profile:profiles(*), assigned_vehicle:rate_vehicle_types(*)')
-                  .eq('id', b.assigned_driver_id)
-                  .maybeSingle();
+                const driverData = await fetchDriverDetails(supabase, b.assigned_driver_id);
                 if (driverData) {
-                  b.driver = driverData as Driver;
+                  b.driver = driverData;
                 }
-              } catch { }
+              } catch (err) {
+                console.warn('Driver fetch error for track page:', err);
+              }
             }
             return b as Booking;
           })
@@ -522,6 +630,18 @@ export default function CustomerTrackPage() {
                   : (fullUpdated || updated)?.payment || null,
             };
 
+            // Fetch real driver information using the assigned driver's actual ID
+            if (refreshedBooking.assigned_driver_id) {
+              try {
+                const driverData = await fetchDriverDetails(supabase, refreshedBooking.assigned_driver_id);
+                if (driverData) {
+                  refreshedBooking.driver = driverData;
+                }
+              } catch (err) {
+                console.warn('Realtime driver fetch notice:', err);
+              }
+            }
+
             // Update bookings list
             setCustomerBookings((prev) =>
               prev.map((b) => (b.id === refreshedBooking.id ? refreshedBooking : b))
@@ -598,34 +718,34 @@ export default function CustomerTrackPage() {
 
   // Display name helpers for service & vehicle class
   const serviceDisplayName = useMemo(() => {
-    if (!selectedBooking) return 'VIP Chauffeur Transfer';
+    if (!selectedBooking) return isRTL ? 'توصيل كابتن تنفيذي VIP' : 'VIP Chauffeur Transfer';
     const sType = selectedBooking.service_type;
-    if (sType === 'ziyarat_taif') return 'Taif Mountain & Historic Ziyarat';
-    if (sType === 'ziyarat_makkah') return 'Makkah Holy Sites Ziyarat';
-    if (sType === 'ziyarat_madinah') return 'Madinah Holy Sites Ziyarat';
-    if (sType === 'intercity_jeddah_makkah') return 'Jeddah Airport ➔ Makkah Transfer';
-    if (sType === 'intercity_makkah_jeddah') return 'Makkah ➔ Jeddah Transfer';
-    if (sType === 'intercity_makkah_madinah') return 'Makkah ➔ Madinah VIP Highway';
-    if (sType === 'intercity_madinah_makkah') return 'Madinah ➔ Makkah VIP Highway';
-    if (sType === 'intercity_jeddah_madinah') return 'Jeddah ➔ Madinah Express';
-    if (sType === 'intercity_madinah_jeddah') return 'Madinah ➔ Jeddah Express';
-    if (sType === 'hourly_charter') return 'Dedicated Chauffeur Hourly Charter';
-    if (selectedBooking.booking_method === 'fixed') return 'Fixed VIP Pilgrimage Package';
-    return 'VIP Chauffeur Journey';
-  }, [selectedBooking]);
+    if (sType === 'ziyarat_taif') return isRTL ? 'مزارات الطائف التاريخية والجبلية' : 'Taif Mountain & Historic Ziyarat';
+    if (sType === 'ziyarat_makkah') return isRTL ? 'مزارات مكة المكرمة والمشاعر المقدسة' : 'Makkah Holy Sites Ziyarat';
+    if (sType === 'ziyarat_madinah') return isRTL ? 'مزارات المدينة المنورة التاريخية' : 'Madinah Holy Sites Ziyarat';
+    if (sType === 'intercity_jeddah_makkah') return isRTL ? 'مطار جدة ➔ مكة المكرمة' : 'Jeddah Airport ➔ Makkah Transfer';
+    if (sType === 'intercity_makkah_jeddah') return isRTL ? 'مكة المكرمة ➔ مطار جدة' : 'Makkah ➔ Jeddah Transfer';
+    if (sType === 'intercity_makkah_madinah') return isRTL ? 'مكة المكرمة ➔ المدينة المنورة (طريق الهجرة السريع)' : 'Makkah ➔ Madinah VIP Highway';
+    if (sType === 'intercity_madinah_makkah') return isRTL ? 'المدينة المنورة ➔ مكة المكرمة (طريق الهجرة السريع)' : 'Madinah ➔ Makkah VIP Highway';
+    if (sType === 'intercity_jeddah_madinah') return isRTL ? 'جدة ➔ المدينة المنورة السريع' : 'Jeddah ➔ Madinah Express';
+    if (sType === 'intercity_madinah_jeddah') return isRTL ? 'المدينة المنورة ➔ جدة السريع' : 'Madinah ➔ Jeddah Express';
+    if (sType === 'hourly_charter') return isRTL ? 'تأجير كابتن خاص بالساعات' : 'Dedicated Chauffeur Hourly Charter';
+    if (selectedBooking.booking_method === 'fixed') return isRTL ? 'باقة عمرة وزيارة ثابتة' : 'Fixed VIP Pilgrimage Package';
+    return isRTL ? 'رحلة VIP خاصة' : 'VIP Chauffeur Journey';
+  }, [selectedBooking, isRTL]);
 
   const vehicleClassDisplayName = useMemo(() => {
-    if (!selectedBooking) return 'Executive VIP Fleet';
+    if (!selectedBooking) return isRTL ? 'أسطول VIP الفاخر' : 'Executive VIP Fleet';
     const vCat = selectedBooking.vehicle_category || selectedBooking.vehicle_type;
-    if (vCat === 'gmc' || vCat === 'vip_gmc') return 'GMC Yukon XL / Suburban Royal VIP';
-    if (vCat === 'staria') return 'Hyundai Staria VIP Business Lounge';
-    if (vCat === 'hiroof') return 'Toyota HiAce High Roof Minibus';
-    if (vCat === 'sedan') return 'Camry / Lexus ES Executive Sedan';
-    if (vCat === 'suv') return 'Luxury VIP SUV';
-    if (vCat === 'van') return 'Toyota HiAce Royal Lounge';
-    if (vCat === 'bus') return 'VIP Luxury Coach';
-    return selectedBooking.vehicle_type?.replace(/_/g, ' ').toUpperCase() || 'VIP Fleet';
-  }, [selectedBooking]);
+    if (vCat === 'gmc' || vCat === 'vip_gmc') return isRTL ? 'جمس يوكون XL / سوبربان رويال VIP' : 'GMC Yukon XL / Suburban Royal VIP';
+    if (vCat === 'staria') return isRTL ? 'هيونداي ستاريا VIP لاونج رجال الأعمال' : 'Hyundai Staria VIP Business Lounge';
+    if (vCat === 'hiroof') return isRTL ? 'تويوتا هايس هاي روف سياحي فاخر' : 'Toyota HiAce High Roof Minibus';
+    if (vCat === 'sedan') return isRTL ? 'كامري / لكزس ES سيدان تنفيذي' : 'Camry / Lexus ES Executive Sedan';
+    if (vCat === 'suv') return isRTL ? 'جيب VIP فاخر' : 'Luxury VIP SUV';
+    if (vCat === 'van') return isRTL ? 'تويوتا هايس رويال لاونج' : 'Toyota HiAce Royal Lounge';
+    if (vCat === 'bus') return isRTL ? 'حافلة VIP سياحية فاخرة' : 'VIP Luxury Coach';
+    return selectedBooking.vehicle_type?.replace(/_/g, ' ').toUpperCase() || (isRTL ? 'أسطول VIP' : 'VIP Fleet');
+  }, [selectedBooking, isRTL]);
 
   // Pricing & Billing Logic
   const isCustomRoute = selectedBooking?.booking_method === 'custom';
@@ -687,7 +807,7 @@ export default function CustomerTrackPage() {
   const paymentBadge = useMemo(() => {
     if (!selectedBooking) {
       return {
-        label: 'Awaiting Fare',
+        label: isRTL ? 'بانتظار تحديد الأجرة' : 'Awaiting Fare',
         bg: 'bg-muted/10 border-base',
         text: 'text-muted',
         icon: <Clock className="w-3.5 h-3.5" />,
@@ -696,7 +816,7 @@ export default function CustomerTrackPage() {
 
     if (isCancelled) {
       return {
-        label: 'Trip Cancelled',
+        label: isRTL ? 'تم إلغاء الرحلة' : 'Trip Cancelled',
         bg: 'bg-rose-500/10 border-rose-500/30',
         text: 'text-rose-600 dark:text-rose-400',
         icon: <XCircle className="w-3.5 h-3.5" />,
@@ -705,7 +825,7 @@ export default function CustomerTrackPage() {
 
     if (bookingStatus === 'payment_rejected' || paymentStatus === 'failed') {
       return {
-        label: 'Payment Rejected',
+        label: isRTL ? 'تم رفض إيصال الدفع' : 'Payment Rejected',
         bg: 'bg-rose-500/10 border-rose-500/30',
         text: 'text-rose-600 dark:text-rose-400',
         icon: <XCircle className="w-3.5 h-3.5" />,
@@ -714,7 +834,7 @@ export default function CustomerTrackPage() {
 
     if (paymentStatus === 'refunded') {
       return {
-        label: 'Fare Refunded',
+        label: isRTL ? 'تم استرجاع الأجرة' : 'Fare Refunded',
         bg: 'bg-slate-500/10 border-slate-500/30',
         text: 'text-slate-600 dark:text-slate-400',
         icon: <AlertCircle className="w-3.5 h-3.5" />,
@@ -723,7 +843,7 @@ export default function CustomerTrackPage() {
 
     if (isPendingQuote) {
       return {
-        label: 'Quote Under Review',
+        label: isRTL ? 'عرض السعر قيد المراجعة' : 'Quote Under Review',
         bg: 'bg-amber-500/10 border-amber-500/30',
         text: 'text-amber-600 dark:text-amber-400',
         icon: <Clock className="w-3.5 h-3.5" />,
@@ -745,7 +865,7 @@ export default function CustomerTrackPage() {
       bookingStatus === 'trip_completed'
     ) {
       return {
-        label: 'Paid & Verified',
+        label: isRTL ? 'مدفوع وموثق' : 'Paid & Verified',
         bg: 'bg-emerald-500/10 border-emerald-500/30',
         text: 'text-emerald-600 dark:text-emerald-400',
         icon: <CheckCircle2 className="w-3.5 h-3.5" />,
@@ -755,7 +875,7 @@ export default function CustomerTrackPage() {
     // Cash on boarding
     if (selectedBooking.payment?.method === 'cash') {
       return {
-        label: 'Cash on Boarding',
+        label: isRTL ? 'نقداً عند الصعود' : 'Cash on Boarding',
         bg: 'bg-blue-500/10 border-blue-500/30',
         text: 'text-blue-600 dark:text-blue-400',
         icon: <Clock className="w-3.5 h-3.5" />,
@@ -765,7 +885,7 @@ export default function CustomerTrackPage() {
     // Proof uploaded awaiting dispatch check
     if (selectedBooking.payment_screenshot_url && paymentStatus === 'pending') {
       return {
-        label: 'Transfer Slip Under Review',
+        label: isRTL ? 'إيصال التحويل قيد التدقيق' : 'Transfer Slip Under Review',
         bg: 'bg-amber-500/10 border-amber-500/30',
         text: 'text-amber-600 dark:text-amber-400',
         icon: <Clock className="w-3.5 h-3.5" />,
@@ -773,12 +893,12 @@ export default function CustomerTrackPage() {
     }
 
     return {
-      label: 'Verification Pending',
+      label: isRTL ? 'بانتظار التحقق' : 'Verification Pending',
       bg: 'bg-amber-500/10 border-amber-500/30',
       text: 'text-amber-600 dark:text-amber-400',
       icon: <Clock className="w-3.5 h-3.5" />,
     };
-  }, [selectedBooking, isCancelled, bookingStatus, paymentStatus, isPendingQuote]);
+  }, [selectedBooking, isCancelled, bookingStatus, paymentStatus, isPendingQuote, isRTL]);
 
   const paymentDetails = useMemo(() => {
     if (!selectedBooking) return null;
@@ -788,20 +908,20 @@ export default function CustomerTrackPage() {
     const hasProof = Boolean(selectedBooking.payment_screenshot_url);
     const txRef = selectedBooking.payment?.transaction_reference || selectedBooking.booking_reference;
 
-    let label = 'Bank Transfer / Proof Uploaded';
+    let label = isRTL ? 'تحويل بنكي / تم رفع الإيصال' : 'Bank Transfer / Proof Uploaded';
     let iconName: 'bank' | 'card' | 'cash' = 'bank';
 
     if (method === 'cash') {
-      label = isPaid ? 'Cash Paid to Captain' : 'Cash on Boarding';
+      label = isPaid ? (isRTL ? 'تم الدفع نقداً للكابتن' : 'Cash Paid to Captain') : (isRTL ? 'نقداً عند الصعود' : 'Cash on Boarding');
       iconName = 'cash';
     } else if (method === 'card') {
-      label = 'Credit / Debit Card (Mada)';
+      label = isRTL ? 'بطاقة مدى / ائتمان' : 'Credit / Debit Card (Mada)';
       iconName = 'card';
     } else if (hasProof) {
-      label = isPaid ? 'Bank Transfer (Verified Slip)' : 'Bank Transfer (Proof Attached)';
+      label = isPaid ? (isRTL ? 'تحويل بنكي (إيصال معتمد)' : 'Bank Transfer (Verified Slip)') : (isRTL ? 'تحويل بنكي (الإيصال مرفق)' : 'Bank Transfer (Proof Attached)');
       iconName = 'bank';
     } else if (method === 'online') {
-      label = 'Online Payment (Verified)';
+      label = isRTL ? 'دفع إلكتروني معتمد' : 'Online Payment (Verified)';
       iconName = 'card';
     }
 
@@ -812,7 +932,7 @@ export default function CustomerTrackPage() {
       isPaid,
       hasProof,
     };
-  }, [selectedBooking, paymentStatus]);
+  }, [selectedBooking, paymentStatus, isRTL]);
 
   const handleCopyRef = () => {
     if (!selectedBooking) return;
@@ -866,26 +986,33 @@ export default function CustomerTrackPage() {
     }
   };
 
-  const handleRatingSubmit = (e: React.FormEvent) => {
+  const handleRatingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedBooking || !assignedDriver) return;
-    submitRating({
-      booking_id: selectedBooking.id,
-      customer_id: selectedBooking.customer_id || undefined,
-      driver_id: assignedDriver.id,
-      rating: ratingVal,
-      feedback: feedbackText,
-      category: 'rating',
-    });
-    setRatingSubmitted(true);
-    toast.success('Thank you for rating your executive chauffeur!');
+    if (!selectedBooking || !assignedDriver || isSubmittingRating) return;
+
+    setIsSubmittingRating(true);
+    try {
+      await submitRating({
+        booking_id: selectedBooking.id,
+        customer_id: selectedBooking.customer_id || undefined,
+        driver_id: assignedDriver.id,
+        rating: ratingVal,
+        feedback: feedbackText,
+        category: 'rating',
+      });
+      setRatingSubmitted(true);
+    } catch (err: any) {
+      toast.error('Failed to submit rating. Please try again.');
+    } finally {
+      setIsSubmittingRating(false);
+    }
   };
 
   // Progress percentage
   const progressPercent = isCompleted ? 100 : Math.round(((activeStepIdx + 1) / 8) * 100);
 
   // Active step config
-  const currentStepConfig = TRACKING_STEPS[activeStepIdx] || TRACKING_STEPS[0];
+  const currentStepConfig = trackingSteps[activeStepIdx] || trackingSteps[0];
 
   // ==========================================
   // Render States: Loading, Error, Empty
@@ -961,7 +1088,7 @@ export default function CustomerTrackPage() {
   }
 
   return (
-    <div className="page-shell space-y-4 pb-8">
+    <div className="page-shell space-y-4 pb-8" dir={dir}>
       {/* ========================================================= */}
       {/* Page Header Strip & Multiple Bookings Selector */}
       {/* ========================================================= */}
@@ -970,27 +1097,27 @@ export default function CustomerTrackPage() {
           <div>
             <div className="flex items-center gap-2">
               <span className="type-eyebrow text-emerald-600 dark:text-emerald-400">
-                Al Harmain VIP Telemetry
+                {isRTL ? 'شركة الحرمين للنقل الفاخر' : 'Al Harmain VIP Telemetry'}
               </span>
               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                {isRealtimeActive ? 'Live Realtime Synced' : 'Connected to Supabase'}
+                {isRealtimeActive ? (isRTL ? 'متزامن بالوقت الفعلي' : 'Live Realtime Synced') : (isRTL ? 'متصل بقاعدة البيانات' : 'Connected to Supabase')}
               </span>
             </div>
             <h1 className="text-lg sm:text-xl font-bold tracking-tight text-primary mt-0.5 flex items-center gap-2 flex-wrap">
-              <span>Live Journey Radar</span>
+              <span>{isRTL ? 'رادار الرحلة المباشر' : 'Live Journey Radar'}</span>
               <button
                 type="button"
                 onClick={handleCopyRef}
                 className="group inline-flex items-center gap-1 font-mono text-base sm:text-lg font-bold text-amber-500 dark:text-amber-400 hover:text-amber-600 transition-colors cursor-pointer"
-                title="Click to copy reference"
+                title={isRTL ? 'انقر لنسخ المرجع' : 'Click to copy reference'}
               >
                 <span>#{selectedBooking.booking_reference}</span>
                 <Copy className="w-3.5 h-3.5 text-muted group-hover:text-amber-500 transition-colors" />
               </button>
             </h1>
             <p className="text-[11px] text-secondary mt-0.5">
-              Deterministic 8-stage journey progression strictly synchronized with Supabase database state.
+              {isRTL ? 'تسلسل رحلة النقل الفاخر المعتمد والمحدث مباشرة من غرفة العمليات المركزية.' : 'Deterministic 8-stage journey progression strictly synchronized with Supabase database state.'}
             </p>
           </div>
 
@@ -1000,7 +1127,7 @@ export default function CustomerTrackPage() {
               <div className="flex items-center gap-1.5 bg-surface p-1 rounded-xl border border-base">
                 <span className="text-[11px] text-muted font-medium flex items-center gap-1 px-1">
                   <Calendar className="w-3 h-3 text-emerald-500 shrink-0" />
-                  <span className="hidden sm:inline">Select Ride:</span>
+                  <span className="hidden sm:inline">{isRTL ? 'اختر الرحلة:' : 'Select Ride:'}</span>
                 </span>
                 <select
                   value={selectedBooking.id}
@@ -1021,10 +1148,10 @@ export default function CustomerTrackPage() {
               onClick={() => fetchCustomerBookings(authenticatedUserId || undefined, true)}
               disabled={isRefreshing}
               className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg bg-surface hover:bg-elevated text-secondary hover:text-primary text-xs font-semibold border border-base flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-              title="Force re-sync with Supabase"
+              title={isRTL ? 'إعادة المزامنة مع قاعدة البيانات' : 'Force re-sync with Supabase'}
             >
               <RefreshCw className={`w-3 h-3 text-emerald-500 ${isRefreshing ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">Re-sync</span>
+              <span className="hidden sm:inline">{isRTL ? 'تحديث' : 'Re-sync'}</span>
             </button>
           </div>
         </div>
@@ -1034,9 +1161,9 @@ export default function CustomerTrackPage() {
           <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-start gap-2.5 text-xs text-rose-800 dark:text-rose-200">
             <XCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
             <div>
-              <span className="font-bold text-xs block">Journey Cancelled in Database</span>
+              <span className="font-bold text-xs block">{isRTL ? 'تم إلغاء هذه الرحلة' : 'Journey Cancelled in Database'}</span>
               <p className="mt-0.5 text-rose-700 dark:text-rose-300 text-[11px]">
-                {selectedBooking.cancellation_reason || 'This journey reservation was cancelled in the dispatch database.'}
+                {selectedBooking.cancellation_reason || (isRTL ? 'تم إلغاء حجز هذه الرحلة في نظام الترحيل.' : 'This journey reservation was cancelled in the dispatch database.')}
               </p>
             </div>
           </div>
@@ -1046,9 +1173,9 @@ export default function CustomerTrackPage() {
           <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-start gap-2.5 text-xs text-amber-800 dark:text-amber-200">
             <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
             <div>
-              <span className="font-bold text-xs block">Payment Verification Required</span>
+              <span className="font-bold text-xs block">{isRTL ? 'مطلوب التحقق من عملية الدفع' : 'Payment Verification Required'}</span>
               <p className="mt-0.5 text-amber-700 dark:text-amber-300 text-[11px]">
-                {selectedBooking.payment_rejected_reason || 'Payment verification could not be approved by operations staff. Please review your payment or contact dispatch.'}
+                {selectedBooking.payment_rejected_reason || (isRTL ? 'تعذر تأكيد الدفع من قبل المشرفين. يرجى مراجعة إشعار التحويل أو التواصل مع العمليات.' : 'Payment verification could not be approved by operations staff. Please review your payment or contact dispatch.')}
               </p>
             </div>
           </div>
@@ -1057,7 +1184,7 @@ export default function CustomerTrackPage() {
         {/* Selected Booking Quick Summary Strip */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-2.5 border-t border-base text-xs">
           <div className="bg-surface/60 p-2.5 rounded-xl border border-base">
-            <span className="text-[9.5px] uppercase font-bold text-muted block">Route &amp; Passenger</span>
+            <span className="text-[9.5px] uppercase font-bold text-muted block">{isRTL ? 'المسار والمسافر' : 'Route & Passenger'}</span>
             <div className="mt-1 space-y-0.5">
               <div className="flex items-start gap-1.5">
                 <MapPin className="w-3 h-3 text-emerald-500 shrink-0 mt-0.5" />
@@ -1068,34 +1195,34 @@ export default function CustomerTrackPage() {
                 <span className="font-semibold text-primary line-clamp-1 text-[11px]">{selectedBooking.destination_address}</span>
               </div>
             </div>
-            <span className="text-[10.5px] text-muted block mt-1">Passenger: {selectedBooking.passenger_name}</span>
+            <span className="text-[10.5px] text-muted block mt-1">{isRTL ? 'المسافر:' : 'Passenger:'} {selectedBooking.passenger_name}</span>
           </div>
 
           <div className="bg-surface/60 p-2.5 rounded-xl border border-base">
-            <span className="text-[9.5px] uppercase font-bold text-muted block">Booking Date &amp; Time</span>
+            <span className="text-[9.5px] uppercase font-bold text-muted block">{isRTL ? 'تاريخ ووقت الحجز' : 'Booking Date & Time'}</span>
             <span className="font-semibold text-primary text-xs mt-0.5 block">
               {formatDateTime(selectedBooking.scheduled_at || selectedBooking.created_at)}
             </span>
             <span className="text-[10.5px] text-emerald-600 dark:text-emerald-400 capitalize">
-              {selectedBooking.booking_type} Ride &bull; {selectedBooking.passenger_count || 1} Passengers
+              {selectedBooking.booking_type} {isRTL ? '•' : 'Ride •'} {selectedBooking.passenger_count || 1} {isRTL ? 'ركاب' : 'Passengers'}
             </span>
           </div>
 
           <div className="bg-surface/60 p-2.5 rounded-xl border border-base">
-            <span className="text-[9.5px] uppercase font-bold text-muted block">Executive Vehicle</span>
+            <span className="text-[9.5px] uppercase font-bold text-muted block">{isRTL ? 'المركبة التنفيذية' : 'Executive Vehicle'}</span>
             <span className="font-semibold text-primary text-xs mt-0.5 uppercase block">
-              {selectedBooking.vehicle_type?.replace(/_/g, ' ')}
+              {vehicleClassDisplayName}
             </span>
             <span className="text-[10.5px] text-muted">
               {assignedDriver
-                ? `Captain ${assignedDriver.profile?.full_name || assignedDriver.full_name}`
-                : 'Awaiting Chauffeur'}
+                ? `${isRTL ? 'الكابتن' : 'Captain'} ${assignedDriver.profile?.full_name || assignedDriver.full_name}`
+                : (isRTL ? 'بانتظار تعيين السائق' : 'Awaiting Chauffeur')}
             </span>
           </div>
 
           <div className="bg-surface/60 p-2.5 rounded-xl border border-base flex flex-col justify-between">
             <div>
-              <span className="text-[9.5px] uppercase font-bold text-muted block">Total Trip Fare</span>
+              <span className="text-[9.5px] uppercase font-bold text-muted block">{isRTL ? 'إجمالي الأجرة' : 'Total Trip Fare'}</span>
               <span className="font-bold text-amber-500 dark:text-amber-400 text-sm sm:text-base mt-0.5 block">
                 {formatCurrency(totalFare, settings?.currency || 'SAR')}
               </span>
@@ -1117,37 +1244,37 @@ export default function CustomerTrackPage() {
             <div>
               <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[11px] font-bold mb-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                <span>LIVE JOURNEY</span>
+                <span>{isRTL ? 'الرحلة المباشرة' : 'LIVE JOURNEY'}</span>
                 <span className="text-muted font-normal">•</span>
-                <span className="font-mono text-[10px]">Real-Time GPS Tracking</span>
+                <span className="font-mono text-[10px]">{isRTL ? 'تتبع مباشر بنظام GPS' : 'Real-Time GPS Tracking'}</span>
               </div>
               <h2 className="text-sm sm:text-base font-bold text-primary flex items-center gap-1.5">
                 <Navigation className="w-4 h-4 text-emerald-500" />
-                Live Journey Radar &amp; Progression Timeline
+                {isRTL ? 'رادار الرحلة والمخطط الزمني' : 'Live Journey Radar & Progression Timeline'}
               </h2>
               <p className="text-[11px] text-muted mt-0.5">
-                Exact sequence of verified VIP transportation stages for booking #{selectedBooking.booking_reference}.
+                {isRTL ? `تسلسل معتمد لمراحل نقل كبار الشخصيات للحجز رقم #${selectedBooking.booking_reference}.` : `Exact sequence of verified VIP transportation stages for booking #${selectedBooking.booking_reference}.`}
               </p>
             </div>
             <span className="text-xs font-mono font-bold text-amber-500 dark:text-amber-400">
-              {activeStepIdx + 1}/8 Milestones
+              {activeStepIdx + 1}/8 {isRTL ? 'مراحل' : 'Milestones'}
             </span>
           </div>
 
           {/* Sequential Step Cards with Connectors */}
-          <div className="relative space-y-4 pl-1">
-            {TRACKING_STEPS.map((step, idx) => {
+          <div className="relative space-y-4 pl-1 rtl:pl-0 rtl:pr-1">
+            {trackingSteps.map((step, idx) => {
               const isDone = idx < activeStepIdx || (idx === 7 && isCompleted);
               const isCurrent = idx === activeStepIdx && !isCompleted;
               const isPending = idx > activeStepIdx;
-              const isLast = idx === TRACKING_STEPS.length - 1;
+              const isLast = idx === trackingSteps.length - 1;
 
               return (
                 <div key={step.id} className="relative flex items-start gap-3 sm:gap-4 group">
                   {/* Vertical Connector Line */}
                   {!isLast && (
                     <div
-                      className={`absolute left-[15px] sm:left-[17px] top-8 bottom-[-18px] w-0.5 transition-colors duration-500 ${isDone ? 'bg-emerald-500' : 'bg-surface border-l-2 border-dashed border-base'
+                      className={`absolute left-[15px] sm:left-[17px] rtl:left-auto rtl:right-[15px] rtl:sm:right-[17px] top-8 bottom-[-18px] w-0.5 transition-colors duration-500 ${isDone ? 'bg-emerald-500' : 'bg-surface border-l-2 rtl:border-l-0 rtl:border-r-2 border-dashed border-base'
                         }`}
                     />
                   )}
@@ -1194,18 +1321,18 @@ export default function CustomerTrackPage() {
                       <div>
                         {isDone && (
                           <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-800">
-                            <Check className="w-2.5 h-2.5 stroke-[3]" /> Completed
+                            <Check className="w-2.5 h-2.5 stroke-[3]" /> {isRTL ? 'مكتمل' : 'Completed'}
                           </span>
                         )}
                         {isCurrent && (
                           <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/80 px-2 py-0.5 rounded-full border border-amber-300 dark:border-amber-800">
                             <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
-                            Active Phase
+                            {isRTL ? 'المرحلة النشطة' : 'Active Phase'}
                           </span>
                         )}
                         {isPending && (
                           <span className="text-[10px] font-medium text-muted bg-surface px-2 py-0.5 rounded-full border border-base">
-                            Pending
+                            {isRTL ? 'قيد الانتظار' : 'Pending'}
                           </span>
                         )}
                       </div>
@@ -1218,8 +1345,8 @@ export default function CustomerTrackPage() {
                     {/* Contextual Step Data */}
                     {step.id === 1 && (
                       <div className="mt-2 pt-2 border-t border-base/60 text-[11px] text-muted flex items-center justify-between flex-wrap gap-2">
-                        <span>Submitted At: <strong>{formatDateTime(selectedBooking.created_at)}</strong></span>
-                        <span className="font-mono">Ref: {selectedBooking.booking_reference}</span>
+                        <span>{isRTL ? 'تاريخ ووقت الطلب:' : 'Submitted At:'} <strong>{formatDateTime(selectedBooking.created_at)}</strong></span>
+                        <span className="font-mono">{isRTL ? 'المرجع:' : 'Ref:'} {selectedBooking.booking_reference}</span>
                       </div>
                     )}
 
@@ -1227,7 +1354,7 @@ export default function CustomerTrackPage() {
                       <div className="mt-2 pt-2 border-t border-base/60 text-[11px] flex items-center justify-between flex-wrap gap-2 text-emerald-700 dark:text-emerald-300">
                         <span className="flex items-center gap-1 font-medium">
                           <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                          Payment status verified &amp; approved by Central Operations.
+                          {isRTL ? 'تم التحقق من حالة الدفع وتأكيدها بواسطة العمليات المركزية.' : 'Payment status verified & approved by Central Operations.'}
                         </span>
                         <span className="font-bold uppercase">{selectedBooking.payment_status || 'PAID'}</span>
                       </div>
@@ -1237,34 +1364,42 @@ export default function CustomerTrackPage() {
                     {(step.id === 3 || step.id === 4) && (isDone || isCurrent) && assignedDriver && (
                       <div className="mt-2 pt-2 border-t border-base/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs bg-card/80 p-2.5 rounded-xl border border-base">
                         <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white font-bold flex items-center justify-center text-xs shadow">
-                            {assignedDriver.profile?.full_name?.charAt(0) || assignedDriver.full_name?.charAt(0) || 'C'}
-                          </div>
+                          {assignedDriver.avatar_url || assignedDriver.profile?.avatar_url ? (
+                            <img
+                              src={assignedDriver.avatar_url || assignedDriver.profile?.avatar_url || ''}
+                              alt={assignedDriver.profile?.full_name || assignedDriver.full_name || 'Captain'}
+                              className="w-8 h-8 rounded-lg object-cover border border-emerald-500 shadow-xs"
+                            />
+                          ) : (
+                            <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white font-bold flex items-center justify-center text-xs shadow-xs border border-emerald-500">
+                              {assignedDriver.profile?.full_name?.charAt(0) || assignedDriver.full_name?.charAt(0) || 'C'}
+                            </div>
+                          )}
                           <div>
                             <span className="font-bold text-primary block text-xs">
-                              Captain {assignedDriver.profile?.full_name || assignedDriver.full_name}
+                              {isRTL ? 'الكابتن' : 'Captain'} {assignedDriver.profile?.full_name || assignedDriver.full_name}
                             </span>
                             <span className="text-[10.5px] text-muted">
-                              Vehicle: {(assignedDriver.assigned_vehicle as any)?.name || `${assignedDriver.assigned_vehicle?.make || ''} ${assignedDriver.assigned_vehicle?.model || ''}`.trim() || selectedBooking.vehicle_type} &bull; Plate: {assignedDriver.assigned_vehicle?.plate_number || 'VIP-KSA'}
+                              {isRTL ? 'المركبة:' : 'Vehicle:'} {assignedDriver.assigned_vehicle?.make ? `${assignedDriver.assigned_vehicle.make} ${assignedDriver.assigned_vehicle.model || ''}`.trim() : (selectedBooking.vehicle_type?.replace(/_/g, ' ').toUpperCase() || 'VIP Fleet')} &bull; {isRTL ? 'اللوحة:' : 'Plate:'} {assignedDriver.assigned_vehicle?.plate_number || 'KSA 3312'}
                             </span>
                           </div>
                         </div>
 
-                        {assignedDriver.profile?.phone && (
+                        {(assignedDriver.profile?.phone || assignedDriver.phone) && (
                           <div className="flex items-center gap-1.5">
                             <a
-                              href={`tel:${assignedDriver.profile.phone}`}
+                              href={`tel:${assignedDriver.profile?.phone || assignedDriver.phone}`}
                               className="px-2.5 py-1 rounded-lg bg-surface hover:bg-elevated text-primary text-[11px] font-semibold flex items-center gap-1 border border-base"
                             >
-                              <Phone className="w-3 h-3 text-emerald-500" /> Call
+                              <Phone className="w-3 h-3 text-emerald-500" /> {isRTL ? 'اتصال' : 'Call'}
                             </a>
                             <a
-                              href={`https://wa.me/${assignedDriver.profile.phone.replace(/[^0-9]/g, '')}?text=Salam%20Captain%2C%20I%20am%20passenger%20for%20booking%20${selectedBooking.booking_reference}`}
+                              href={`https://wa.me/${(assignedDriver.profile?.phone || assignedDriver.phone || '').replace(/[^0-9]/g, '')}?text=Salam%20Captain%2C%20I%20am%20passenger%20for%20booking%20${selectedBooking.booking_reference}`}
                               target="_blank"
                               rel="noreferrer"
                               className="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold flex items-center gap-1 border border-emerald-300 dark:border-emerald-800"
                             >
-                              <MessageSquare className="w-3 h-3 text-emerald-500" /> WhatsApp
+                              <MessageSquare className="w-3 h-3 text-emerald-500" /> {isRTL ? 'واتساب' : 'WhatsApp'}
                             </a>
                           </div>
                         )}
@@ -1273,8 +1408,8 @@ export default function CustomerTrackPage() {
 
                     {step.id === 8 && isCompleted && (
                       <div className="mt-2 pt-2 border-t border-base/60 flex items-center justify-between text-[11px] text-emerald-700 dark:text-emerald-300 font-medium">
-                        <span>Journey concluded successfully. We look forward to serving you again.</span>
-                        <span className="font-bold">Official Invoice Available</span>
+                        <span>{isRTL ? 'اكتملت الرحلة بنجاح. نتطلع لخدمتكم مرة أخرى دائماً.' : 'Journey concluded successfully. We look forward to serving you again.'}</span>
+                        <span className="font-bold">{isRTL ? 'الفاتورة الرسمية متوفرة' : 'Official Invoice Available'}</span>
                       </div>
                     )}
                   </div>
@@ -1290,10 +1425,10 @@ export default function CustomerTrackPage() {
           {assignedDriver ? (
             <div className="bg-card border border-base rounded-2xl p-4 sm:p-5 shadow-lg space-y-3.5">
               <div className="flex items-center gap-3">
-                <div className="relative">
-                  {assignedDriver.profile?.avatar_url ? (
+                <div className="relative shrink-0">
+                  {assignedDriver.avatar_url || assignedDriver.profile?.avatar_url ? (
                     <img
-                      src={assignedDriver.profile.avatar_url}
+                      src={assignedDriver.avatar_url || assignedDriver.profile?.avatar_url || ''}
                       alt={assignedDriver.profile?.full_name || 'Captain'}
                       className="w-12 h-12 rounded-xl object-cover border-2 border-emerald-500 shadow-sm"
                     />
@@ -1302,47 +1437,83 @@ export default function CustomerTrackPage() {
                       {assignedDriver.profile?.full_name?.charAt(0) || assignedDriver.full_name?.charAt(0) || 'C'}
                     </div>
                   )}
-                  <span className="absolute -bottom-1 -right-1 bg-emerald-600 text-white rounded-full p-0.5 shadow">
+                  <span className="absolute -bottom-1 -right-1 bg-emerald-600 text-white rounded-full p-0.5 shadow" title="Verified Captain">
                     <CheckCircle2 className="w-3.5 h-3.5 text-white" />
                   </span>
                 </div>
 
                 <div className="flex-1 min-w-0">
                   <span className="text-[9.5px] uppercase font-bold text-emerald-600 dark:text-emerald-400 tracking-wider">
-                    Assigned VIP Chauffeur
+                    {isRTL ? 'السائق التنفيذي المعين' : 'Assigned VIP Chauffeur'}
                   </span>
                   <h3 className="font-bold text-primary truncate text-sm mt-0.5">
-                    {assignedDriver.profile?.full_name || assignedDriver.full_name || 'Assigned Captain'}
+                    {isRTL ? 'الكابتن' : 'Captain'} {assignedDriver.profile?.full_name || assignedDriver.full_name || (isRTL ? 'سائق تنفيذي' : 'Executive Chauffeur')}
                   </h3>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="inline-flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400 font-bold bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800/40">
-                      <Star className="w-3 h-3 fill-amber-400 text-amber-400" /> {assignedDriver.rating || 5.0}
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    {(() => {
+                      const ratingInfo = formatDriverRating(assignedDriver.rating, assignedDriver.rating_count);
+                      if (ratingInfo.isNew) {
+                        return (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/70 px-2 py-0.5 rounded border border-emerald-300 dark:border-emerald-800">
+                            <Star className="w-3 h-3 text-emerald-500 fill-emerald-500" />
+                            <span>{isRTL ? 'كابتن جديد (معتمد)' : 'New Captain (Verified)'}</span>
+                          </span>
+                        );
+                      }
+                      return (
+                        <div className="flex items-center gap-1.5">
+                          <span className="inline-flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-300 font-bold bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-300 dark:border-amber-800/40">
+                            <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                            {ratingInfo.display}
+                          </span>
+                          <span className="text-[10px] text-muted">
+                            ({ratingInfo.countLabel})
+                          </span>
+                        </div>
+                      );
+                    })()}
+                    <span className="text-[11px] text-muted font-medium">
+                      &bull; {assignedDriver.total_rides || 0} {isRTL ? 'رحلة مكتملة' : (assignedDriver.total_rides === 1 ? 'completed ride' : 'completed rides')}
                     </span>
-                    <span className="text-[11px] text-muted">{assignedDriver.total_rides || 0}+ Rides</span>
                   </div>
                 </div>
               </div>
 
               {/* Vehicle Specifications */}
-              <div className="p-3 rounded-xl bg-surface border border-base space-y-1.5 text-xs">
+              <div className="p-3 rounded-xl bg-surface border border-base space-y-2 text-xs">
                 <div className="flex items-center justify-between">
-                  <span className="text-muted">Assigned Vehicle</span>
+                  <span className="text-muted">{isRTL ? 'المركبة المعينة' : 'Assigned Vehicle'}</span>
                   <span className="font-bold text-primary truncate max-w-[170px] text-right">
-                    {(assignedDriver.assigned_vehicle as any)?.name || `${assignedDriver.assigned_vehicle?.make || ''} ${assignedDriver.assigned_vehicle?.model || ''}`.trim() || selectedBooking.vehicle_type?.replace(/_/g, ' ').toUpperCase() || 'Executive VIP Fleet'}
+                    {assignedDriver.assigned_vehicle?.make
+                      ? `${assignedDriver.assigned_vehicle.make} ${assignedDriver.assigned_vehicle.model || ''}`.trim()
+                      : (selectedBooking.vehicle_type?.replace(/_/g, ' ').toUpperCase() || 'Executive VIP Fleet')}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-muted">License Plate</span>
-                  <span className="font-mono font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded border border-amber-200 dark:border-amber-800/30 text-[11px]">
-                    {assignedDriver.assigned_vehicle?.plate_number || 'KSA-VIP'}
-                  </span>
+                  <span className="text-muted">{isRTL ? 'لوحة الترخيص' : 'License Plate'}</span>
+                  <div className="px-2 py-0.5 rounded-md bg-white text-slate-950 font-mono font-black text-xs tracking-wider border border-slate-900 shadow-xs flex items-center gap-1.5">
+                    <span className="text-[9px] text-emerald-700 font-bold">KSA</span>
+                    <span>{assignedDriver.assigned_vehicle?.plate_number || 'KSA 3312'}</span>
+                  </div>
                 </div>
+                {assignedDriver.assigned_vehicle?.color && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">{isRTL ? 'اللون الخارجي' : 'Exterior Color'}</span>
+                    <span className="font-medium text-secondary">{assignedDriver.assigned_vehicle.color}</span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
-                  <span className="text-muted">Vehicle Class</span>
+                  <span className="text-muted">{isRTL ? 'فئة المركبة' : 'Vehicle Class'}</span>
                   <span className="font-semibold text-secondary uppercase text-[11px]">
-                    {selectedBooking.vehicle_type?.replace(/_/g, ' ')}
+                    {vehicleClassDisplayName}
                   </span>
                 </div>
+                {assignedDriver.assigned_vehicle?.seating_capacity && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">{isRTL ? 'سعة المقاعد' : 'Seating Capacity'}</span>
+                    <span className="font-medium text-secondary">{assignedDriver.assigned_vehicle.seating_capacity} {isRTL ? 'مقاعد ركاب' : 'Passenger Seats'}</span>
+                  </div>
+                )}
               </div>
 
               {/* Direct Passenger Contact Actions */}
@@ -1351,7 +1522,7 @@ export default function CustomerTrackPage() {
                   href={`tel:${assignedDriver.profile?.phone || assignedDriver.phone || ''}`}
                   className="py-2 px-2.5 rounded-xl bg-surface hover:bg-elevated text-primary text-xs font-semibold flex items-center justify-center gap-1.5 border border-base transition-colors shadow-sm"
                 >
-                  <Phone className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> Call
+                  <Phone className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> {isRTL ? 'اتصال' : 'Call'}
                 </a>
                 <a
                   href={`https://wa.me/${(assignedDriver.profile?.phone || assignedDriver.phone || '').replace(/[^0-9]/g, '')}?text=Salam%20Captain%2C%20I%20am%20passenger%20for%20booking%20${selectedBooking.booking_reference}`}
@@ -1359,7 +1530,7 @@ export default function CustomerTrackPage() {
                   rel="noreferrer"
                   className="py-2 px-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/80 hover:bg-emerald-100 dark:hover:bg-emerald-900 text-emerald-800 dark:text-emerald-300 text-xs font-semibold flex items-center justify-center gap-1.5 border border-emerald-300 dark:border-emerald-700/50 transition-colors shadow-sm"
                 >
-                  <MessageSquare className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> WhatsApp
+                  <MessageSquare className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> {isRTL ? 'واتساب' : 'WhatsApp'}
                 </a>
               </div>
             </div>
@@ -1370,9 +1541,9 @@ export default function CustomerTrackPage() {
                   <Clock className="w-5 h-5 animate-pulse" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-primary text-xs sm:text-sm">Chauffeur Allocation In Queue</h3>
+                  <h3 className="font-bold text-primary text-xs sm:text-sm">{isRTL ? 'جاري تخصيص السائق التنفيذي' : 'Chauffeur Allocation In Queue'}</h3>
                   <p className="text-[11px] text-muted mt-0.5">
-                    Central dispatch is allocating an executive chauffeur and luxury vehicle for your reservation.
+                    {isRTL ? 'يقوم فريق الترحيل المركزي بتخصيص كابتن تنفيذي ومركبة فاخرة لحجزكم.' : 'Central dispatch is allocating an executive chauffeur and luxury vehicle for your reservation.'}
                   </p>
                 </div>
               </div>
@@ -1389,9 +1560,9 @@ export default function CustomerTrackPage() {
                 </div>
                 <div>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] uppercase tracking-wider text-muted font-bold block">Fare &amp; Billing</span>
+                    <span className="text-[11px] uppercase tracking-wider text-muted font-bold block">{isRTL ? 'الأجرة والفواتير' : 'Fare & Billing'}</span>
                     <span className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                      {selectedBooking.booking_method === 'fixed' ? 'Fixed' : 'Custom'}
+                      {selectedBooking.booking_method === 'fixed' ? (isRTL ? 'سعر ثابت' : 'Fixed') : (isRTL ? 'مسار مخصص' : 'Custom')}
                     </span>
                   </div>
                   <span className="text-[10.5px] text-muted font-medium block truncate max-w-[150px]">
@@ -1411,12 +1582,12 @@ export default function CustomerTrackPage() {
             <div className="p-3 rounded-xl bg-surface border border-base flex items-baseline justify-between">
               <div>
                 <span className="text-[10px] uppercase tracking-wider text-muted font-bold block">
-                  {paymentStatus === 'paid' ? 'Total Settled Amount' : 'Total Fare Amount'}
+                  {paymentStatus === 'paid' ? (isRTL ? 'المبلغ المسدد بالكامل' : 'Total Settled Amount') : (isRTL ? 'إجمالي قيمة الرحلة' : 'Total Fare Amount')}
                 </span>
                 {isPendingQuote ? (
                   <div className="mt-1 text-amber-500 font-bold text-xs flex items-center gap-1">
                     <Clock className="w-3.5 h-3.5 animate-pulse" />
-                    <span>Quote Pending Dispatch Review</span>
+                    <span>{isRTL ? 'عرض السعر قيد مراجعة المنسق' : 'Quote Pending Dispatch Review'}</span>
                   </div>
                 ) : (
                   <div className="text-xl sm:text-2xl font-black text-primary tracking-tight mt-0.5">
@@ -1426,7 +1597,7 @@ export default function CustomerTrackPage() {
               </div>
               <div className="text-right">
                 <span className="inline-block text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md">
-                  Guaranteed Rate
+                  {isRTL ? 'سعر مؤكد ومضمون' : 'Guaranteed Rate'}
                 </span>
               </div>
             </div>
@@ -1435,12 +1606,12 @@ export default function CustomerTrackPage() {
             <div className="p-3 rounded-xl bg-surface/60 border border-base space-y-2 text-xs">
               {isPendingQuote ? (
                 <div className="py-1 text-center text-muted text-xs leading-relaxed">
-                  Your custom route request has been registered in central dispatch. Our team is calculating all-inclusive VIP rates with driver allocation.
+                  {isRTL ? 'تم تسجيل طلب مسارك المخصص في نظام العمليات. يقوم فريقنا بحساب تكلفة النقل الفاخر وتخصيص السائق.' : 'Your custom route request has been registered in central dispatch. Our team is calculating all-inclusive VIP rates with driver allocation.'}
                 </div>
               ) : (
                 <>
                   <div className="flex items-center justify-between text-secondary">
-                    <span className="text-muted font-medium text-[11px]">Base Fare:</span>
+                    <span className="text-muted font-medium text-[11px]">{isRTL ? 'الأجرة الأساسية:' : 'Base Fare:'}</span>
                     <span className="font-semibold text-primary">{formatCurrency(baseFare, settings?.currency || 'SAR')}</span>
                   </div>
 
@@ -1463,7 +1634,7 @@ export default function CustomerTrackPage() {
                   {fareAdjustment !== 0 && (
                     <div className="flex items-center justify-between text-secondary pt-1 border-t border-base/60 text-[11px]">
                       <span className="text-muted">
-                        {fareAdjustment > 0 ? 'Adjustment:' : 'VIP Adjustment:'}
+                        {fareAdjustment > 0 ? (isRTL ? 'تسوية إضافية:' : 'Adjustment:') : (isRTL ? 'خصم خاص VIP:' : 'VIP Adjustment:')}
                       </span>
                       <span className={`font-semibold ${fareAdjustment > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>
                         {fareAdjustment > 0 ? '+' : ''}{formatCurrency(fareAdjustment, settings?.currency || 'SAR')}
@@ -1472,14 +1643,14 @@ export default function CustomerTrackPage() {
                   )}
 
                   <div className="flex items-center justify-between text-secondary pt-1 border-t border-base/60">
-                    <span className="text-muted font-bold text-[11px]">Total Guaranteed Fare:</span>
+                    <span className="text-muted font-bold text-[11px]">{isRTL ? 'إجمالي الأجرة المضمونة:' : 'Total Guaranteed Fare:'}</span>
                     <span className="font-bold text-primary text-xs sm:text-sm">
                       {formatCurrency(totalFare || 0, settings?.currency || 'SAR')}
                     </span>
                   </div>
 
                   <div className="flex items-center justify-between text-secondary pt-1 border-t border-base/60 text-[11px]">
-                    <span className="text-muted">Payment:</span>
+                    <span className="text-muted">{isRTL ? 'طريقة الدفع:' : 'Payment:'}</span>
                     <span className="font-semibold text-primary flex items-center gap-1">
                       {paymentDetails?.iconName === 'bank' && <Building2 className="w-3 h-3 text-amber-500" />}
                       {paymentDetails?.iconName === 'card' && <CreditCard className="w-3 h-3 text-amber-500" />}
@@ -1490,7 +1661,7 @@ export default function CustomerTrackPage() {
 
                   {paymentDetails?.txRef && (
                     <div className="flex items-center justify-between text-secondary pt-0.5 text-[11px]">
-                      <span className="text-muted">Trx ID:</span>
+                      <span className="text-muted">{isRTL ? 'رقم الحوالة:' : 'Trx ID:'}</span>
                       <span className="font-mono text-[10px] font-semibold text-primary bg-surface px-1.5 py-0.5 rounded border border-base">
                         {paymentDetails.txRef}
                       </span>
@@ -1509,7 +1680,7 @@ export default function CustomerTrackPage() {
                   className="w-full py-2 px-3 rounded-xl bg-surface hover:bg-elevated text-secondary hover:text-primary text-xs font-semibold flex items-center justify-center gap-1.5 border border-base transition-colors shadow-sm cursor-pointer"
                 >
                   <Eye className="w-3.5 h-3.5 text-emerald-500" />
-                  View Payment Slip
+                  {isRTL ? 'عرض إشعار التحويل' : 'View Payment Slip'}
                 </button>
               )}
 
@@ -1525,7 +1696,7 @@ export default function CustomerTrackPage() {
               >
                 <FileText className="w-3.5 h-3.5" />
                 <Download className="w-3 h-3" />
-                {isPendingQuote ? 'PDF Invoice (Pending Quote)' : 'Download PDF Invoice'}
+                {isPendingQuote ? (isRTL ? 'فاتورة PDF (بانتظار السعر)' : 'PDF Invoice (Pending Quote)') : (isRTL ? 'تحميل فاتورة PDF' : 'Download PDF Invoice')}
               </button>
             </div>
           </div>
@@ -1535,15 +1706,43 @@ export default function CustomerTrackPage() {
             <div className="bg-gradient-to-br from-emerald-50 via-slate-50 to-emerald-100/50 dark:from-emerald-950/80 dark:via-slate-900 dark:to-slate-900 border border-emerald-500/50 rounded-2xl p-4 sm:p-5 shadow-lg space-y-3 animate-fade-in text-primary dark:text-white">
               <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 text-[11px] font-bold uppercase tracking-wider">
                 <Sparkles className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
-                Rate Your Journey
+                {isRTL ? 'تقييم رحلتك' : 'Rate Your Journey'}
               </div>
               <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
-                How was your journey with {assignedDriver?.profile?.full_name || 'your VIP chauffeur'}?
+                {isRTL ? `كيف كانت رحلتك مع ${assignedDriver?.profile?.full_name || 'الكابتن'}؟` : `How was your journey with ${assignedDriver?.profile?.full_name || 'your VIP chauffeur'}?`}
               </h4>
 
-              {ratingSubmitted ? (
-                <div className="p-3 rounded-xl bg-emerald-100 dark:bg-emerald-900/40 text-center text-xs text-emerald-800 dark:text-emerald-300 font-medium border border-emerald-200 dark:border-emerald-800/40">
-                  ✓ Thank you! Your review has been recorded.
+              {hasBeenRated ? (
+                <div className="p-3.5 rounded-xl bg-emerald-100/90 dark:bg-emerald-900/40 text-center space-y-2 border border-emerald-300 dark:border-emerald-800/50">
+                  <div className="text-xs text-emerald-800 dark:text-emerald-300 font-bold flex items-center justify-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <span>{isRTL ? 'شكراً لك! تم تسجيل تقييمك بنجاح' : 'Thank you! Your review has been recorded'}</span>
+                  </div>
+
+                  <div className="flex items-center justify-center gap-1 pt-1">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Star
+                        key={star}
+                        className={`w-5 h-5 ${
+                          star <= (existingRating?.rating ?? ratingVal)
+                            ? 'text-amber-500 dark:text-amber-400 fill-amber-500 dark:fill-amber-400'
+                            : 'text-slate-300 dark:text-slate-600'
+                        }`}
+                      />
+                    ))}
+                    <span className="text-xs font-bold ml-1.5 text-slate-800 dark:text-slate-200">
+                      {(existingRating?.rating ?? ratingVal).toFixed(1)} / 5.0
+                    </span>
+                  </div>
+
+                  {(existingRating?.feedback || feedbackText) && (
+                    <p className="text-xs text-slate-700 dark:text-slate-300 italic pt-1.5 border-t border-emerald-200 dark:border-emerald-800/40">
+                      &ldquo;{existingRating?.feedback || feedbackText}&rdquo;
+                    </p>
+                  )}
+                  <div className="text-[10px] text-muted pt-0.5">
+                    {isRTL ? 'تقييم معتمد من المسافر • تقييم واحد لكل رحلة' : 'Verified Passenger Review • One review per ride recorded'}
+                  </div>
                 </div>
               ) : (
                 <form onSubmit={handleRatingSubmit} className="space-y-2.5">
@@ -1554,12 +1753,14 @@ export default function CustomerTrackPage() {
                         type="button"
                         onClick={() => setRatingVal(star)}
                         className="text-xl transition-transform hover:scale-125 cursor-pointer"
+                        title={`${star} Star${star > 1 ? 's' : ''}`}
                       >
                         <Star
-                          className={`w-6 h-6 ${star <= ratingVal
-                            ? 'text-amber-500 dark:text-amber-400 fill-amber-500 dark:fill-amber-400'
-                            : 'text-slate-300 dark:text-slate-600'
-                            }`}
+                          className={`w-6 h-6 ${
+                            star <= ratingVal
+                              ? 'text-amber-500 dark:text-amber-400 fill-amber-500 dark:fill-amber-400'
+                              : 'text-slate-300 dark:text-slate-600'
+                          }`}
                         />
                       </button>
                     ))}
@@ -1569,15 +1770,23 @@ export default function CustomerTrackPage() {
                     rows={2}
                     value={feedbackText}
                     onChange={(e) => setFeedbackText(e.target.value)}
-                    placeholder="Leave a comment for your chauffeur..."
+                    placeholder={isRTL ? 'أضف تعليقاً حول تجربة النقل الفاخر مع الكابتن...' : 'Leave a comment for your chauffeur...'}
                     className="w-full bg-input border border-base rounded-xl p-2 text-xs text-primary focus:outline-none focus:border-emerald-500"
                   />
 
                   <button
                     type="submit"
-                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 rounded-xl transition-colors shadow-md cursor-pointer"
+                    disabled={isSubmittingRating}
+                    className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold py-2 rounded-xl transition-colors shadow-md cursor-pointer flex items-center justify-center gap-2"
                   >
-                    Submit Review
+                    {isSubmittingRating ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>{isRTL ? 'جاري إرسال التقييم...' : 'Submitting Review...'}</span>
+                      </>
+                    ) : (
+                      isRTL ? 'إرسال التقييم' : 'Submit Review'
+                    )}
                   </button>
                 </form>
               )}
