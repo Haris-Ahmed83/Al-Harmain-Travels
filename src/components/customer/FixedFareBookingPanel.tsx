@@ -479,7 +479,7 @@ export default function FixedFareBookingPanel({
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 Step {currentStepIndex + 1} of 5
               </span>
-              <span className="font-bold text-primary truncate text-xs">
+              <span className="font-bold font-sans text-slate-950 truncate text-xs">
                 {STEPS_CONFIG[currentStepIndex].fullTitle}
               </span>
             </div>
@@ -505,7 +505,7 @@ export default function FixedFareBookingPanel({
               <div className="inline-flex items-center gap-1.5 px-2 py-0.2 rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 mb-1">
                 <Sparkles className="w-2.5 h-2.5 text-amber-500" /> Guaranteed Fixed Pricing
               </div>
-              <h2 className="text-sm sm:text-base font-bold text-primary">Select Your Service</h2>
+              <h2 className="text-sm sm:text-base font-bold font-sans text-slate-950">Select Your Service</h2>
               <p className="text-[11px] text-muted mt-0.5">
                 Choose a predefined VIP route or sacred holy tour with all-inclusive rates.
               </p>
@@ -599,14 +599,14 @@ export default function FixedFareBookingPanel({
                   <div className="w-6 h-6 rounded-lg bg-amber-500 flex items-center justify-center shrink-0 shadow-sm shadow-amber-500/30">
                     <MapPin className="w-3.5 h-3.5 text-slate-950" />
                   </div>
-                  <span className="text-xs sm:text-sm font-extrabold text-amber-700 dark:text-amber-300 leading-tight tracking-tight">
+                  <span className="text-xs sm:text-sm font-extrabold text-amber-900 leading-tight tracking-tight">
                     {routeLabel}
                   </span>
                 </div>
 
                 {/* Heading & description */}
                 <div>
-                  <h2 className="text-sm sm:text-base font-bold text-primary leading-tight">Specify Pickup &amp; Route</h2>
+                  <h2 className="text-sm sm:text-base font-bold font-sans text-slate-950 leading-tight">Specify Pickup &amp; Route</h2>
                   <p className="text-[11px] text-muted mt-0.5">
                     {isZiyarat
                       ? 'Enter your hotel or accommodation for sacred tour pickup.'
@@ -625,7 +625,7 @@ export default function FixedFareBookingPanel({
                   <Plane className="w-3.5 h-3.5 text-amber-500" />
                   Jeddah Airport Terminal <span className="text-rose-500">*</span>
                 </label>
-                <span className="text-[9.5px] font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
+                <span className="text-[9.5px] font-bold text-amber-700 uppercase tracking-wider">
                   Required
                 </span>
               </div>
@@ -646,13 +646,13 @@ export default function FixedFareBookingPanel({
                       className={`p-2 rounded-lg border flex flex-col items-center justify-center text-center transition-all cursor-pointer ${!isAvailable
                         ? 'opacity-35 cursor-not-allowed bg-surface/20 border-base text-muted'
                         : isSelected
-                          ? 'bg-amber-500/15 border-amber-500 text-amber-700 dark:text-amber-300 ring-1 ring-amber-500/20 font-bold shadow-sm'
-                          : 'bg-card border-base text-secondary hover:border-amber-500/40 hover:bg-elevated'
+                          ? 'bg-amber-500/15 border-amber-500 text-slate-950 ring-1 ring-amber-500/30 font-bold shadow-sm'
+                          : 'bg-card border-base text-slate-800 hover:border-amber-500/40 hover:bg-elevated'
                         }`}
                     >
-                      <Plane className={`w-3 h-3 mb-0.5 ${isSelected ? 'text-amber-500' : 'text-muted'}`} />
-                      <span className="text-xs font-bold leading-tight">{t.label}</span>
-                      <span className="text-[8.5px] text-muted truncate max-w-full hidden xs:block">
+                      <Plane className={`w-3 h-3 mb-0.5 ${isSelected ? 'text-amber-600' : 'text-slate-500'}`} />
+                      <span className="text-xs font-bold leading-tight text-slate-950">{t.label}</span>
+                      <span className="text-[8.5px] text-slate-500 truncate max-w-full hidden xs:block">
                         {isAvailable ? t.sub : 'Unavailable'}
                       </span>
                     </button>
@@ -672,7 +672,7 @@ export default function FixedFareBookingPanel({
           {/* Pickup Location Box */}
           <div className="space-y-1">
             <div className="flex items-center justify-between">
-              <span className="text-[9.5px] font-extrabold uppercase tracking-widest text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+              <span className="text-[9.5px] font-extrabold uppercase tracking-widest text-emerald-800 flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 Pickup Location {isZiyarat && '(Hotel / Residence)'}
               </span>
@@ -680,7 +680,7 @@ export default function FixedFareBookingPanel({
               <button
                 type="button"
                 onClick={onUseCurrentLocation}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9.5px] font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-all cursor-pointer active:scale-95"
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9.5px] font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 hover:bg-emerald-500/20 transition-all cursor-pointer active:scale-95"
               >
                 <Crosshair className="w-3 h-3 text-emerald-500" />
                 <span>Use Live GPS</span>
@@ -700,7 +700,7 @@ export default function FixedFareBookingPanel({
                 onClick={() => onOpenSearch('pickup')}
                 value={pickup?.address || ''}
                 placeholder="Search pickup: hotel, landmark, airport…"
-                className="w-full pl-10 pr-8 py-2 rounded-xl bg-input border border-base text-primary font-medium text-xs h-9 sm:h-9.5 focus:outline-none focus:border-emerald-500 cursor-pointer transition-all shadow-sm placeholder:text-muted truncate hover:border-strong"
+                className="w-full pl-10 pr-8 py-2 rounded-xl bg-input border border-base text-slate-950 font-medium text-xs h-9 sm:h-9.5 focus:outline-none focus:border-emerald-500 cursor-pointer transition-all shadow-sm placeholder:text-slate-400 truncate hover:border-strong"
               />
 
               {pickup && (
@@ -719,7 +719,7 @@ export default function FixedFareBookingPanel({
           {!isZiyarat && (
             <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <span className="text-[9.5px] font-extrabold uppercase tracking-widest text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                <span className="text-[9.5px] font-extrabold uppercase tracking-widest text-amber-800 flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                   Destination
                 </span>
@@ -728,8 +728,8 @@ export default function FixedFareBookingPanel({
                   type="button"
                   onClick={() => onToggleInteractiveMode(interactiveMode === 'destination' ? 'none' : 'destination')}
                   className={`text-[9.5px] font-semibold flex items-center gap-1 px-2 py-0.5 rounded-full border transition-all cursor-pointer ${interactiveMode === 'destination'
-                    ? 'bg-amber-500/15 border-amber-500/50 text-amber-600 dark:text-amber-400 font-bold'
-                    : 'bg-elevated border-base text-muted hover:text-primary'
+                    ? 'bg-amber-500/15 border-amber-500/50 text-amber-800 font-bold'
+                    : 'bg-elevated border-base text-slate-700 hover:text-slate-950'
                     }`}
                 >
                   <MapPin className="w-2.5 h-2.5" />
@@ -750,7 +750,7 @@ export default function FixedFareBookingPanel({
                   onClick={() => onOpenSearch('destination')}
                   value={destination?.address || ''}
                   placeholder="Search destination: holy mosque, hotel, city…"
-                  className="w-full pl-10 pr-8 py-2 rounded-xl bg-input border border-base text-primary font-medium text-xs h-9 sm:h-9.5 focus:outline-none focus:border-amber-500 cursor-pointer transition-all shadow-sm placeholder:text-muted truncate hover:border-strong"
+                  className="w-full pl-10 pr-8 py-2 rounded-xl bg-input border border-base text-slate-950 font-medium text-xs h-9 sm:h-9.5 focus:outline-none focus:border-amber-500 cursor-pointer transition-all shadow-sm placeholder:text-slate-400 truncate hover:border-strong"
                 />
 
                 {destination && (
@@ -855,7 +855,7 @@ export default function FixedFareBookingPanel({
                 <Car className="w-2.5 h-2.5 text-emerald-500" />
                 Fleet &amp; Fixed Fares
               </div>
-              <h2 className="text-sm sm:text-base font-bold text-primary">Choose Your Vehicle</h2>
+              <h2 className="text-sm sm:text-base font-bold font-sans text-slate-950">Choose Your Vehicle</h2>
               <p className="text-[11px] text-muted mt-0.5">
                 Exact fixed fares verified by Al Harmain operations. No meter, no surge.
               </p>
@@ -1013,7 +1013,7 @@ export default function FixedFareBookingPanel({
                 <User className="w-2.5 h-2.5 text-emerald-500" />
                 Step 4 of 5
               </div>
-              <h2 className="text-sm sm:text-base font-bold text-primary">Passenger &amp; Schedule</h2>
+              <h2 className="text-sm sm:text-base font-bold font-sans text-slate-950">Passenger &amp; Schedule</h2>
               <p className="text-[11px] text-muted">
                 Provide passenger details and exact pickup timing for your VIP chauffeur.
               </p>
@@ -1176,7 +1176,7 @@ export default function FixedFareBookingPanel({
                 <Receipt className="w-2.5 h-2.5 text-amber-500" />
                 Final Step 5 of 5
               </div>
-              <h2 className="text-sm sm:text-base font-bold text-primary">Summary &amp; Payment Proof</h2>
+              <h2 className="text-sm sm:text-base font-bold font-sans text-slate-950">Summary &amp; Payment Proof</h2>
               <p className="text-[11px] text-muted">
                 Review your VIP itinerary and upload transfer confirmation screenshot.
               </p>

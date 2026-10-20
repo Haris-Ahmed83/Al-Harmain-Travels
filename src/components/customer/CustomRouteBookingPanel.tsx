@@ -396,7 +396,7 @@ export default function CustomRouteBookingPanel({
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
               <Sparkles className="w-3 h-3 text-amber-500" /> Request Dispatched
             </span>
-            <h2 className="text-base sm:text-lg font-bold text-primary">Custom Booking Submitted!</h2>
+            <h2 className="text-base sm:text-lg font-bold font-sans text-slate-950">Custom Booking Submitted!</h2>
             <p className="text-xs text-secondary max-w-md mx-auto">
               Your customized itinerary has reached our 24/7 Operations Desk for manual review and competitive quote calculation.
             </p>
@@ -493,7 +493,7 @@ export default function CustomRouteBookingPanel({
                   <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 mb-0.5">
                     <Navigation className="w-2.5 h-2.5 text-amber-500" /> Dispatcher Confirmed Route
                   </div>
-                  <h2 className="text-sm sm:text-base font-bold text-primary">Define Your Custom Route</h2>
+                  <h2 className="text-sm sm:text-base font-bold font-sans text-slate-950">Define Your Custom Route</h2>
                   <p className="text-[11px] text-muted">
                     Specify any pickup, destination, and intermediate stops. Our operations desk will quote you directly.
                   </p>
@@ -733,7 +733,7 @@ export default function CustomRouteBookingPanel({
                   <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 mb-0.5">
                     <Car className="w-2.5 h-2.5 text-amber-500" /> VIP Fleet Selection
                   </div>
-                  <h2 className="text-sm sm:text-base font-bold text-primary">Choose Preferred Vehicle</h2>
+                  <h2 className="text-sm sm:text-base font-bold font-sans text-slate-950">Choose Preferred Vehicle</h2>
                   <p className="text-[11px] text-muted">
                     Select the ideal VIP vehicle category for your custom route itinerary.
                   </p>
@@ -852,7 +852,7 @@ export default function CustomRouteBookingPanel({
                   <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 mb-0.5">
                     <Calendar className="w-2.5 h-2.5 text-amber-500" /> Schedule &amp; Contact
                   </div>
-                  <h2 className="text-sm sm:text-base font-bold text-primary">Schedule &amp; Passenger Information</h2>
+                  <h2 className="text-sm sm:text-base font-bold font-sans text-slate-950">Schedule &amp; Passenger Information</h2>
                   <p className="text-[11px] text-muted">
                     Provide your travel details so our operations desk can coordinate vehicle dispatch and contact you.
                   </p>
@@ -1003,7 +1003,7 @@ export default function CustomRouteBookingPanel({
                   <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 mb-0.5">
                     <ShieldCheck className="w-2.5 h-2.5 text-amber-500" /> Dispatcher Itinerary Review
                   </div>
-                  <h2 className="text-sm sm:text-base font-bold text-primary">Review Journey &amp; Submit</h2>
+                  <h2 className="text-sm sm:text-base font-bold font-sans text-slate-950">Review Journey &amp; Submit</h2>
                   <p className="text-[11px] text-muted">
                     Verify your custom route specifications. Our dispatch desk will confirm the best direct fare.
                   </p>

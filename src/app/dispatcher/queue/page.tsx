@@ -362,10 +362,10 @@ export default function DispatcherQueuePage() {
               <Clock className="w-5 h-5" />
             </div>
             <div>
-              <h4 className="text-sm font-bold text-purple-300">
+              <h4 className="text-sm font-bold text-purple-900 dark:text-purple-300">
                 {pendingReviewCount} Custom Route Booking{pendingReviewCount > 1 ? 's' : ''} Awaiting Fare Review &amp; Confirmation
               </h4>
-              <p className="text-xs text-purple-300/80">
+              <p className="text-xs text-purple-700 dark:text-purple-300/80">
                 Customers requested custom itineraries without upfront fares. Contact passenger, agree on price, and quote the fare.
               </p>
             </div>
@@ -383,14 +383,14 @@ export default function DispatcherQueuePage() {
       {pendingVerificationCount > 0 && (
         <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
               <ShieldAlert className="w-5 h-5" />
             </div>
             <div>
-              <h4 className="text-sm font-bold text-amber-300">
+              <h4 className="text-sm font-bold text-amber-900 dark:text-amber-300">
                 {pendingVerificationCount} Booking{pendingVerificationCount > 1 ? 's' : ''} Awaiting Payment Proof Verification
               </h4>
-              <p className="text-xs text-amber-400/80">
+              <p className="text-xs text-amber-800 dark:text-amber-400/80">
                 Customers have uploaded bank transfer receipts. Verify funds to release bookings for driver assignment.
               </p>
             </div>

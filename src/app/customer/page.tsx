@@ -1026,11 +1026,11 @@ export default function CustomerHomePage() {
       {/* ── Welcome Bar ────────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
         <div>
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 text-[11px] font-semibold mb-1">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-800 border border-emerald-500/20 text-[11px] font-semibold mb-1">
             <Sparkles className="w-3 h-3 text-amber-500" />
             {isRTL ? 'شركة الحرمين للنقل الفاخر' : 'Al Harmain Fixed-Fare Booking'}
           </span>
-          <h1 className="text-lg sm:text-xl font-bold tracking-tight text-primary">
+          <h1 className="text-lg sm:text-xl font-bold tracking-tight text-slate-950">
             {isRTL ? `إلى أين ترغب بالذهاب يا ${currentUser.full_name.split(' ')[0]}؟` : `Where would you like to go, ${currentUser.full_name.split(' ')[0]}?`}
           </h1>
         </div>
@@ -1041,18 +1041,18 @@ export default function CustomerHomePage() {
             <button
               type="button"
               onClick={handleUseCurrentLocation}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-xs font-semibold transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-800 border border-emerald-500/30 text-xs font-semibold transition-colors cursor-pointer"
             >
-              <Crosshair className="w-3 h-3 text-emerald-500" />
+              <Crosshair className="w-3 h-3 text-emerald-600" />
               <span>{isRTL ? 'تحديد الموقع نشط' : 'Live GPS Active'}</span>
             </button>
           ) : (
             <button
               type="button"
               onClick={handleUseCurrentLocation}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-semibold transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 border border-amber-500/30 text-xs font-semibold transition-colors cursor-pointer"
             >
-              <Crosshair className="w-3 h-3 text-amber-500" />
+              <Crosshair className="w-3 h-3 text-amber-600" />
               <span>{isRTL ? 'تحديد موقعي' : 'Use GPS'}</span>
             </button>
           )}
@@ -1061,7 +1061,7 @@ export default function CustomerHomePage() {
             <button
               type="button"
               onClick={resetBooking}
-              className="text-xs font-semibold text-muted hover:text-rose-500 px-2.5 py-1 rounded-full border border-base bg-card hover:bg-elevated transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+              className="text-xs font-semibold text-slate-600 hover:text-rose-500 px-2.5 py-1 rounded-full border border-base bg-card hover:bg-elevated transition-colors inline-flex items-center gap-1.5 cursor-pointer"
             >
               <RotateCcw className="w-3 h-3" />
               <span>{isRTL ? 'إعادة تعيين' : 'Reset'}</span>
@@ -1076,8 +1076,8 @@ export default function CustomerHomePage() {
           type="button"
           onClick={() => setBookingMethod('fixed')}
           className={`p-2.5 sm:p-3 rounded-lg border text-left rtl:text-right transition-all flex items-start gap-2.5 cursor-pointer ${bookingMethod === 'fixed'
-              ? 'bg-gradient-to-r from-emerald-500/15 to-emerald-500/5 border-emerald-500/50 shadow-sm text-primary'
-              : 'bg-surface/50 border-transparent hover:bg-surface text-secondary hover:text-primary'
+              ? 'bg-gradient-to-r from-emerald-500/15 to-emerald-500/5 border-emerald-500/50 shadow-sm text-slate-950'
+              : 'bg-surface/50 border-transparent hover:bg-surface text-secondary hover:text-slate-950'
             }`}
         >
           <div
@@ -1090,12 +1090,12 @@ export default function CustomerHomePage() {
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <span className="font-bold text-xs">{isRTL ? 'حجز بأسعار ثابتة' : 'Fixed Fare Booking'}</span>
-              <span className="px-1.5 py-0.2 rounded-full text-[9.5px] font-bold bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+              <span className="font-bold text-xs text-slate-950">{isRTL ? 'حجز بأسعار ثابتة' : 'Fixed Fare Booking'}</span>
+              <span className="px-1.5 py-0.2 rounded-full text-[9.5px] font-bold bg-emerald-500/20 text-emerald-800 border border-emerald-500/30">
                 {isRTL ? 'أسعار محددة' : 'Predefined Rates'}
               </span>
             </div>
-            <p className="text-[10.5px] text-muted mt-0.5 leading-snug">
+            <p className="text-[10.5px] text-slate-600 mt-0.5 leading-snug">
               {isRTL ? 'مسارات مسبقة التحديد (جدة، مكة، المدينة، المزارات) بأسعار ثابتة ومضمونة.' : 'Predefined routes (Jeddah, Makkah, Madinah, Ziyarat) with guaranteed fixed prices.'}
             </p>
           </div>
@@ -1105,8 +1105,8 @@ export default function CustomerHomePage() {
           type="button"
           onClick={() => setBookingMethod('custom')}
           className={`p-2.5 sm:p-3 rounded-lg border text-left rtl:text-right transition-all flex items-start gap-2.5 cursor-pointer ${bookingMethod === 'custom'
-              ? 'bg-gradient-to-r from-amber-500/15 to-amber-500/5 border-amber-500/50 shadow-sm text-primary'
-              : 'bg-surface/50 border-transparent hover:bg-surface text-secondary hover:text-primary'
+              ? 'bg-gradient-to-r from-amber-500/15 to-amber-500/5 border-amber-500/50 shadow-sm text-slate-950'
+              : 'bg-surface/50 border-transparent hover:bg-surface text-secondary hover:text-slate-950'
             }`}
         >
           <div
@@ -1119,12 +1119,12 @@ export default function CustomerHomePage() {
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <span className="font-bold text-xs">{isRTL ? 'حجز مسار مخصص' : 'Custom Route Booking'}</span>
-              <span className="px-1.5 py-0.2 rounded-full text-[9.5px] font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+              <span className="font-bold text-xs text-slate-950">{isRTL ? 'حجز مسار مخصص' : 'Custom Route Booking'}</span>
+              <span className="px-1.5 py-0.2 rounded-full text-[9.5px] font-bold bg-amber-500/20 text-amber-800 border border-amber-500/30">
                 {isRTL ? 'بتأكيد الترحيل' : 'Dispatcher Confirmed'}
               </span>
             </div>
-            <p className="text-[10.5px] text-muted mt-0.5 leading-snug">
+            <p className="text-[10.5px] text-slate-600 mt-0.5 leading-snug">
               {isRTL ? 'حدد نقطة الانطلاق والوجهة مع توقفات اختيارية. يتم تأكيد السعر من قبل المشرف.' : 'Choose your own pickup & destination with optional stops. Fare confirmed by dispatcher.'}
             </p>
           </div>

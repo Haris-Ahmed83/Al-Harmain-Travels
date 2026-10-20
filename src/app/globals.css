@@ -22,7 +22,8 @@
 ───────────────────────────────────────────────── */
 :root,
 html,
-html.light {
+html.light,
+html.dark {
   --font-display: 'Cormorant Garamond', Georgia, serif;
   --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --background: #faf8f4;

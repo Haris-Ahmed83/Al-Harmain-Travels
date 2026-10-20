@@ -9,6 +9,15 @@ export default {
   ],
   theme: {
     extend: {
+      borderColor: {
+        DEFAULT: "var(--border-base)",
+        base: "var(--border-base)",
+        strong: "var(--border-strong)",
+        subtle: "var(--border-subtle)",
+      },
+      backgroundColor: {
+        base: "var(--border-base)",
+      },
       colors: {
         background: "var(--background)",
         foreground: "var(--foreground)",
@@ -22,10 +31,6 @@ export default {
         primary: "var(--text-primary)",
         secondary: "var(--text-secondary)",
         muted: "var(--text-muted)",
-
-        base: "var(--border-base)",
-        strong: "var(--border-strong)",
-        subtle: "var(--border-subtle)",
 
         brand: {
           50: "#ecfdf5",

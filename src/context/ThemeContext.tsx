@@ -11,22 +11,21 @@ interface ThemeContextType {
 }
 
 const ThemeContext = createContext<ThemeContextType>({
-  theme: 'dark',
+  theme: 'light',
   toggleTheme: () => {},
-  isDark: true,
+  isDark: false,
 });
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>('dark');
+  const [theme, setTheme] = useState<Theme>('light');
 
-  // Initialise from localStorage (or system preference)
+  // Initialise from localStorage (default light)
   useEffect(() => {
     const stored = localStorage.getItem('alharmain-theme') as Theme | null;
     if (stored) {
       setTheme(stored);
     } else {
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      setTheme(prefersDark ? 'dark' : 'light');
+      setTheme('light');
     }
   }, []);
 
